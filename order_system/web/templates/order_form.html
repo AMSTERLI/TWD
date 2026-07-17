@@ -13,7 +13,7 @@
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <section class="form-section"><h2>基本信息</h2><div class="form-grid cols-4">
     <label>订单类型<select name="order_type">{% for item in catalogs.order_type %}<option>{{ item }}</option>{% endfor %}</select></label>
-    <label>业务员<input name="salesman" required></label>
+    <label>业务员<input name="salesman" value="{{ default_salesman or '' }}" required readonly></label>
     <label>下单日期<input type="date" name="order_date" value="{{ today }}" required data-order-date></label>
     <label>交货日期<input type="date" name="delivery_date"></label>
     <label class="span-2">产品名称<input name="product_name" required></label>

@@ -84,6 +84,12 @@ def require_page(request: Request, roles: set[str] | None = None):
     return user, None
 
 
+
+
+def sales_order_forbidden(user: dict[str, Any], record: dict[str, Any] | None) -> bool:
+    return bool(user and user.get("role") == "sales" and record and str(record.get("salesman") or "") != str(user.get("username") or ""))
+
+
 def client_ip(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for", "")
     return forwarded.split(",", 1)[0].strip() or (request.client.host if request.client else "")
@@ -384,10 +390,11 @@ def dashboard(request: Request):
 
 @app.get("/orders", response_class=HTMLResponse)
 def orders(request: Request, q: str = "", page: int = 1):
-    _, denied = require_page(request)
+    user, denied = require_page(request)
     if denied:
         return denied
-    result = repo.list_orders(q, page)
+    salesman = str(user["username"]) if user["role"] == "sales" else None
+    result = repo.list_orders(q, page, salesman=salesman)
     return templates.TemplateResponse(request, "orders.html", page_context(request, result=result, q=q))
 
 
@@ -439,7 +446,7 @@ async def review_message(request: Request, request_id: int):
 
 @app.get("/orders/new", response_class=HTMLResponse)
 def new_order(request: Request):
-    _, denied = require_page(request, {"sales"})
+    user, denied = require_page(request, {"sales"})
     if denied:
         return denied
     today = date.today().isoformat()
@@ -452,6 +459,7 @@ def new_order(request: Request):
             today=today,
             order_no="",
             customer_selection="",
+            default_salesman=str(user["username"]),
             error="",
         ),
     )
@@ -475,7 +483,7 @@ def next_order_no(request: Request, order_date: str = "", order_prefix_no: int =
 
 @app.post("/orders/preview")
 async def preview_order(request: Request):
-    _, denied = require_page(request, {"sales"})
+    user, denied = require_page(request, {"sales"})
     if denied:
         return denied
     form = await request.form()
@@ -484,6 +492,7 @@ async def preview_order(request: Request):
     preview_images: list[str] = []
     try:
         payload = await order_payload(form, save_uploaded_images=False)
+        payload["salesman"] = str(user["username"])
         preview_images = loads_json(payload.get("image_paths_json") or "[]")
         if not payload["product_name"] or payload["quantity"] <= 0:
             raise ValueError("产品名称和有效数量为必填项")
@@ -513,6 +522,7 @@ async def create_order(request: Request):
         )
     try:
         payload = await order_payload(form)
+        payload["salesman"] = str(user["username"])
         if not payload["product_name"] or payload["quantity"] <= 0:
             raise ValueError("产品名称和有效数量为必填项")
         order_id, order_no = await run_in_threadpool(repo.create_order, payload)
@@ -527,6 +537,7 @@ async def create_order(request: Request):
                 today=date.today().isoformat(),
                 order_no=str(form.get("order_no") or "").strip(),
                 customer_selection=str(form.get("customer_selection") or "").strip(),
+                default_salesman=str(user["username"]),
                 error=str(exc),
             ),
             status_code=422,
@@ -566,6 +577,10 @@ def edit_order_page(request: Request, order_id: int, request_id: int = 0):
     record = _editable_order(order_id)
     if not record:
         return Response(status_code=404)
+    if sales_order_forbidden(user, record):
+        return templates.TemplateResponse(
+            request, "error.html", page_context(request, status=403, message="forbidden"), status_code=403
+        )
     return templates.TemplateResponse(
         request, "order_edit.html",
         page_context(request, order=record, catalogs=import_catalogs(), error="", edit_request=edit_request),
@@ -591,8 +606,12 @@ async def edit_order(request: Request, order_id: int):
     existing = repo.get_order(order_id)
     if not existing:
         return Response(status_code=404)
+    if sales_order_forbidden(user, existing):
+        return Response(status_code=403)
     try:
         payload = await order_payload(form)
+        if user["role"] == "sales":
+            payload["salesman"] = str(user["username"])
         if not payload["product_name"] or payload["quantity"] <= 0:
             raise ValueError("产品名称和有效数量为必填项")
         payload["paid_status"] = int(existing.get("paid_status") or 0)
@@ -663,13 +682,17 @@ async def delete_order(request: Request, order_id: int):
 
 @app.get("/orders/{order_id}", response_class=HTMLResponse)
 def order_detail(request: Request, order_id: int, created: int = 0):
-    _, denied = require_page(request)
+    user, denied = require_page(request)
     if denied:
         return denied
     record = repo.get_order(order_id)
     if not record:
         return templates.TemplateResponse(
             request, "error.html", page_context(request, status=404, message="订单不存在"), status_code=404
+        )
+    if sales_order_forbidden(user, record):
+        return templates.TemplateResponse(
+            request, "error.html", page_context(request, status=403, message="forbidden"), status_code=403
         )
     for key in ("materials_json", "plating_json", "accessories_json", "polishing_json",
                 "coloring_json", "resin_json", "packaging_json", "image_paths_json"):
@@ -689,12 +712,14 @@ def order_detail(request: Request, order_id: int, created: int = 0):
 
 @app.get("/orders/{order_id}/pdf")
 async def order_pdf(request: Request, order_id: int):
-    _, denied = require_page(request)
+    user, denied = require_page(request)
     if denied:
         return denied
     record = await run_in_threadpool(repo.get_order, order_id)
     if not record:
         return Response(status_code=404)
+    if sales_order_forbidden(user, record):
+        return Response(status_code=403)
     content = await run_in_threadpool(render_order_pdf, record)
     safe_name = str(record.get("order_no") or order_id).replace("/", "-")
     return Response(

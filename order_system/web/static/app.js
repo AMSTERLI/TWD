@@ -70,6 +70,7 @@ function fillOrderForm(data) {
     }
     const inputs = form.querySelectorAll(`[name="${name}"]`);
     if (!inputs.length) return;
+    if (name === "salesman" && inputs[0].readOnly) return;
     if (inputs[0].type === "radio") {
       inputs.forEach(input => input.checked = input.value === String(value));
     } else {

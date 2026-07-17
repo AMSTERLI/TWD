@@ -244,10 +244,12 @@ class Repository:
             raise ValueError("修改原因不能超过 1000 个字")
         with self.connect(write=True) as conn:
             order = conn.execute(
-                "SELECT id, order_no FROM orders WHERE id = ?", (order_id,)
+                "SELECT id, order_no, salesman FROM orders WHERE id = ?", (order_id,)
             ).fetchone()
             if not order:
                 raise ValueError("订单不存在")
+            if str(order["salesman"] or "") != str(user.get("username") or ""):
+                raise ValueError("只能申请修改自己的订单")
             existing = conn.execute(
                 """SELECT id FROM order_edit_requests
                    WHERE order_id = ? AND requester_id = ? AND status = 'pending'
@@ -325,13 +327,23 @@ class Repository:
                 "UPDATE order_edit_requests SET consumed_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (request_id,),
             )
-    def list_orders(self, keyword: str = "", page: int = 1, page_size: int = 30) -> dict[str, Any]:
+    def list_orders(
+        self,
+        keyword: str = "",
+        page: int = 1,
+        page_size: int = 30,
+        salesman: str | None = None,
+    ) -> dict[str, Any]:
         keyword = keyword.strip()
+        salesman = salesman.strip() if salesman is not None else None
         page = max(page, 1)
         offset = (page - 1) * page_size
         where = "WHERE (? = '' OR order_no LIKE ? OR customer_name LIKE ? OR product_name LIKE ? OR salesman LIKE ?)"
         like = f"%{keyword}%"
-        args = (keyword, like, like, like, like)
+        args: list[Any] = [keyword, like, like, like, like]
+        if salesman:
+            where += " AND salesman = ?"
+            args.append(salesman)
         with self.connect() as conn:
             total = int(conn.execute(f"SELECT COUNT(*) FROM orders {where}", args).fetchone()[0])
             rows = conn.execute(
