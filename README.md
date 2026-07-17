@@ -1,292 +1,328 @@
-# TWD Order System MVP
+# TWD Order System
 
-基于 `PySide6 + SQLite + PDF 模板填充` 的单机版电子订单管理系统。
+TWD Order System 是一个面向订单录入、工单生成、财务收付款、外发加工和内部审批的轻量级订单管理系统。项目同时保留早期桌面端入口，并以 FastAPI Web 端作为当前主要使用和协作开发版本。
 
-这个项目当前的核心目标不是“网页式后台”，而是：
+当前部署形态适合十几人规模的内部团队使用：FastAPI 单进程、SQLite WAL、Nginx 反向代理、systemd 托管服务，不依赖 Docker、Redis 或 Celery。
 
-- 用桌面表单录入订单
-- 将订单持久化到本地 SQLite
-- 按业务模板生成 PDF 工单
-- 在软件内直接预览生成后的 PDF 页面
+## 功能概览
 
-## 当前能力
+- 业务下单：创建、预览、查看和打印订单 PDF。
+- AI 客单识别：支持 DOCX、Excel、CSV、TSV、HTML、PDF 客单；识别后自动填入下单表单；识别到的繁体字会转换为简体字。
+- 产品图片：支持上传或在指定输入框获得焦点时按 `Ctrl+V` 粘贴 JPG / PNG / WEBP 图片；单张最大 5 MB，最多 6 张。
+- 制作工艺：按“表面工艺 + 材质”两行选择并组合输出，例如 `铜  烤漆`；冲压、压铸、材质等字样会在识别/归一化时省略。
+- 订单权限：管理员可直接修改/删除订单；业务只能申请修改，审批通过后从消息页进入修改。
+- 消息中心：管理员处理业务修改申请；业务查看审批结果、批注和可修改入口。
+- 财务页拆分：应收和应付分开管理，支持状态更新、筛选、导出和 PDF 汇总。
+- 外发加工：支持批量录入外发工序、加工厂、数量、单价、材料和版费等扩展字段。
+- PDF 工单：基于 `order_temp.pdf` 模板生成正式工单。
+- 数据备份：服务器部署包含 SQLite 备份脚本和 systemd timer。
 
-- 新建订单表单，覆盖主要工艺模块
-- 订单编号支持手动填写或按日期顺序自动生成
-- 本地图片附件选择，最多 3 张，自动复制到 `images/`
-- 本地订单管理列表，可按订单号 / 交期搜索
-- 点击订单后生成真实 PDF，并显示 PDF 渲染结果
-- 各工艺备注可单独控制是否显示为红字
+## 技术栈
 
-## 运行方式
+- Web: FastAPI, Jinja2, Starlette sessions
+- Desktop: PySide6
+- Database: SQLite
+- PDF: reportlab, pypdf
+- Office import: python-docx, openpyxl, xlrd
+- AI import: DeepSeek Chat Completions API
+- Traditional Chinese conversion: opencc-python-reimplemented
 
-### 1. 安装依赖
+## 目录结构
 
-系统 Python 仅用于启动桌面程序：
+```text
+.
+├── main.py                         # 桌面端入口
+├── web_main.py                     # Web 端入口
+├── order_temp.pdf                  # 工单 PDF 模板
+├── requirements.txt                # 桌面端/通用依赖
+├── requirements-server.txt         # Web 服务器依赖
+├── order_system/
+│   ├── config.py                   # 路径、环境变量和运行目录配置
+│   ├── database.py                 # 早期桌面端 SQLite 访问层
+│   ├── order_import.py             # 客单读取、AI 识别、字段归一化
+│   ├── pdf_template_worker.py      # PDF 模板绘制核心
+│   ├── pdf_service.py              # 桌面端 PDF 生成/预览服务
+│   ├── ui.py                       # 桌面端 PySide UI
+│   └── web/
+│       ├── app.py                  # Web 路由和业务流程
+│       ├── repository.py           # Web 端 SQLite schema 和数据访问
+│       ├── catalogs.py             # 下拉/多选目录值
+│       ├── manage.py               # 创建账号、重置密码
+│       ├── pdf.py                  # Web PDF 生成
+│       ├── static/                 # CSS/JS
+│       └── templates/              # Jinja2 页面模板
+├── deploy/                         # systemd 和 Nginx 配置
+├── scripts/backup_sqlite.py        # SQLite 在线备份脚本
+└── tests/                          # smoke tests
+```
+
+运行时目录不会提交到 Git：
+
+- `data/`: SQLite 数据库
+- `images/`: 用户上传/粘贴的产品图片
+- `output/`: 导出的 PDF、Excel 等文件
+- `tmp/`: 临时文件
+- `.deploy-backups/`: 服务器部署备份
+
+## 本地开发
+
+### 1. 创建虚拟环境
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
+python -m pip install --upgrade pip
+pip install -r requirements-server.txt
+```
+
+### 2. 配置环境变量
+
+复制 `.env.example`，按需设置 DeepSeek API：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+常用变量：
+
+- `DEEPSEEK_API_KEY`: AI 客单识别 API Key。
+- `DEEPSEEK_BASE_URL`: 默认 `https://api.deepseek.com`。
+- `DEEPSEEK_MODEL`: 默认 `deepseek-v4-flash`。
+- `TWD_DATA_DIR`: 数据目录；不设置时使用项目内默认目录。
+- `TWD_SESSION_SECRET`: Web session 密钥，生产环境必须设置。
+
+不要把真实 API Key 或生产密钥提交到 Git。
+
+### 3. 初始化账号
+
+```powershell
+python -m order_system.web.manage create-user admin --role admin
+python -m order_system.web.manage create-user sales01 --role sales
+python -m order_system.web.manage create-user finance01 --role finance
+python -m order_system.web.manage create-user outsource01 --role outsource
+```
+
+角色说明：
+
+- `admin`: 全部权限，包含订单修改/删除、审批、财务、外发。
+- `sales`: 下单、AI 导入、申请修改、查看审批消息。
+- `finance`: 财务应收管理。
+- `outsource`: 外发和应付相关查看/录入。
+
+### 4. 启动 Web 服务
+
+```powershell
+python web_main.py
+```
+
+默认访问地址：
+
+```text
+http://127.0.0.1:8000
+```
+
+健康检查：
+
+```powershell
+curl http://127.0.0.1:8000/health
+```
+
+### 5. 启动桌面端
+
+```powershell
 python main.py
 ```
 
-### 2. 首次启动会创建的目录
+桌面端是早期入口，当前新功能优先在 Web 端维护。
 
-- `data/orders.db`
+## 测试
+
+当前测试以 smoke test 为主，覆盖关键业务流程：
+
+```powershell
+python -m compileall order_system
+python tests\web_smoke.py
+python tests\finance_web_smoke.py
+python tests\outsource_batch_smoke.py
+python tests\concurrency_smoke.py
+python tests\order_import_traditional_smoke.py
+```
+
+测试说明：
+
+- `web_smoke.py`: 登录、下单、预览标记、编辑、删除、PDF 等基础 Web 流程。
+- `finance_web_smoke.py`: 应收/应付拆分页、导出和状态逻辑。
+- `outsource_batch_smoke.py`: 外发批量录入和金额计算。
+- `concurrency_smoke.py`: 自动订单号并发生成和回收。
+- `order_import_traditional_smoke.py`: AI 导入归一化中的繁体转简体。
+
+## 服务器部署
+
+详细步骤见 [WEB_DEPLOY.md](WEB_DEPLOY.md)。核心流程如下：
+
+```bash
+sudo apt update
+sudo apt install -y python3-venv nginx fonts-noto-cjk
+sudo mkdir -p /opt/twd-order /var/lib/twd-order/{data,images,backups,tmp/web,output/pdf}
+cd /opt/twd-order
+python3 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r requirements-server.txt
+```
+
+配置生产环境变量：
+
+```bash
+sudo cp .env.server.example /etc/twd-order.env
+sudo nano /etc/twd-order.env
+```
+
+创建管理员：
+
+```bash
+sudo -u twdorder bash -c 'set -a; source /etc/twd-order.env; set +a; cd /opt/twd-order; .venv/bin/python -m order_system.web.manage create-user admin --role admin'
+```
+
+启用服务：
+
+```bash
+sudo cp deploy/twd-order.service /etc/systemd/system/
+sudo cp deploy/twd-order-backup.service deploy/twd-order-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now twd-order twd-order-backup.timer
+sudo systemctl status twd-order --no-pager
+```
+
+常用运维命令：
+
+```bash
+sudo journalctl -u twd-order -f
+curl http://127.0.0.1:8000/health
+sudo systemctl start twd-order-backup.service
+```
+
+## 重要业务规则
+
+### 订单编号
+
+自动订单号按客户编码和日期生成，例如：
+
+```text
+TWD1-260715001
+```
+
+系统允许手工订单号；自动生成逻辑通过 SQLite 事务保证并发唯一。
+
+### 制作工艺
+
+Web 表单分两行选择：
+
+1. 表面工艺：烤漆、珐琅、UV、镭雕
+2. 材质：铜、铁质、锌合金等
+
+保存和 PDF 输出时组合成：
+
+```text
+铜  烤漆
+```
+
+AI 识别中出现“铜冲压烤漆”“锌合金压铸UV”等写法时，会省略“冲压/压铸/材质”等字样并匹配到目录项。
+
+### 图片上传和粘贴
+
+下单页和修改订单页都支持：
+
+- 文件选择上传
+- 点击“按 Ctrl+V 粘贴图片”的输入框后粘贴图片
+
+限制：
+
+- 只在该输入框获得焦点时响应粘贴
+- 剪贴板不是图片时不添加
+- 只接受 JPG / PNG / WEBP
+- 单张最大 5 MB
+- 最多 6 张
+
+### 订单修改审批
+
+- 管理员可在订单列表直接右键修改/删除订单。
+- 业务在订单列表只能右键申请修改。
+- 管理员在消息页审批申请，可填写批注。
+- 业务在消息页查看结果；审批通过后，从该消息上的“修改”按钮进入订单修改页。
+
+## Git 协作规范
+
+这个项目已经建立本地 Git 基线。多人协作时建议：
+
+1. 每个需求单独开分支。
+2. 修改前先 `git pull --rebase`。
+3. 修改后至少运行相关 smoke test。
+4. 提交信息写清楚业务功能，例如：
+
+```bash
+git checkout -b feature/order-preview
+git status
+git diff
+git add README.md order_system tests
+git commit -m "Add order preview workflow"
+```
+
+不要提交以下内容：
+
+- `.env`
+- `data/*.db`
 - `images/`
-- `output/pdf/`
-- `tmp/pdf_preview/`
+- `output/`
+- `tmp/`
+- 服务器备份目录
+- API Key、登录密码、真实客户敏感资料
 
-## 技术栈
+## GitHub 同步
 
-- GUI: `PySide6`
-- Database: `SQLite`
-- PDF fill/merge: `reportlab` + `pypdf`
-- PDF preview render: `pdftoppm`
+首次同步到 GitHub 时，需要一个目标仓库，例如：
 
-## 项目结构
+```text
+https://github.com/<owner>/<repo>.git
+```
 
-### 顶层文件
+拿到仓库地址后，在本地执行：
 
-- [main.py](C:/Users/LBL99/OneDrive/文档/TWD_order_system/main.py)
-  - 程序入口，只负责调用 `order_system.ui.run()`
-- [requirements.txt](C:/Users/LBL99/OneDrive/文档/TWD_order_system/requirements.txt)
-  - 当前桌面程序依赖
-- [order_temp.pdf](C:/Users/LBL99/OneDrive/文档/TWD_order_system/order_temp.pdf)
-  - PDF 模板底版，生成工单时会往这个模板上叠加文字和图片
+```bash
+git remote add origin https://github.com/<owner>/<repo>.git
+git branch -M main
+git push -u origin main
+```
 
-### 核心包
+如果仓库已经存在 remote：
 
-- [order_system/config.py](C:/Users/LBL99/OneDrive/文档/TWD_order_system/order_system/config.py)
-  - 路径配置
-  - 例如数据库、图片目录、PDF 模板、输出目录、bundled Python 路径
+```bash
+git remote -v
+git push
+```
 
-- [order_system/database.py](C:/Users/LBL99/OneDrive/文档/TWD_order_system/order_system/database.py)
-  - SQLite schema 和数据库读写
-  - 负责表初始化、字段迁移、插入订单、查询订单、按日期生成自动订单号
-  - 如果后续新增字段，通常从这里开始改
+建议在 GitHub 上开启：
 
-- [order_system/ui.py](C:/Users/LBL99/OneDrive/文档/TWD_order_system/order_system/ui.py)
-  - 主界面和表单逻辑
-  - 包含：
-    - `OrderFormTab`：新建订单表单
-    - `OrderListTab`：订单管理列表
-    - `OrderPreviewDialog`：订单 PDF 预览弹窗
-  - 如果要改表单字段、列表列、交互行为，主要看这个文件
+- branch protection
+- pull request review
+- secret scanning
+- required status checks
 
-- [order_system/storage.py](C:/Users/LBL99/OneDrive/文档/TWD_order_system/order_system/storage.py)
-  - 图片文件复制与重命名
-  - 保存订单时会把用户选中的图片转存到 `images/`
+## 常见修改入口
 
-- [order_system/pdf_service.py](C:/Users/LBL99/OneDrive/文档/TWD_order_system/order_system/pdf_service.py)
-  - PDF 预览服务层
-  - 负责：
-    - 调用模板填充脚本生成 PDF
-    - 调用 `pdftoppm` 把 PDF 渲染成 PNG
-    - 返回生成的 PDF 路径和预览图片路径
-  - UI 不直接处理 PDF 细节，而是通过这里调用
-
-- [order_system/pdf_template_worker.py](C:/Users/LBL99/OneDrive/文档/TWD_order_system/order_system/pdf_template_worker.py)
-  - PDF 模板填充核心逻辑
-  - 这是“模板坐标调教”的主战场
-  - 负责：
-    - 在 PDF 模板指定坐标绘制订单头信息
-    - 绘制工艺文字与备注
-    - 控制备注是否红字
-    - 绘制订单图片
-    - 合并 overlay 和模板生成最终 PDF
-
-## 数据流
-
-### 保存订单
-
-1. 用户在 `OrderFormTab` 填写表单
-2. UI 组装 payload
-3. 图片通过 `storage.py` 复制到 `images/`
-4. 订单通过 `database.py` 写入 `data/orders.db`
-
-### 预览订单
-
-1. 用户在 `OrderListTab` 点击订单
-2. UI 读取数据库记录
-3. `pdf_service.py` 调用 `pdf_template_worker.py`
-4. `pdf_template_worker.py` 在 `order_temp.pdf` 上叠加文字/图片生成 PDF
-5. `pdf_service.py` 调用 `pdftoppm` 把生成后的 PDF 渲染成 PNG
-6. `OrderPreviewDialog` 展示渲染后的页面图
-
-## SQLite 字段说明
-
-订单表 `orders` 目前大致分为几类字段：
-
-- 基础信息
-  - `order_type`
-  - `salesman`
-  - `order_no`
-  - `product_name`
-  - `order_date`
-  - `delivery_date`
-  - `quantity`
-  - `production_no`
-  - `bi_no`：界面和 PDF 显示为 `PO编号`
-
-- 尺寸信息
-  - `width_mm`
-  - `height_mm`
-  - `thickness_mm`
-  - `size_as_sample`
-
-- 工艺勾选项
-  - `materials_json`
-  - `plating_json`
-  - `accessories_json`
-  - `polishing_json`
-  - `coloring_json`
-  - `resin_json`
-  - `packaging_json`
-
-- 工艺备注
-  - `material_note`
-  - `plating_note`
-  - `accessories_note`
-  - `polishing_note`
-  - `coloring_note`
-  - `resin_note`
-  - `packaging_note`
-  - `back_mode_note`
-  - `global_note`
-
-- 备注颜色开关
-  - `material_note_red`
-  - `plating_note_red`
-  - `accessories_note_red`
-  - `polishing_note_red`
-  - `coloring_note_red`
-  - `resin_note_red`
-  - `packaging_note_red`
-  - `back_mode_note_red`
-  - `global_note_red`
-
-- 其他
-  - `packaging_rule`
-  - `back_mode`
-  - `image_paths_json`
-
-## 开发时最常见的修改入口
-
-### 1. 改表单字段
-
-优先看 [order_system/ui.py](C:/Users/LBL99/OneDrive/文档/TWD_order_system/order_system/ui.py)
-
-重点函数：
-
-- `_build_basic_info_group`
-- `_build_options_group`
-- `_build_coloring_group`
-- `_build_resin_group`
-- `_build_packaging_group`
-- `_build_back_mode_group`
-- `_build_global_note_group`
-- `_collect_payload`
-- `reset_form`
-
-### 2. 改数据库字段
-
-优先看 [order_system/database.py](C:/Users/LBL99/OneDrive/文档/TWD_order_system/order_system/database.py)
-
-通常需要同步改三处：
-
-1. `SCHEMA`
-2. `initialize()` 里的迁移逻辑
-3. `insert_order()` 的 `columns`
-
-如果字段要在界面中录入，还要同步修改 `ui.py`。
-
-### 3. 改 PDF 版式 / 坐标 / 字号 / 颜色
-
-优先看 [order_system/pdf_template_worker.py](C:/Users/LBL99/OneDrive/文档/TWD_order_system/order_system/pdf_template_worker.py)
-
-最重要的函数：
-
-- `_draw_header`
-  - 控制订单头、日期、尺寸、订单号位置
-- `_draw_process_table`
-  - 控制材质、电镀、焊针、抛光、上色、树脂、包装、背模、全局备注
-- `_draw_images`
-  - 控制图片插入和布局
-- `_draw_footer`
-  - 控制生产制号 / PO号 / 审核位置
-
-如果只是“某一行文字太高/太低/太小/太大”，通常只需要改这里的坐标参数或字号参数。
-
-### 4. 改 PDF 预览流程
-
-优先看 [order_system/pdf_service.py](C:/Users/LBL99/OneDrive/文档/TWD_order_system/order_system/pdf_service.py)
-
-它负责把：
-
-- 数据记录
-- PDF 填充
-- PDF 渲染
-- 预览图片路径
-
-串成一条完整链路。
-
-## 生成产物说明
-
-- `images/`
-  - 保存用户上传并转存后的图片
-
-- `data/orders.db`
-  - 本地 SQLite 数据库
-
-- `output/pdf/`
-  - 生成后的正式 PDF 工单
-
-- `tmp/pdf_preview/`
-  - 预览用中间文件
-  - 每个订单会有自己的渲染目录
+- 表单字段/页面流程：`order_system/web/templates/` 和 `order_system/web/app.py`
+- 前端交互：`order_system/web/static/app.js`
+- 页面样式：`order_system/web/static/app.css`
+- 数据库 schema 和迁移：`order_system/web/repository.py`
+- AI 客单识别：`order_system/order_import.py`
+- 下拉/多选目录：`order_system/web/catalogs.py`
+- PDF 输出：`order_system/web/pdf.py` 和 `order_system/pdf_template_worker.py`
+- 账号管理命令：`order_system/web/manage.py`
+- 服务器服务配置：`deploy/`
 
 ## 维护建议
 
-### 修改模板时
-
-如果 `order_temp.pdf` 的版式发生变化：
-
-1. 先替换模板文件
-2. 用一条真实订单生成 PDF
-3. 对照预览结果调整 `pdf_template_worker.py` 坐标
-4. 重点检查：
-   - 订单编号换行
-   - 尺寸数字位置
-   - 材质与工艺区文字是否越界
-   - 图片是否遮挡
-   - 备注红字是否只影响对应备注
-
-### 新增工艺模块时
-
-一般要同时修改：
-
-1. `database.py` 中 schema 和 insert columns
-2. `ui.py` 中表单构建和 `_collect_payload`
-3. `pdf_template_worker.py` 中工艺输出逻辑
-
-## 已知注意点
-
-- 当前界面显示为 `PO编号`，数据库字段名仍保留为 `bi_no`，这是为了兼容现有数据结构。
-- PDF 生成依赖 Windows 中文字体文件，例如 `msyh.ttc`。
-- PDF 渲染依赖 `pdftoppm` 可用。
-- `tmp/` 和 `output/` 下会不断产生预览与导出文件，长期运行后可以考虑加清理策略。
-
-## 建议的接手顺序
-
-如果是第一次接手这个项目，建议按这个顺序读代码：
-
-1. [README.md](C:/Users/LBL99/OneDrive/文档/TWD_order_system/README.md)
-2. [main.py](C:/Users/LBL99/OneDrive/文档/TWD_order_system/main.py)
-3. [order_system/ui.py](C:/Users/LBL99/OneDrive/文档/TWD_order_system/order_system/ui.py)
-4. [order_system/database.py](C:/Users/LBL99/OneDrive/文档/TWD_order_system/order_system/database.py)
-5. [order_system/pdf_service.py](C:/Users/LBL99/OneDrive/文档/TWD_order_system/order_system/pdf_service.py)
-6. [order_system/pdf_template_worker.py](C:/Users/LBL99/OneDrive/文档/TWD_order_system/order_system/pdf_template_worker.py)
-
-这样基本能在最短时间里理解这套系统是怎么串起来的。
+- 修改数据库字段时，同步更新 schema、读写方法、表单模板、PDF 输出和 smoke tests。
+- 修改 PDF 模板 `order_temp.pdf` 后，务必用真实订单生成 PDF 对照坐标。
+- 修改 AI 识别 prompt 或目录值后，补充对应归一化测试。
+- 部署前先备份服务器当前代码和数据库。
+- 生产环境应使用 HTTPS，并设置 `TWD_COOKIE_HTTPS_ONLY=1`。
