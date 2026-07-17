@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}财务管理 · TWD 订单系统{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>财务管理</h1><p>统一管理客户收款与加工厂付款</p></div></div>
+<nav class="subnav" aria-label="财务子页面">
+  <a class="button {{ 'primary' if active_finance_page == 'receivables' else '' }}" href="/finance/receivables">客户收款</a>
+  <a class="button {{ 'primary' if active_finance_page == 'payables' else '' }}" href="/finance/payables">加工厂付款</a>
+</nav>
+
+{% if active_finance_page == 'receivables' %}
+<section class="finance-section" id="receivables">
+  <div class="section-title"><div><h2>客户收款</h2><p>共 {{ receivables.total }} 条，可按订单日期检索</p></div></div>
+  <form class="filterbar" method="get" action="/finance/receivables">
+    <label>订单关键词<input name="receivable_q" value="{{ receivable_q }}" placeholder="客户名、订单号、PO号或生产制号"></label>
+    <label>订单日期从<input type="date" name="receivable_date_from" value="{{ receivable_date_from }}"></label>
+    <label>至<input type="date" name="receivable_date_to" value="{{ receivable_date_to }}"></label>
+    <div class="filter-actions"><button class="primary">检索收款</button><a class="button" href="/finance/receivables">清空</a></div>
+  </form>
+  <form method="post" data-selection-form>
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="selection-toolbar">
+      <span>已选择 <strong data-selected-count>0</strong> 条</span>
+      <button formaction="/finance/receivables/status" name="paid" value="1" data-requires-selection disabled>批量确认收款</button>
+      <button formaction="/finance/receivables/status" name="paid" value="0" data-requires-selection disabled>批量改为未收</button>
+      <button formaction="/finance/receivables/export" data-requires-selection disabled>导出选中表格</button>
+      <button class="primary" formaction="/finance/receivables/pdf" data-requires-selection disabled>合并导出 PDF</button>
+    </div>
+    <div class="panel table-wrap"><table>
+      <thead><tr><th><input type="checkbox" data-select-all aria-label="全选当前页"></th><th>订单号</th><th>客户名称</th><th>PO号</th><th>生产制号</th><th>产品</th><th>数量</th><th>单价</th><th>应收</th><th>订单日期</th><th>状态</th></tr></thead>
+      <tbody>
+      {% for row in receivables.rows %}<tr>
+        <td><input type="checkbox" name="selected_ids" value="{{ row.id }}" data-select-item aria-label="选择订单 {{ row.order_no }}"></td>
+        <td><a href="/orders/{{ row.id }}">{{ row.order_no }}</a></td><td>{{ row.customer_name or '-' }}</td><td>{{ row.bi_no or '-' }}</td><td>{{ row.production_no or '-' }}</td><td>{{ row.product_name or '-' }}</td>
+        <td>{{ row.quantity }} {{ row.quantity_unit }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td><td>¥ {{ '%.2f'|format(row.amount or 0) }}</td><td>{{ row.order_date or '-' }}</td>
+        <td><span class="badge {{ 'ok' if row.paid_status else 'warn' }}">{{ '已收款' if row.paid_status else '未收款' }}</span></td>
+      </tr>{% else %}<tr><td colspan="11" class="muted">暂无匹配的收款记录</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </form>
+  {% if receivables.pages > 1 %}<nav class="pager">
+    {% if receivables.page > 1 %}<a href="?receivable_q={{ receivable_q|urlencode }}&receivable_date_from={{ receivable_date_from }}&receivable_date_to={{ receivable_date_to }}&receivable_page={{ receivables.page - 1 }}">上一页</a>{% endif %}
+    <span>第 {{ receivables.page }} / {{ receivables.pages }} 页，共 {{ receivables.total }} 条</span>
+    {% if receivables.page < receivables.pages %}<a href="?receivable_q={{ receivable_q|urlencode }}&receivable_date_from={{ receivable_date_from }}&receivable_date_to={{ receivable_date_to }}&receivable_page={{ receivables.page + 1 }}">下一页</a>{% endif %}
+  </nav>{% endif %}
+</section>
+{% endif %}
+
+{% if active_finance_page == 'payables' %}
+<section class="finance-section" id="payables">
+  <div class="section-title"><div><h2>加工厂付款</h2><p>共 {{ payables.total }} 条，财务可查看全部外发记录</p></div></div>
+  <form class="filterbar" method="get" action="/finance/payables">
+    <label>外发关键词<input name="payable_q" value="{{ payable_q }}" placeholder="订单号、工艺或加工厂"></label>
+    <label>加工厂<select name="payable_factory"><option value="">全部加工厂</option>{% for name in factories %}<option value="{{ name }}" {% if payable_factory == name %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
+    <label>外发日期从<input type="date" name="payable_date_from" value="{{ payable_date_from }}"></label>
+    <label>至<input type="date" name="payable_date_to" value="{{ payable_date_to }}"></label>
+    <div class="filter-actions"><button class="primary">检索付款</button><a class="button" href="/finance/payables">清空</a></div>
+  </form>
+  <form method="post" data-selection-form>
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="selection-toolbar">
+      <span>已选择 <strong data-selected-count>0</strong> 条</span>
+      {% if can_update_payables %}<button formaction="/finance/payables/status" name="paid" value="1" data-requires-selection disabled>批量确认付款</button>
+      <button formaction="/finance/payables/status" name="paid" value="0" data-requires-selection disabled>批量改为未付</button>{% endif %}
+      <button class="primary" formaction="/finance/payables/export" data-requires-selection disabled>导出选中表格</button>
+    </div>
+    <div class="panel table-wrap"><table>
+      <thead><tr><th><input type="checkbox" data-select-all aria-label="全选当前页"></th><th>订单号</th><th>产品</th><th>工艺</th><th>加工厂</th><th>产品/备品</th><th>加工单价</th><th>工艺费用</th><th>金额</th><th>外发日期</th><th>状态</th></tr></thead>
+      <tbody>
+      {% for row in payables.rows %}<tr>
+        <td><input type="checkbox" name="selected_ids" value="{{ row.id }}" data-select-item aria-label="选择外发记录 {{ row.order_no }}"></td>
+        <td><a href="/orders/{{ row.order_id }}">{{ row.order_no }}</a></td><td>{{ row.product_name or '-' }}</td><td>{{ row.process_name }}</td><td>{{ row.factory_name }}</td>
+        <td>{{ row.product_quantity or 0 }} / {{ row.spare_quantity or 0 }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td>
+        <td>{% if row.process_name == '冲压' %}加工费 {{ '%.2f'|format(row.processing_fee or 0) }}；材料 {{ '%.6f'|format(row.material_unit_price or 0) }}{% elif row.process_name == '上色' %}{{ row.color_count or 0 }} 色{% elif row.process_name == '印刷/UV' %}版费 {{ '%.2f'|format(row.plate_fee or 0) }}{% else %}-{% endif %}</td>
+        <td>{{ '¥ %.2f'|format(row.amount) if row.amount is not none else '-' }}</td><td>{{ row.outsource_date or '-' }}</td>
+        <td><span class="badge {{ 'ok' if row.paid_status else 'warn' }}">{{ '已付款' if row.paid_status else '未付款' }}</span></td>
+      </tr>{% else %}<tr><td colspan="11" class="muted">暂无匹配的加工厂付款记录</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </form>
+  {% if payables.pages > 1 %}<nav class="pager">
+    {% if payables.page > 1 %}<a href="?payable_q={{ payable_q|urlencode }}&payable_factory={{ payable_factory|urlencode }}&payable_date_from={{ payable_date_from }}&payable_date_to={{ payable_date_to }}&payable_page={{ payables.page - 1 }}">上一页</a>{% endif %}
+    <span>第 {{ payables.page }} / {{ payables.pages }} 页，共 {{ payables.total }} 条</span>
+    {% if payables.page < payables.pages %}<a href="?payable_q={{ payable_q|urlencode }}&payable_factory={{ payable_factory|urlencode }}&payable_date_from={{ payable_date_from }}&payable_date_to={{ payable_date_to }}&payable_page={{ payables.page + 1 }}">下一页</a>{% endif %}
+  </nav>{% endif %}
+</section>
+{% endif %}
+{% endblock %}
+

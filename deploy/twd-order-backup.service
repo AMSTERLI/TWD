@@ -1,0 +1,10 @@
+[Unit]
+Description=Backup TWD order database
+
+[Service]
+Type=oneshot
+User=twdorder
+Group=twdorder
+WorkingDirectory=/opt/twd-order
+EnvironmentFile=/etc/twd-order.env
+ExecStart=/opt/twd-order/.venv/bin/python /opt/twd-order/scripts/backup_sqlite.py

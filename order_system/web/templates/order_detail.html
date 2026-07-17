@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ order.order_no }} · TWD 订单系统{% endblock %}
+{% block content %}
+{% if created %}<div class="alert success">订单已创建：{{ order.order_no }}</div>{% endif %}
+<div class="page-head"><div><h1>{{ order.order_no }}</h1><p>{{ order.product_name or '未填写产品名称' }}</p></div><div class="actions"><a class="button" href="/orders">返回列表</a><a class="button primary" href="/orders/{{ order.id }}/pdf" target="_blank">预览 / 打印 PDF</a></div></div>
+<section class="detail-grid">
+  <article class="panel"><h2>基本信息</h2><dl><dt>客户</dt><dd>{{ order.customer_name or '未匹配' }}{% if order.customer_code %}（{{ order.customer_code }}）{% endif %}</dd><dt>类型</dt><dd>{{ order.order_type }}</dd><dt>业务员</dt><dd>{{ order.salesman or '-' }}</dd><dt>数量</dt><dd>{{ order.quantity }} {{ order.quantity_unit }}</dd><dt>下单日期</dt><dd>{{ order.order_date or '-' }}</dd><dt>交货日期</dt><dd>{{ order.delivery_date or '-' }}</dd><dt>PO号</dt><dd>{{ order.bi_no or '-' }}</dd><dt>生产制号</dt><dd>{{ order.production_no or '-' }}</dd></dl></article>
+  <article class="panel"><h2>尺寸与价格</h2><dl><dt>尺寸</dt><dd>{{ order.width_mm or '-' }} × {{ order.height_mm or '-' }} × {{ order.thickness_mm or '-' }} mm</dd><dt>尺寸如样</dt><dd>{{ '是' if order.size_as_sample else '否' }}</dd><dt>单价</dt><dd>{{ order.unit_price or 0 }}</dd><dt>附加费</dt><dd>{{ order.extra_fee or 0 }}</dd><dt>收款状态</dt><dd>{{ '已收款' if order.paid_status else '未收款' }}</dd></dl></article>
+</section>
+<section class="panel"><h2>工艺信息</h2><div class="craft-grid">
+{% set details = [('制作工艺',order.materials_json,order.material_note),('电镀',order.plating_json,order.plating_note),('焊针',order.accessories_json,order.accessories_note),('抛光',order.polishing_json,order.polishing_note),('上色',order.coloring_json,order.coloring_note),('树脂',order.resin_json,order.resin_note),('包装',order.packaging_json,order.packaging_note)] %}
+{% for title,items,note in details %}<div><h3>{{ title }}</h3><p>{{ items|join('、') if items else '-' }}</p>{% if note %}<p class="red-note">备注：{{ note }}</p>{% endif %}</div>{% endfor %}
+</div>{% if order.global_note %}<div class="global-note">总备注：{{ order.global_note }}</div>{% endif %}</section>
+<section class="panel"><h2>外发记录</h2><div class="table-wrap"><table>
+  <thead><tr><th>工艺</th><th>加工厂</th><th>产品/备品</th><th>加工单价</th><th>金额</th><th>外发日期</th><th>付款状态</th><th>备注</th></tr></thead>
+  <tbody>{% for row in outsource_records %}<tr><td>{{ row.process_name or '-' }}</td><td>{{ row.factory_name or '-' }}</td><td>{{ row.product_quantity or 0 }} / {{ row.spare_quantity or 0 }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td><td>{{ '¥ %.2f'|format(row.amount) if row.amount is not none else '-' }}</td><td>{{ row.outsource_date or '-' }}</td><td><span class="badge {{ 'ok' if row.paid_status else 'warn' }}">{{ '已付款' if row.paid_status else '未付款' }}</span></td><td>{{ row.remark or '-' }}</td></tr>{% else %}<tr><td colspan="8" class="muted">暂无外发记录</td></tr>{% endfor %}</tbody>
+</table></div></section>
+<section class="pdf-preview"><iframe title="订单 PDF" src="/orders/{{ order.id }}/pdf"></iframe></section>
+{% endblock %}
+

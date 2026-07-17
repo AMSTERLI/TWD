@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}修改外发记录 · TWD 订单系统{% endblock %}
+{% block content %}<div class="page-head"><div><h1>修改外发记录</h1><p>{{ record.order_no }} / {{ record.product_name or '-' }}</p></div></div>
+{% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+<form method="post" class="order-form"><input type="hidden" name="csrf" value="{{ csrf }}">
+<section class="form-section"><div class="form-grid cols-4">
+<label>订单号<input value="{{ record.order_no }}" readonly></label>
+<label>工序<select name="process_name" required>{% for item in processes %}<option{% if item.process_name == record.process_name %} selected{% endif %}>{{ item.process_name }}</option>{% endfor %}</select></label>
+<label>加工厂<select name="factory_name" required>{% for item in factories %}<option{% if item.factory_name == record.factory_name and item.process_name == record.process_name %} selected{% endif %}>{{ item.factory_name }}</option>{% endfor %}</select></label>
+<label>外发日期<input type="date" name="outsource_date" value="{{ record.outsource_date or '' }}" required></label>
+<label>产品数量<input type="number" step="0.01" min="0" name="product_quantity" value="{{ record.product_quantity or 0 }}"></label>
+<label>备品数量<input type="number" step="0.01" min="0" name="spare_quantity" value="{{ record.spare_quantity or 0 }}"></label>
+<label>加工单价<input type="number" step="0.0001" min="0" name="unit_price" value="{{ record.unit_price or 0 }}"></label>
+<label>加工费<input type="number" step="0.01" min="0" name="processing_fee" value="{{ record.processing_fee or 0 }}"></label>
+<label>长 mm<input type="number" step="0.01" min="0" name="length_mm" value="{{ record.length_mm or 0 }}"></label><label>宽 mm<input type="number" step="0.01" min="0" name="width_mm" value="{{ record.width_mm or 0 }}"></label><label>厚 mm<input type="number" step="0.01" min="0" name="thickness_mm" value="{{ record.thickness_mm or 0 }}"></label>
+<label>密度<input type="number" step="0.000001" min="0" name="density" value="{{ record.density or 0.00785 }}"></label><label>重量<input type="number" step="0.001" min="0" name="weight" value="{{ record.weight or 0.0055 }}"></label>
+<label>颜色数量<input type="number" step="1" min="1" name="color_count" value="{{ record.color_count or '' }}"></label><label>版费<input type="number" step="0.01" min="0" name="plate_fee" value="{{ record.plate_fee or 0 }}"></label><div class="span-2 muted">印刷/UV总金额自动计算：（产品数量 + 备品数量）× 单价 + 版费</div>
+<label>类型<select name="flag_type"><option value="">正常</option><option value="remake"{% if record.remake_flag %} selected{% endif %}>重做</option><option value="replenishment"{% if record.replenishment_flag %} selected{% endif %}>补货</option></select></label>
+<label class="check single"><input type="checkbox" name="paid_status" value="1"{% if record.paid_status %} checked{% endif %}> 已付款</label>
+<label class="span-2">备注<input name="remark" value="{{ record.remark or '' }}"></label>
+</div></section><div class="form-actions"><a class="button" href="/outsource">取消</a><button class="button primary">保存修改</button></div></form>{% endblock %}

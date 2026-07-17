@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}业务下单 · TWD 订单系统{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>业务下单</h1><p>填写后自动生成订单编号并保存</p></div></div>
+{% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+<section class="ai-import" data-ai-import data-csrf="{{ csrf }}">
+  <div><h2>AI 客单识别</h2><p>上传 DOCX、Excel、CSV、HTML 或 PDF，DeepSeek 将提取内容并自动填表；提交前必须人工核对。</p></div>
+  <div class="upload-row"><input type="file" id="customer-file" accept=".docx,.xlsx,.xlsm,.xls,.csv,.tsv,.html,.htm,.pdf"><button type="button" class="button" data-ai-button>识别并填入</button></div>
+  <label>补充提示词（可选）<textarea id="ai-supplemental-prompt" rows="2" maxlength="2000" placeholder="选择性对客单进行解释、补充和修正。"></textarea></label>
+  <div class="import-status" data-ai-status></div>
+</section>
+<form method="post" enctype="multipart/form-data" class="order-form" id="order-form">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <section class="form-section"><h2>基本信息</h2><div class="form-grid cols-4">
+    <label>订单类型<select name="order_type">{% for item in catalogs.order_type %}<option>{{ item }}</option>{% endfor %}</select></label>
+    <label>业务员<input name="salesman" required></label>
+    <label>下单日期<input type="date" name="order_date" value="{{ today }}" required data-order-date></label>
+    <label>交货日期<input type="date" name="delivery_date"></label>
+    <label class="span-2">产品名称<input name="product_name" required></label>
+    <label>数量<input type="number" min="1" name="quantity" required></label>
+    <label>单位<select name="quantity_unit">{% for item in catalogs.quantity_unit %}<option>{{ item }}</option>{% endfor %}</select></label>
+    <label>单价<input type="number" min="0" step="0.0001" name="unit_price"></label>
+    <label>附加费<input type="number" min="0" step="0.01" name="extra_fee"></label>
+    <label class="span-2">客户名称<input name="customer_selection" value="{{ customer_selection }}" list="customer-list" autocomplete="off" placeholder="输入客户名并从列表选择" required data-customer-name><input type="hidden" name="order_prefix_no" data-order-prefix><datalist id="customer-list">{% for customer in customers %}<option value="{{ customer.name }}（编码 {{ customer.code }}）" data-code="{{ customer.code }}"></option>{% endfor %}</datalist></label>
+    <label>订单编号<input name="order_no" value="{{ order_no }}" maxlength="100" required readonly data-order-number></label>
+    <label>PO号<input name="bi_no"></label>
+    <label>生产制号<input name="production_no"></label>
+  </div></section>
+  <section class="form-section"><h2>尺寸</h2><div class="form-grid cols-4">
+    <label>宽度 mm<input name="width_mm"></label><label>高度 mm<input name="height_mm"></label><label>厚度 mm<input name="thickness_mm"></label>
+    <label class="check single"><input type="checkbox" name="size_as_sample" value="1"> 尺寸如样</label>
+  </div></section>
+  <section class="form-section"><h2>制作工艺</h2>
+    <div class="checks">{% for item in catalogs.surface_crafts %}<label class="check"><input type="checkbox" name="material_craft" value="{{ item }}"> {{ item }}</label>{% endfor %}</div>
+    <div class="checks">{% for item in catalogs.base_materials %}<label class="check"><input type="checkbox" name="material_base" value="{{ item }}"> {{ item }}</label>{% endfor %}</div>
+    <label>备注<textarea name="material_note" rows="2"></textarea></label>
+  </section>  {% set groups = [
+    ('plating','电镀',catalogs.plating,'plating_note'),
+    ('accessories','焊针',catalogs.accessories,'accessories_note'),
+    ('polishing','抛光',catalogs.polishing,'polishing_note'),
+    ('resin','树脂',catalogs.resin,'resin_note'),
+    ('packaging','包装',catalogs.packaging,'packaging_note')
+  ] %}
+  {% for field,title,items,note in groups %}
+  <section class="form-section"><h2>{{ title }}</h2><div class="checks">
+    {% for item in items %}<label class="check"><input type="checkbox" name="{{ field }}" value="{{ item }}"> {{ item }}</label>{% endfor %}
+  </div><label>备注<textarea name="{{ note }}" rows="2"{% if field == 'packaging' %} placeholder="请输入包装规则和配件"{% endif %}></textarea></label></section>
+  {% endfor %}
+  <section class="form-section"><h2>上色</h2><div class="checks">{% for item in catalogs.coloring %}<label class="check"><input type="checkbox" name="coloring" value="{{ item }}"> {{ item }}</label>{% endfor %}</div><label>备注<textarea name="coloring_note" rows="2" placeholder="可填写颜色、色号或分批工艺说明"></textarea></label></section>
+  <section class="form-section"><h2>背面方式</h2><div class="checks">{% for item in catalogs.back_mode %}<label class="check radio"><input type="radio" name="back_mode" value="{{ item }}"> {{ item }}</label>{% endfor %}</div><label>备注<textarea name="back_mode_note" rows="2"></textarea></label></section>
+  <section class="form-section"><h2>其他</h2><div class="form-grid cols-2 note-image-grid"><label>订单总备注<textarea name="global_note" rows="4" placeholder="支持按回车手动换行"></textarea></label><label>产品图片（最多 6 张）<input type="file" name="product_images" accept="image/jpeg,image/png,image/webp" multiple></label></div><p class="red-note">所有备注默认按红字打印。</p></section>
+  <div class="form-actions"><a class="button" href="/orders">取消</a><button class="button" type="submit" formaction="/orders/preview" formtarget="_blank">预览订单</button><button class="button primary" type="submit">保存并生成订单</button></div>
+</form>
+{% endblock %}
+
+

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}工作台 · TWD 订单系统{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>工作台</h1><p>快速查看订单和待处理事项</p></div>{% if user.role in ['admin','sales'] %}<a class="button primary" href="/orders/new">＋ 新建订单</a>{% endif %}</div>
+<section class="stats-grid">
+  <article><span>全部订单</span><strong>{{ stats.order_count }}</strong></article>
+  <article><span>今日下单</span><strong>{{ stats.today_count }}</strong></article>
+  <article><span>未收款订单</span><strong>{{ stats.unpaid_count }}</strong></article>
+  <article><span>未付款外发</span><strong>{{ stats.outsource_unpaid }}</strong></article>
+</section>
+<section class="panel"><div class="panel-head"><h2>最近订单</h2><a href="/orders">查看全部</a></div>
+  <div class="table-wrap"><table><thead><tr><th>订单号</th><th>产品</th><th>业务员</th><th>交期</th></tr></thead><tbody>
+  {% for row in stats.recent %}<tr><td><a href="/orders/{{ row.id }}">{{ row.order_no }}</a></td><td>{{ row.product_name or '-' }}</td><td>{{ row.salesman or '-' }}</td><td>{{ row.delivery_date or '-' }}</td></tr>{% else %}<tr><td colspan="4" class="muted">暂无订单</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+{% endblock %}

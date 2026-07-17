@@ -1,0 +1,23 @@
+[Unit]
+Description=TWD Order Management Web
+After=network.target
+
+[Service]
+Type=simple
+User=twdorder
+Group=twdorder
+WorkingDirectory=/opt/twd-order
+EnvironmentFile=/etc/twd-order.env
+ExecStart=/opt/twd-order/.venv/bin/python /opt/twd-order/web_main.py
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+MemoryHigh=850M
+MemoryMax=1100M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/twd-order
+
+[Install]
+WantedBy=multi-user.target
