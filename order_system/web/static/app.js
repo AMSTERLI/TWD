@@ -79,6 +79,58 @@ function fillOrderForm(data) {
   });
 }
 
+
+const pastedImageInputs = document.querySelectorAll("[data-paste-image-target]");
+if (pastedImageInputs.length) {
+  const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+  const extensionByType = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"};
+  const maxImageSize = 5 * 1024 * 1024;
+  const maxImageCount = 6;
+
+  function updatePasteStatus(target, message, isError = false) {
+    const status = target.closest("label")?.querySelector("[data-paste-image-status]");
+    if (!status) return;
+    status.textContent = message;
+    status.className = isError ? "paste-image-status error-text" : "paste-image-status";
+  }
+
+  pastedImageInputs.forEach(target => {
+    const fileInput = document.querySelector(target.dataset.pasteImageTarget);
+    if (!fileInput) return;
+    target.addEventListener("paste", event => {
+      const files = [...(event.clipboardData?.files || [])].filter(file => file.type.startsWith("image/"));
+      if (!files.length) return;
+      event.preventDefault();
+      const accepted = [];
+      for (const file of files) {
+        if (!allowedImageTypes.has(file.type)) {
+          updatePasteStatus(target, "仅支持 JPG / PNG / WEBP 图片", true);
+          return;
+        }
+        if (file.size > maxImageSize) {
+          updatePasteStatus(target, "单张图片不能超过 5MB", true);
+          return;
+        }
+        accepted.push(file);
+      }
+      const current = [...fileInput.files];
+      if (current.length + accepted.length > maxImageCount) {
+        updatePasteStatus(target, "最多上传 6 张产品图片", true);
+        return;
+      }
+      const transfer = new DataTransfer();
+      current.forEach(file => transfer.items.add(file));
+      accepted.forEach((file, index) => {
+        const ext = extensionByType[file.type];
+        const name = file.name && file.name !== "image.png" ? file.name : `pasted-${Date.now()}-${index + 1}.${ext}`;
+        transfer.items.add(new File([file], name, {type: file.type, lastModified: file.lastModified || Date.now()}));
+      });
+      fileInput.files = transfer.files;
+      fileInput.dispatchEvent(new Event("change", {bubbles: true}));
+      updatePasteStatus(target, `已添加 ${accepted.length} 张，当前共 ${fileInput.files.length} 张`);
+    });
+  });
+}
 const orderNumberInput = document.querySelector("[data-order-number]");
 const orderDateInput = document.querySelector("[data-order-date]");
 const orderPrefixInput = document.querySelector("[data-order-prefix]");

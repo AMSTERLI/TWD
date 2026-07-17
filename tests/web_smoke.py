@@ -37,6 +37,7 @@ with TestClient(app) as client:
     preview = client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=2")
     assert preview.status_code == 200 and preview.json()["order_no"] == "TWD2-260715001"
     assert 'name="order_no"' in form_page.text
+    assert 'data-paste-image-target="#product-images"' in form_page.text
     assert 'data-customer-name' in form_page.text and "程炬（编码 1）" in form_page.text
     customers = repo.list_customers()
     assert len(customers) == 62
@@ -87,6 +88,7 @@ with TestClient(app) as client:
     assert orders_page.status_code == 200 and "data-admin-context" in orders_page.text
     edit_page = client.get("/orders/1/edit")
     assert edit_page.status_code == 200
+    assert 'data-paste-image-target="#edit-product-images"' in edit_page.text
     updated = client.post(
         "/orders/1/edit",
         data={

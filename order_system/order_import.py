@@ -364,7 +364,56 @@ def _decode_json_object(content: str) -> dict[str, Any]:
     return decoded
 
 
+
+_OPENCC_CONVERTER: Any | None = None
+_OPENCC_UNAVAILABLE = False
+_TRADITIONAL_TO_SIMPLIFIED = str.maketrans({
+    "臺": "台", "颱": "台", "灣": "湾", "國": "国", "產": "产", "單": "单", "號": "号", "訂": "订", "單": "单",
+    "業": "业", "務": "务", "員": "员", "圖": "图", "樣": "样", "說": "说", "明": "明", "貨": "货", "期": "期",
+    "數": "数", "量": "量", "個": "个", "套": "套", "價": "价", "額": "额", "費": "费", "產": "产", "製": "制",
+    "寬": "宽", "高": "高", "厚": "厚", "銅": "铜", "鐵": "铁", "鋅": "锌", "鋁": "铝", "鋼": "钢", "質": "质",
+    "沖": "冲", "壓": "压", "鑄": "铸", "烤": "烤", "漆": "漆", "琺": "珐", "瑯": "琅", "鐳": "镭", "雕": "雕",
+    "電": "电", "鍍": "镀", "拋": "抛", "膠": "胶", "樹": "树", "脂": "脂", "包": "包", "裝": "装", "焊": "焊",
+    "針": "针", "背": "背", "面": "面", "備": "备", "註": "注", "註": "注", "規": "规", "則": "则", "採": "采",
+    "購": "购", "客": "客", "戶": "户", "名": "名", "稱": "称", "顏": "颜", "色": "色", "貨": "货", "樣": "样",
+    "狀": "状", "態": "态", "審": "审", "批": "批", "結": "结", "果": "果", "駁": "驳", "迴": "回", "復": "复",
+    "申": "申", "請": "请", "修": "修", "改": "改", "刪": "删", "除": "除", "預": "预", "覽": "览", "識": "识",
+    "別": "别", "導": "导", "入": "入", "檔": "档", "案": "案", "轉": "转", "換": "换", "繁": "繁", "體": "体",
+})
+
+
+def _get_opencc_converter() -> Any | None:
+    global _OPENCC_CONVERTER, _OPENCC_UNAVAILABLE
+    if _OPENCC_CONVERTER is not None or _OPENCC_UNAVAILABLE:
+        return _OPENCC_CONVERTER
+    try:
+        from opencc import OpenCC
+        try:
+            _OPENCC_CONVERTER = OpenCC("t2s")
+        except Exception:
+            _OPENCC_CONVERTER = OpenCC("t2s.json")
+    except Exception:
+        _OPENCC_UNAVAILABLE = True
+    return _OPENCC_CONVERTER
+
+
+def _to_simplified(value: Any) -> Any:
+    if isinstance(value, str):
+        converter = _get_opencc_converter()
+        if converter is not None:
+            try:
+                return converter.convert(value)
+            except Exception:
+                pass
+        return value.translate(_TRADITIONAL_TO_SIMPLIFIED)
+    if isinstance(value, list):
+        return [_to_simplified(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _to_simplified(item) for key, item in value.items()}
+    return value
+
 def normalize_order_data(data: dict[str, Any], catalogs: dict[str, list[str]]) -> dict[str, Any]:
+    data = _to_simplified(data)
     scalar_fields = {
         "order_type", "product_name", "delivery_date", "quantity_unit",
         "unit_price", "extra_fee", "production_no", "bi_no", "width_mm", "height_mm", "thickness_mm",
