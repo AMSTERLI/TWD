@@ -86,8 +86,12 @@ def require_page(request: Request, roles: set[str] | None = None):
 
 
 
+def user_display_name(user: dict[str, Any]) -> str:
+    return str(user.get("display_name") or user.get("username") or "")
+
+
 def sales_order_forbidden(user: dict[str, Any], record: dict[str, Any] | None) -> bool:
-    return bool(user and user.get("role") == "sales" and record and str(record.get("salesman") or "") != str(user.get("username") or ""))
+    return bool(user and user.get("role") == "sales" and record and str(record.get("salesman") or "") != user_display_name(user))
 
 
 def client_ip(request: Request) -> str:
@@ -393,7 +397,7 @@ def orders(request: Request, q: str = "", page: int = 1):
     user, denied = require_page(request)
     if denied:
         return denied
-    salesman = str(user["username"]) if user["role"] == "sales" else None
+    salesman = user_display_name(user) if user["role"] == "sales" else None
     result = repo.list_orders(q, page, salesman=salesman)
     return templates.TemplateResponse(request, "orders.html", page_context(request, result=result, q=q))
 
@@ -459,7 +463,7 @@ def new_order(request: Request):
             today=today,
             order_no="",
             customer_selection="",
-            default_salesman=str(user["username"]),
+            default_salesman=user_display_name(user),
             error="",
         ),
     )
@@ -492,7 +496,7 @@ async def preview_order(request: Request):
     preview_images: list[str] = []
     try:
         payload = await order_payload(form, save_uploaded_images=False)
-        payload["salesman"] = str(user["username"])
+        payload["salesman"] = user_display_name(user)
         preview_images = loads_json(payload.get("image_paths_json") or "[]")
         if not payload["product_name"] or payload["quantity"] <= 0:
             raise ValueError("产品名称和有效数量为必填项")
@@ -522,7 +526,7 @@ async def create_order(request: Request):
         )
     try:
         payload = await order_payload(form)
-        payload["salesman"] = str(user["username"])
+        payload["salesman"] = user_display_name(user)
         if not payload["product_name"] or payload["quantity"] <= 0:
             raise ValueError("产品名称和有效数量为必填项")
         order_id, order_no = await run_in_threadpool(repo.create_order, payload)
@@ -537,7 +541,7 @@ async def create_order(request: Request):
                 today=date.today().isoformat(),
                 order_no=str(form.get("order_no") or "").strip(),
                 customer_selection=str(form.get("customer_selection") or "").strip(),
-                default_salesman=str(user["username"]),
+                default_salesman=user_display_name(user),
                 error=str(exc),
             ),
             status_code=422,
@@ -611,7 +615,7 @@ async def edit_order(request: Request, order_id: int):
     try:
         payload = await order_payload(form)
         if user["role"] == "sales":
-            payload["salesman"] = str(user["username"])
+            payload["salesman"] = user_display_name(user)
         if not payload["product_name"] or payload["quantity"] <= 0:
             raise ValueError("产品名称和有效数量为必填项")
         payload["paid_status"] = int(existing.get("paid_status") or 0)

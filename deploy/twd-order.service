@@ -17,7 +17,7 @@ MemoryMax=1100M
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-ReadWritePaths=/var/lib/twd-order
+ReadWritePaths=/var/lib/twd-order /opt/twd-order/data
 
 [Install]
 WantedBy=multi-user.target

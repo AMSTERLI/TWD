@@ -62,6 +62,7 @@ class Repository:
                 CREATE TABLE IF NOT EXISTS web_users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT NOT NULL UNIQUE,
+                    display_name TEXT,
                     password_hash TEXT NOT NULL,
                     role TEXT NOT NULL DEFAULT 'sales',
                     active INTEGER NOT NULL DEFAULT 1,
@@ -103,6 +104,13 @@ class Repository:
                 CREATE INDEX IF NOT EXISTS idx_order_edit_requests_order_user
                     ON order_edit_requests(order_id, requester_id, status, consumed_at);                """
             )
+            existing_user_columns = {row[1] for row in conn.execute("PRAGMA table_info(web_users)").fetchall()}
+            if "display_name" not in existing_user_columns:
+                conn.execute("ALTER TABLE web_users ADD COLUMN display_name TEXT")
+            conn.execute(
+                "UPDATE web_users SET display_name = username "
+                "WHERE display_name IS NULL OR TRIM(display_name) = ''"
+            )
             conn.executemany(
                 "INSERT OR IGNORE INTO outsource_processes (process_name) VALUES (?)",
                 [(name,) for name in REQUIRED_WEB_PROCESSES],
@@ -132,16 +140,17 @@ class Repository:
         with self.connect() as conn:
             return int(conn.execute("SELECT COUNT(*) FROM web_users").fetchone()[0])
 
-    def create_user(self, username: str, password: str, role: str = "sales") -> int:
+    def create_user(self, username: str, password: str, role: str = "sales", display_name: str = "") -> int:
         username = username.strip()
+        display_name = display_name.strip() or username
         if not username or len(password) < 10:
             raise ValueError("用户名不能为空，密码至少需要 10 位")
         if role not in {"admin", "sales", "finance", "outsource"}:
             raise ValueError("无效角色")
         with self.connect(write=True) as conn:
             cursor = conn.execute(
-                "INSERT INTO web_users (username, password_hash, role) VALUES (?, ?, ?)",
-                (username, hash_password(password), role),
+                "INSERT INTO web_users (username, display_name, password_hash, role) VALUES (?, ?, ?, ?)",
+                (username, display_name, hash_password(password), role),
             )
             return int(cursor.lastrowid)
 
@@ -175,7 +184,7 @@ class Repository:
     def get_user(self, user_id: int) -> dict[str, Any] | None:
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT id, username, role, active FROM web_users WHERE id = ? AND active = 1",
+                "SELECT id, username, COALESCE(NULLIF(display_name, ''), username) AS display_name, role, active FROM web_users WHERE id = ? AND active = 1",
                 (user_id,),
             ).fetchone()
         return dict(row) if row else None
