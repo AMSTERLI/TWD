@@ -111,6 +111,23 @@ class Repository:
                 "UPDATE web_users SET display_name = username "
                 "WHERE display_name IS NULL OR TRIM(display_name) = ''"
             )
+            conn.execute(
+                """UPDATE order_edit_requests
+                   SET requester_name = (
+                       SELECT COALESCE(NULLIF(display_name, ''), username)
+                       FROM web_users WHERE web_users.id = order_edit_requests.requester_id
+                   )
+                   WHERE EXISTS (SELECT 1 FROM web_users WHERE web_users.id = order_edit_requests.requester_id)"""
+            )
+            conn.execute(
+                """UPDATE order_edit_requests
+                   SET reviewer_name = (
+                       SELECT COALESCE(NULLIF(display_name, ''), username)
+                       FROM web_users WHERE web_users.id = order_edit_requests.reviewer_id
+                   )
+                   WHERE reviewer_id IS NOT NULL
+                     AND EXISTS (SELECT 1 FROM web_users WHERE web_users.id = order_edit_requests.reviewer_id)"""
+            )
             conn.executemany(
                 "INSERT OR IGNORE INTO outsource_processes (process_name) VALUES (?)",
                 [(name,) for name in REQUIRED_WEB_PROCESSES],
@@ -257,7 +274,11 @@ class Repository:
             ).fetchone()
             if not order:
                 raise ValueError("订单不存在")
-            if str(order["salesman"] or "") != str(user.get("username") or ""):
+            user_names = {
+                str(user.get("username") or "").strip(),
+                str(user.get("display_name") or "").strip(),
+            }
+            if str(order["salesman"] or "").strip() not in user_names:
                 raise ValueError("只能申请修改自己的订单")
             existing = conn.execute(
                 """SELECT id FROM order_edit_requests
@@ -271,7 +292,7 @@ class Repository:
                 """INSERT INTO order_edit_requests
                    (order_id, order_no, requester_id, requester_name, reason)
                    VALUES (?, ?, ?, ?, ?)""",
-                (order_id, str(order["order_no"]), int(user.get("id") or 0), str(user.get("username") or ""), reason),
+                (order_id, str(order["order_no"]), int(user.get("id") or 0), str(user.get("display_name") or user.get("username") or ""), reason),
             )
             return int(cursor.lastrowid)
 
@@ -296,7 +317,7 @@ class Repository:
                    SET status = ?, reviewer_id = ?, reviewer_name = ?, review_note = ?,
                        reviewed_at = CURRENT_TIMESTAMP
                    WHERE id = ?""",
-                (status, int(admin.get("id") or 0), str(admin.get("username") or ""), note.strip()[:1000], request_id),
+                (status, int(admin.get("id") or 0), str(admin.get("display_name") or admin.get("username") or ""), note.strip()[:1000], request_id),
             )
             return str(row["order_no"])
 

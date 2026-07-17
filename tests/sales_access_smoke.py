@@ -64,13 +64,13 @@ def create_payload(order_no: str, salesman: str, product_name: str) -> dict[str,
 
 
 with TestClient(app) as client:
-    repo.create_user("管理员", "admin-pass-123", "admin")
-    repo.create_user("杨娟", "sales-pass-123", "sales")
-    repo.create_user("廖春凤", "sales-pass-456", "sales")
+    repo.create_user("admin", "admin-pass-123", "admin", display_name="管理员")
+    repo.create_user("yangjuan", "sales-pass-123", "sales", display_name="杨娟")
+    repo.create_user("liaochunfeng", "sales-pass-456", "sales", display_name="廖春凤")
     own_id, own_no = repo.create_order(create_payload("TWD1-260717901", "杨娟", "杨娟订单"))
     other_id, other_no = repo.create_order(create_payload("TWD1-260717902", "廖春凤", "廖春凤订单"))
 
-    login(client, "杨娟", "sales-pass-123")
+    login(client, "yangjuan", "sales-pass-123")
     new_page = client.get("/orders/new")
     assert new_page.status_code == 200
     assert 'name="salesman" value="杨娟"' in new_page.text
@@ -101,7 +101,7 @@ with TestClient(app) as client:
     assert own_request.status_code == 303
     logout(client)
 
-    login(client, "管理员", "admin-pass-123")
+    login(client, "admin", "admin-pass-123")
     messages = client.get("/messages")
     assert messages.status_code == 200
     assert "杨娟" in messages.text
@@ -113,7 +113,7 @@ with TestClient(app) as client:
     assert review.status_code == 303
     logout(client)
 
-    login(client, "杨娟", "sales-pass-123")
+    login(client, "yangjuan", "sales-pass-123")
     messages = client.get("/messages?status=approved")
     assert messages.status_code == 200
     assert "管理员" in messages.text
