@@ -277,6 +277,7 @@ async def order_payload(form: Any, *, save_uploaded_images: bool = True) -> dict
         "extra_fee": as_float(form.get("extra_fee")),
         "paid_status": 0,
         "shipped_status": 0,
+        "invoice_status": int(form.get("invoice_status") == "1"),
         "order_prefix_no": customer_code,
         "customer_code": customer_code,
         "customer_name": "",
@@ -445,7 +446,7 @@ def orders(request: Request, q: str = "", page: int = 1):
 
 @app.get("/messages", response_class=HTMLResponse)
 def messages(request: Request, status: str = ""):
-    user, denied = require_page(request, {"admin", "sales"})
+    user, denied = require_page(request, {"admin", "sales", "finance"})
     if denied:
         return denied
     default_status = "pending" if user["role"] == "admin" and status == "" else status
@@ -610,7 +611,7 @@ def edit_order_page(request: Request, order_id: int, request_id: int = 0):
         return denied
     edit_request = None
     if user["role"] != "admin":
-        if user["role"] != "sales":
+        if user["role"] not in {"sales", "finance"}:
             return templates.TemplateResponse(
                 request, "error.html", page_context(request, status=403, message="没有此功能的访问权限"), status_code=403
             )
@@ -640,7 +641,7 @@ async def edit_order(request: Request, order_id: int):
     form = await request.form()
     edit_request = None
     if user["role"] != "admin":
-        if user["role"] != "sales":
+        if user["role"] not in {"sales", "finance"}:
             return Response(status_code=403)
         request_id = as_int(form.get("edit_request_id"))
         edit_request = repo.edit_request_for_edit(request_id, order_id, int(user["id"])) if request_id else None
@@ -661,6 +662,8 @@ async def edit_order(request: Request, order_id: int):
             raise ValueError("产品名称、有效数量和备品数量为必填项")
         payload["paid_status"] = int(existing.get("paid_status") or 0)
         payload["shipped_status"] = int(existing.get("shipped_status") or 0)
+        if user["role"] == "sales":
+            payload["invoice_status"] = int(existing.get("invoice_status") or 0)
         uploaded_images = loads_json(payload.get("image_paths_json") or "[]")
         merged_images, removed_images = merge_edit_images(form, existing, uploaded_images)
         payload["image_paths_json"] = dumps_json(merged_images)
@@ -682,7 +685,7 @@ async def edit_order(request: Request, order_id: int):
 
 @app.post("/orders/{order_id}/edit-request")
 async def request_order_edit(request: Request, order_id: int):
-    user, denied = require_page(request, {"sales"})
+    user, denied = require_page(request, {"sales", "finance"})
     if denied:
         return denied
     form = await request.form()
@@ -705,7 +708,7 @@ async def request_order_edit(request: Request, order_id: int):
             page_context(request, status=400, message=str(exc)),
             status_code=400,
         )
-    return RedirectResponse("/orders", status_code=303)
+    return RedirectResponse("/finance/receivables" if user["role"] == "finance" else "/orders", status_code=303)
 
 @app.post("/orders/{order_id}/ship")
 async def ship_order(request: Request, order_id: int):
@@ -863,13 +866,14 @@ def finance_receivables(
     receivable_q: str = "",
     receivable_date_from: str = "",
     receivable_date_to: str = "",
+    receivable_paid_status: str = "",
     receivable_page: int = 1,
 ):
     _, denied = require_page(request, {"finance"})
     if denied:
         return denied
     receivables = repo.finance_orders(
-        receivable_q, receivable_date_from, receivable_date_to, receivable_page
+        receivable_q, receivable_date_from, receivable_date_to, receivable_paid_status, receivable_page
     )
     return templates.TemplateResponse(
         request,
@@ -883,6 +887,7 @@ def finance_receivables(
             receivable_q=receivable_q,
             receivable_date_from=receivable_date_from,
             receivable_date_to=receivable_date_to,
+            receivable_paid_status=receivable_paid_status,
             payable_q="",
             payable_factory="",
             payable_date_from="",
@@ -918,6 +923,7 @@ def finance_payables(
             receivable_q="",
             receivable_date_from="",
             receivable_date_to="",
+            receivable_paid_status="",
             payable_q=payable_q,
             payable_factory=payable_factory,
             payable_date_from=payable_date_from,

@@ -19,6 +19,7 @@
 <label>单价<input type="number" min="0" step="0.0001" name="unit_price" value="{{ order.unit_price if order.unit_price is not none else '' }}"></label>
 <label>附加费<input type="number" min="0" step="0.01" name="extra_fee" value="{{ order.extra_fee if order.extra_fee is not none else '' }}"></label>
 <label>PO号<input name="bi_no" value="{{ order.bi_no or '' }}"></label><label>生产制号<input name="production_no" value="{{ order.production_no or '' }}"></label>
+<label class="check single"><input type="checkbox" name="invoice_status" value="1"{% if order.invoice_status %} checked{% endif %}> 已开票</label>
 </div></section>
 <section class="form-section"><h2>尺寸</h2><div class="form-grid cols-4"><label>宽 mm<input name="width_mm" value="{{ order.width_mm or '' }}"></label><label>高 mm<input name="height_mm" value="{{ order.height_mm or '' }}"></label><label>厚 mm<input name="thickness_mm" value="{{ order.thickness_mm or '' }}"></label><label class="check single"><input type="checkbox" name="size_as_sample" value="1"{% if order.size_as_sample %} checked{% endif %}> 尺寸如样</label></div></section>
 <section class="form-section"><h2>制作工艺</h2>

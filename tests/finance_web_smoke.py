@@ -86,6 +86,10 @@ with TestClient(app) as client:
     finance_page = client.get("/finance/receivables")
     assert finance_page.status_code == 200
     assert old_order in finance_page.text and new_order in finance_page.text
+    assert "产品" not in finance_page.text and "旧产品" not in finance_page.text and "新产品" not in finance_page.text
+    assert "是否开票" in finance_page.text and "未开票" in finance_page.text
+    assert "是否收款" in finance_page.text and "未收款合计 ¥ 56.00" in finance_page.text
+    assert f'data-request-edit-url="/orders/1/edit-request"' in finance_page.text
     assert "/finance/receivables/pdf" in finance_page.text
     payables_page = client.get("/finance/payables")
     assert payables_page.status_code == 200
@@ -97,6 +101,10 @@ with TestClient(app) as client:
 
     filtered_income = client.get("/finance/receivables?receivable_date_from=2026-07-10")
     assert new_order in filtered_income.text and old_order not in filtered_income.text
+    filtered_unpaid = client.get("/finance/receivables?receivable_paid_status=unpaid")
+    assert old_order in filtered_unpaid.text and new_order in filtered_unpaid.text and "未收款合计 ¥ 56.00" in filtered_unpaid.text
+    filtered_paid = client.get("/finance/receivables?receivable_paid_status=paid")
+    assert old_order not in filtered_paid.text and new_order not in filtered_paid.text and "未收款合计 ¥ 0.00" in filtered_paid.text
     filtered_payable = client.get("/finance/payables?payable_factory=乙厂")
     payable_body = filtered_payable.text.split("<tbody>")[1].split("</tbody>")[0]
     assert "乙厂" in payable_body and "甲厂" not in payable_body
@@ -109,6 +117,34 @@ with TestClient(app) as client:
     )
     assert response.status_code == 303
     assert repo.get_order(1)["paid_status"] == 1 and repo.get_order(2)["paid_status"] == 1
+    filtered_unpaid_after = client.get("/finance/receivables?receivable_paid_status=unpaid")
+    assert old_order not in filtered_unpaid_after.text and new_order not in filtered_unpaid_after.text and "未收款合计 ¥ 0.00" in filtered_unpaid_after.text
+
+    edit_request = client.post(
+        "/orders/1/edit-request",
+        data={"csrf": token, "reason": "财务申请修改开票信息"},
+        follow_redirects=False,
+    )
+    assert edit_request.status_code == 303, edit_request.text
+    finance_messages = client.get("/messages")
+    assert finance_messages.status_code == 200 and "财务申请修改开票信息" in finance_messages.text
+    page = client.get("/")
+    client.post("/logout", data={"csrf": csrf(page.text)})
+    login(client, "admin", "admin-password")
+    admin_messages = client.get("/messages")
+    approve = client.post(
+        "/messages/1/review",
+        data={"csrf": csrf(admin_messages.text), "decision": "approve", "review_note": "同意财务修改"},
+        follow_redirects=False,
+    )
+    assert approve.status_code == 303
+    page = client.get("/")
+    client.post("/logout", data={"csrf": csrf(page.text)})
+    login(client, "finance", "finance-password")
+    approved_messages = client.get("/messages?status=approved")
+    assert "同意财务修改" in approved_messages.text and f"/orders/1/edit?request_id=1" in approved_messages.text
+    assert client.get("/orders/1/edit?request_id=1").status_code == 200
+    token = csrf(client.get("/finance/receivables").text)
 
     response = client.post(
         "/finance/payables/status",

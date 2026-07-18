@@ -16,7 +16,7 @@ REQUIRED_WEB_PROCESSES = ["冲压", "上色", "印刷/UV"]
 ORDER_COLUMNS = [
     "order_type", "salesman", "order_no", "product_name", "order_date",
     "delivery_date", "quantity", "spare_quantity", "quantity_unit", "unit_price", "extra_fee",
-    "paid_status", "shipped_status", "order_prefix_no", "customer_code", "customer_name",
+    "paid_status", "shipped_status", "invoice_status", "order_prefix_no", "customer_code", "customer_name",
     "production_no", "bi_no", "width_mm",
     "height_mm", "thickness_mm", "size_as_sample", "materials_json",
     "material_note", "material_note_red", "plating_json", "plating_note",
@@ -274,12 +274,13 @@ class Repository:
             ).fetchone()
             if not order:
                 raise ValueError("订单不存在")
-            user_names = {
-                str(user.get("username") or "").strip(),
-                str(user.get("display_name") or "").strip(),
-            }
-            if str(order["salesman"] or "").strip() not in user_names:
-                raise ValueError("只能申请修改自己的订单")
+            if str(user.get("role") or "") == "sales":
+                user_names = {
+                    str(user.get("username") or "").strip(),
+                    str(user.get("display_name") or "").strip(),
+                }
+                if str(order["salesman"] or "").strip() not in user_names:
+                    raise ValueError("只能申请修改自己的订单")
             existing = conn.execute(
                 """SELECT id FROM order_edit_requests
                    WHERE order_id = ? AND requester_id = ? AND status = 'pending'
@@ -430,7 +431,7 @@ class Repository:
             payload["customer_code"] = prefix_no
             payload["customer_name"] = str(customer["name"])
             required_defaults = {
-                "quantity_unit": "个", "spare_quantity": 0, "paid_status": 0, "shipped_status": 0, "order_prefix_no": prefix_no,
+                "quantity_unit": "个", "spare_quantity": 0, "paid_status": 0, "shipped_status": 0, "invoice_status": 0, "order_prefix_no": prefix_no,
                 "size_as_sample": 0, "materials_json": "[]", "plating_json": "[]",
                 "accessories_json": "[]", "polishing_json": "[]", "coloring_json": "[]",
                 "resin_json": "[]", "packaging_json": "[]", "image_paths_json": "[]",
@@ -484,31 +485,42 @@ class Repository:
         keyword: str = "",
         date_from: str = "",
         date_to: str = "",
+        paid_status: str = "",
         page: int = 1,
         page_size: int = 40,
     ) -> dict[str, Any]:
         keyword = keyword.strip()
         date_from = date_from.strip()
         date_to = date_to.strip()
+        paid_status = paid_status.strip()
         page = max(page, 1)
         offset = (page - 1) * page_size
         where = """WHERE (? = '' OR order_no LIKE ? OR customer_name LIKE ? OR bi_no LIKE ? OR production_no LIKE ?)
                    AND (? = '' OR order_date >= ?)
                    AND (? = '' OR order_date <= ?)"""
         like = f"%{keyword}%"
-        args = (keyword, like, like, like, like, date_from, date_from, date_to, date_to)
+        args: list[Any] = [keyword, like, like, like, like, date_from, date_from, date_to, date_to]
+        if paid_status in {"paid", "unpaid"}:
+            where += " AND paid_status = ?"
+            args.append(1 if paid_status == "paid" else 0)
+        amount_sql = "(COALESCE(quantity, 0) * COALESCE(unit_price, 0) + COALESCE(extra_fee, 0))"
         with self.connect() as conn:
             total = int(conn.execute(f"SELECT COUNT(*) FROM orders {where}", args).fetchone()[0])
+            unpaid_total = float(conn.execute(
+                f"SELECT COALESCE(SUM(CASE WHEN paid_status = 0 THEN {amount_sql} ELSE 0 END), 0) FROM orders {where}",
+                args,
+            ).fetchone()[0] or 0)
             rows = conn.execute(
                 f"""SELECT id, order_no, customer_code, customer_name, bi_no,
-                           production_no, product_name, quantity, quantity_unit,
-                           unit_price, extra_fee, paid_status, order_date,
-                           (COALESCE(quantity, 0) * COALESCE(unit_price, 0) + COALESCE(extra_fee, 0)) AS amount
+                           production_no, quantity, quantity_unit,
+                           unit_price, extra_fee, paid_status, invoice_status, order_date,
+                           {amount_sql} AS amount
                     FROM orders {where} ORDER BY order_date DESC, id DESC LIMIT ? OFFSET ?""",
                 (*args, page_size, offset),
             ).fetchall()
         return {"rows": [dict(row) for row in rows], "total": total, "page": page,
-                "pages": max(1, (total + page_size - 1) // page_size)}
+                "pages": max(1, (total + page_size - 1) // page_size),
+                "unpaid_total": unpaid_total}
 
     @staticmethod
     def _normalized_ids(values: list[int]) -> list[int]:
@@ -523,7 +535,7 @@ class Repository:
             rows = conn.execute(
                 f"""SELECT id, order_no, customer_code, customer_name, bi_no,
                            production_no, product_name, quantity, quantity_unit,
-                           unit_price, extra_fee, paid_status, order_date,
+                           unit_price, extra_fee, paid_status, invoice_status, order_date,
                            (COALESCE(quantity, 0) * COALESCE(unit_price, 0) + COALESCE(extra_fee, 0)) AS amount
                     FROM orders WHERE id IN ({placeholders})
                     ORDER BY order_date DESC, id DESC""",

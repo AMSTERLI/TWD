@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS orders (
     extra_fee REAL,
     paid_status INTEGER NOT NULL DEFAULT 0,
     shipped_status INTEGER NOT NULL DEFAULT 0,
+    invoice_status INTEGER NOT NULL DEFAULT 0,
     order_prefix_no INTEGER NOT NULL DEFAULT 1,
     customer_code INTEGER,
     customer_name TEXT,
@@ -155,6 +156,7 @@ class Database:
             self._ensure_column(conn, "orders", "extra_fee", "REAL")
             self._ensure_column(conn, "orders", "paid_status", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "orders", "shipped_status", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column(conn, "orders", "invoice_status", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "orders", "order_prefix_no", "INTEGER NOT NULL DEFAULT 1")
             self._ensure_column(conn, "orders", "customer_code", "INTEGER")
             self._ensure_column(conn, "orders", "customer_name", "TEXT")
@@ -303,6 +305,8 @@ class Database:
             "unit_price",
             "extra_fee",
             "paid_status",
+            "shipped_status",
+            "invoice_status",
             "order_prefix_no",
             "customer_code",
             "customer_name",
@@ -353,7 +357,7 @@ class Database:
         payload["order_prefix_no"] = int(customer[0])
         payload["customer_code"] = int(customer[0])
         payload["customer_name"] = str(customer[1])
-        defaults = {"paid_status": 0, "spare_quantity": 0}
+        defaults = {"paid_status": 0, "shipped_status": 0, "invoice_status": 0, "spare_quantity": 0}
         values = [
             defaults[column] if column in defaults and payload.get(column) is None else payload.get(column)
             for column in columns
