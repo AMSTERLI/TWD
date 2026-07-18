@@ -43,7 +43,7 @@ def create_order(client: TestClient, order_date: str, product: str, customer_cod
         data={
             "csrf": csrf(page.text), "order_type": "新订单", "salesman": "测试",
             "product_name": product, "order_date": order_date, "delivery_date": "2026-07-30",
-            "quantity": "10", "quantity_unit": "个", "unit_price": "2.5",
+            "quantity": "10", "spare_quantity": "0", "quantity_unit": "个", "unit_price": "2.5",
             "extra_fee": "3", "order_prefix_no": str(customer_code),
         },
         follow_redirects=False,

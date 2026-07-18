@@ -271,10 +271,12 @@ async def order_payload(form: Any, *, save_uploaded_images: bool = True) -> dict
         "order_date": str(form.get("order_date") or "").strip(),
         "delivery_date": str(form.get("delivery_date") or "").strip(),
         "quantity": as_int(form.get("quantity")),
+        "spare_quantity": as_int(form.get("spare_quantity")),
         "quantity_unit": str(form.get("quantity_unit") or "个"),
         "unit_price": as_float(form.get("unit_price")),
         "extra_fee": as_float(form.get("extra_fee")),
         "paid_status": 0,
+        "shipped_status": 0,
         "order_prefix_no": customer_code,
         "customer_code": customer_code,
         "customer_name": "",
@@ -537,8 +539,8 @@ async def preview_order(request: Request):
         payload = await order_payload(form, save_uploaded_images=False)
         payload["salesman"] = user_display_name(user)
         preview_images = loads_json(payload.get("image_paths_json") or "[]")
-        if not payload["product_name"] or payload["quantity"] <= 0:
-            raise ValueError("产品名称和有效数量为必填项")
+        if not payload["product_name"] or payload["quantity"] <= 0 or payload["spare_quantity"] < 0 or not str(form.get("spare_quantity") or "").strip():
+            raise ValueError("产品名称、有效数量和备品数量为必填项")
         content = await run_in_threadpool(render_order_pdf, payload)
     except ValueError as exc:
         return Response(str(exc), status_code=422)
@@ -566,8 +568,8 @@ async def create_order(request: Request):
     try:
         payload = await order_payload(form)
         payload["salesman"] = user_display_name(user)
-        if not payload["product_name"] or payload["quantity"] <= 0:
-            raise ValueError("产品名称和有效数量为必填项")
+        if not payload["product_name"] or payload["quantity"] <= 0 or payload["spare_quantity"] < 0 or not str(form.get("spare_quantity") or "").strip():
+            raise ValueError("产品名称、有效数量和备品数量为必填项")
         order_id, order_no = await run_in_threadpool(repo.create_order, payload)
         await run_in_threadpool(repo.audit, user, "order.create", order_no, client_ip(request))
     except ValueError as exc:
@@ -655,9 +657,10 @@ async def edit_order(request: Request, order_id: int):
         payload = await order_payload(form)
         if user["role"] == "sales":
             payload["salesman"] = user_display_name(user)
-        if not payload["product_name"] or payload["quantity"] <= 0:
-            raise ValueError("产品名称和有效数量为必填项")
+        if not payload["product_name"] or payload["quantity"] <= 0 or payload["spare_quantity"] < 0 or not str(form.get("spare_quantity") or "").strip():
+            raise ValueError("产品名称、有效数量和备品数量为必填项")
         payload["paid_status"] = int(existing.get("paid_status") or 0)
+        payload["shipped_status"] = int(existing.get("shipped_status") or 0)
         uploaded_images = loads_json(payload.get("image_paths_json") or "[]")
         merged_images, removed_images = merge_edit_images(form, existing, uploaded_images)
         payload["image_paths_json"] = dumps_json(merged_images)
@@ -702,6 +705,24 @@ async def request_order_edit(request: Request, order_id: int):
             page_context(request, status=400, message=str(exc)),
             status_code=400,
         )
+    return RedirectResponse("/orders", status_code=303)
+
+@app.post("/orders/{order_id}/ship")
+async def ship_order(request: Request, order_id: int):
+    user, denied = require_page(request, {"sales"})
+    if denied:
+        return denied
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    record = await run_in_threadpool(repo.get_order, order_id)
+    if not record:
+        return Response(status_code=404)
+    if sales_order_forbidden(user, record):
+        return Response(status_code=403)
+    shipped = str(form.get("shipped") or "") == "1"
+    await run_in_threadpool(repo.set_order_shipped, order_id, shipped)
+    await run_in_threadpool(repo.audit, user, "order.ship", f"{order_id}:{int(shipped)}", client_ip(request))
     return RedirectResponse("/orders", status_code=303)
 
 @app.post("/orders/{order_id}/delete")

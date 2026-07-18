@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import os
 import re
@@ -47,9 +47,13 @@ def create_payload(order_no: str, salesman: str, product_name: str) -> dict[str,
         "product_name": product_name,
         "order_date": "2026-07-17",
         "quantity": 1,
+        "spare_quantity": 5,
         "quantity_unit": "个",
         "order_prefix_no": 1,
         "paid_status": 0,
+        "shipped_status": 0,
+        "bi_no": f"PO-{order_no[-3:]}",
+        "production_no": f"SC-{order_no[-3:]}",
         "size_as_sample": 0,
         "materials_json": dumps_json([]),
         "plating_json": dumps_json([]),
@@ -80,12 +84,44 @@ with TestClient(app) as client:
     assert orders.status_code == 200
     assert own_no in orders.text
     assert other_no not in orders.text
+    assert "PO号" in orders.text and "PO-901" in orders.text
+    assert "杨娟订单" not in orders.text and "业务员" not in orders.text
+    assert "1+5" in orders.text and "待出货" in orders.text
+    assert f'data-ship-url="/orders/{own_id}/ship"' in orders.text
+    searched = client.get("/orders?q=PO-901")
+    assert searched.status_code == 200 and own_no in searched.text
+    searched = client.get("/orders?q=SC-901")
+    assert searched.status_code == 200 and own_no in searched.text
     searched = client.get(f"/orders?q={other_no}")
     assert searched.status_code == 200
-    assert "?????" not in searched.text
+    assert f'/orders/{other_id}' not in searched.text
     assert client.get(f"/orders/{own_id}").status_code == 200
     assert client.get(f"/orders/{other_id}").status_code == 403
     assert client.get(f"/orders/{other_id}/pdf").status_code == 403
+
+    shipped = client.post(
+        f"/orders/{own_id}/ship",
+        data={"csrf": csrf(orders.text), "shipped": "1"},
+        follow_redirects=False,
+    )
+    assert shipped.status_code == 303
+    assert repo.get_order(own_id)["shipped_status"] == 1
+    shipped_orders = client.get("/orders")
+    assert "已出货" in shipped_orders.text and 'data-shipped="1"' in shipped_orders.text
+    denied_ship = client.post(
+        f"/orders/{other_id}/ship",
+        data={"csrf": csrf(shipped_orders.text), "shipped": "1"},
+        follow_redirects=False,
+    )
+    assert denied_ship.status_code == 403
+    unshipped = client.post(
+        f"/orders/{own_id}/ship",
+        data={"csrf": csrf(shipped_orders.text), "shipped": "0"},
+        follow_redirects=False,
+    )
+    assert unshipped.status_code == 303
+    assert repo.get_order(own_id)["shipped_status"] == 0
+    orders = client.get("/orders")
 
     denied_request = client.post(
         f"/orders/{other_id}/edit-request",

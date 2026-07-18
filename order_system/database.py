@@ -24,10 +24,12 @@ CREATE TABLE IF NOT EXISTS orders (
     order_date TEXT,
     delivery_date TEXT,
     quantity INTEGER,
+    spare_quantity INTEGER NOT NULL DEFAULT 0,
     quantity_unit TEXT NOT NULL DEFAULT '\u4e2a',
     unit_price REAL,
     extra_fee REAL,
     paid_status INTEGER NOT NULL DEFAULT 0,
+    shipped_status INTEGER NOT NULL DEFAULT 0,
     order_prefix_no INTEGER NOT NULL DEFAULT 1,
     customer_code INTEGER,
     customer_name TEXT,
@@ -147,10 +149,12 @@ class Database:
             self._ensure_column(conn, "orders", "packaging_note_red", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "orders", "back_mode_note_red", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "orders", "global_note_red", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column(conn, "orders", "spare_quantity", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "orders", "quantity_unit", "TEXT NOT NULL DEFAULT '\u4e2a'")
             self._ensure_column(conn, "orders", "unit_price", "REAL")
             self._ensure_column(conn, "orders", "extra_fee", "REAL")
             self._ensure_column(conn, "orders", "paid_status", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column(conn, "orders", "shipped_status", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "orders", "order_prefix_no", "INTEGER NOT NULL DEFAULT 1")
             self._ensure_column(conn, "orders", "customer_code", "INTEGER")
             self._ensure_column(conn, "orders", "customer_name", "TEXT")
@@ -294,6 +298,7 @@ class Database:
             "order_date",
             "delivery_date",
             "quantity",
+            "spare_quantity",
             "quantity_unit",
             "unit_price",
             "extra_fee",
@@ -348,8 +353,9 @@ class Database:
         payload["order_prefix_no"] = int(customer[0])
         payload["customer_code"] = int(customer[0])
         payload["customer_name"] = str(customer[1])
+        defaults = {"paid_status": 0, "spare_quantity": 0}
         values = [
-            0 if column == "paid_status" and payload.get(column) is None else payload.get(column)
+            defaults[column] if column in defaults and payload.get(column) is None else payload.get(column)
             for column in columns
         ]
         placeholders = ", ".join("?" for _ in columns)
@@ -372,6 +378,7 @@ class Database:
             order_no,
             product_name,
             quantity,
+            spare_quantity,
             quantity_unit,
             delivery_date,
             created_at

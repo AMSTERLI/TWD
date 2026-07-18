@@ -14,6 +14,7 @@
 <label>订单编号<input name="order_no" value="{{ order.order_no }}" maxlength="100" required></label>
 <label class="span-2">产品名称<input name="product_name" value="{{ order.product_name or '' }}" required></label>
 <label>数量<input type="number" min="1" name="quantity" value="{{ order.quantity or 0 }}" required></label>
+<label>备品数量<input type="number" min="0" name="spare_quantity" value="{{ order.spare_quantity if order.spare_quantity is not none else 0 }}" required></label>
 <label>单位<select name="quantity_unit">{% for item in catalogs.quantity_unit %}<option{% if item == order.quantity_unit %} selected{% endif %}>{{ item }}</option>{% endfor %}</select></label>
 <label>单价<input type="number" min="0" step="0.0001" name="unit_price" value="{{ order.unit_price if order.unit_price is not none else '' }}"></label>
 <label>附加费<input type="number" min="0" step="0.01" name="extra_fee" value="{{ order.extra_fee if order.extra_fee is not none else '' }}"></label>

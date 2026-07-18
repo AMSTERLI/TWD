@@ -38,6 +38,8 @@ with TestClient(app) as client:
     preview = client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=2")
     assert preview.status_code == 200 and preview.json()["order_no"] == "TWD2-260715001"
     assert 'name="order_no"' in form_page.text
+    assert 'readonly data-order-number' not in form_page.text
+    assert 'name="spare_quantity"' in form_page.text
     assert 'data-paste-image-target="#product-images"' in form_page.text
     assert 'data-customer-name' in form_page.text and "程炬（编码 1）" in form_page.text
     customers = repo.list_customers()
@@ -49,7 +51,7 @@ with TestClient(app) as client:
         data={
             "csrf": csrf(form_page.text), "order_type": "新订单", "salesman": "测试",
             "product_name": "测试产品", "order_date": "2026-07-15", "delivery_date": "2026-07-20",
-            "quantity": "100", "quantity_unit": "个", "order_prefix_no": "1",
+            "quantity": "100", "spare_quantity": "15", "quantity_unit": "个", "order_prefix_no": "1",
             "order_no": "TWD1-260715001",
             "bi_no": "PO-001", "production_no": "SC-001", "global_note": "红字备注",
         },
@@ -60,6 +62,7 @@ with TestClient(app) as client:
     detail_url = response.headers["location"]
     detail = client.get(detail_url)
     assert detail.status_code == 200 and "TWD1-260715001" in detail.text
+    assert "100+15" in detail.text
     assert "程炬" in detail.text
     image_names = loads_json(repo.get_order(1)["image_paths_json"])
     assert len(image_names) == 1
@@ -70,6 +73,7 @@ with TestClient(app) as client:
         data={
             "csrf": csrf(duplicate_page.text), "order_type": "新订单", "salesman": "测试",
             "product_name": "重复编号测试", "order_date": "2026-07-15", "quantity": "1",
+            "spare_quantity": "0",
             "quantity_unit": "个", "order_prefix_no": "1", "order_no": "TWD1-260715001",
         },
         follow_redirects=False,
@@ -82,6 +86,7 @@ with TestClient(app) as client:
         data={
             "csrf": csrf(manual_page.text), "order_type": "新订单", "salesman": "测试",
             "product_name": "手动编号", "order_date": "2026-07-15", "quantity": "1",
+            "spare_quantity": "0",
             "quantity_unit": "个", "order_prefix_no": "1", "order_no": "TWD1-MANUAL001",
         },
         follow_redirects=False,
@@ -101,12 +106,15 @@ with TestClient(app) as client:
             "csrf": csrf(edit_page.text), "order_type": "新订单", "salesman": "admin-editor",
             "order_no": "TWD1-260715001", "product_name": "admin-updated",
             "order_date": "2026-07-15", "delivery_date": "2026-07-21", "quantity": "88",
+            "spare_quantity": "2",
             "quantity_unit": "个", "order_prefix_no": "1", "global_note": "updated",
         },
         follow_redirects=False,
     )
     assert updated.status_code == 303
-    assert "admin-updated" in client.get(updated.headers["location"]).text
+    updated_detail = client.get(updated.headers["location"]).text
+    assert "admin-updated" in updated_detail
+    assert "88+2" in updated_detail
     assert loads_json(repo.get_order(1)["image_paths_json"]) == []
     assert client.get(f"/images/{image_names[0]}").status_code == 404
     deleted = client.post(

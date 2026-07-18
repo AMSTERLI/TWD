@@ -422,7 +422,7 @@ if (contextRows.length) {
   const menu = document.createElement("div");
   menu.className = "admin-context-menu";
   menu.hidden = true;
-  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" class="danger-button" data-context-delete>删除</button>';
+  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-delete>删除</button>';
   document.body.appendChild(menu);
   let activeRow = null;
 
@@ -434,6 +434,9 @@ if (contextRows.length) {
   function refreshContextButtons() {
     menu.querySelector("[data-context-edit]").hidden = !activeRow?.dataset.editUrl;
     menu.querySelector("[data-context-request]").hidden = !activeRow?.dataset.requestEditUrl;
+    const shipButton = menu.querySelector("[data-context-ship]");
+    shipButton.hidden = !activeRow?.dataset.shipUrl;
+    if (!shipButton.hidden) shipButton.textContent = activeRow.dataset.shipped === "1" ? "撤回出货" : "出货";
     menu.querySelector("[data-context-delete]").hidden = !activeRow?.dataset.deleteUrl;
   }
 
@@ -467,6 +470,23 @@ if (contextRows.length) {
     reasonInput.name = "reason";
     reasonInput.value = reason.trim();
     form.append(csrf, reasonInput);
+    document.body.appendChild(form);
+    form.submit();
+  });
+  menu.querySelector("[data-context-ship]").addEventListener("click", () => {
+    if (!activeRow?.dataset.shipUrl) return;
+    const form = document.createElement("form");
+    form.method = "post";
+    form.action = activeRow.dataset.shipUrl;
+    const csrf = document.createElement("input");
+    csrf.type = "hidden";
+    csrf.name = "csrf";
+    csrf.value = activeRow.dataset.csrf || "";
+    const shipped = document.createElement("input");
+    shipped.type = "hidden";
+    shipped.name = "shipped";
+    shipped.value = activeRow.dataset.shipped === "1" ? "0" : "1";
+    form.append(csrf, shipped);
     document.body.appendChild(form);
     form.submit();
   });

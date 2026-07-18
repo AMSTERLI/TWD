@@ -15,8 +15,8 @@ REQUIRED_WEB_PROCESSES = ["冲压", "上色", "印刷/UV"]
 
 ORDER_COLUMNS = [
     "order_type", "salesman", "order_no", "product_name", "order_date",
-    "delivery_date", "quantity", "quantity_unit", "unit_price", "extra_fee",
-    "paid_status", "order_prefix_no", "customer_code", "customer_name",
+    "delivery_date", "quantity", "spare_quantity", "quantity_unit", "unit_price", "extra_fee",
+    "paid_status", "shipped_status", "order_prefix_no", "customer_code", "customer_name",
     "production_no", "bi_no", "width_mm",
     "height_mm", "thickness_mm", "size_as_sample", "materials_json",
     "material_note", "material_note_red", "plating_json", "plating_note",
@@ -368,9 +368,9 @@ class Repository:
         salesman = salesman.strip() if salesman is not None else None
         page = max(page, 1)
         offset = (page - 1) * page_size
-        where = "WHERE (? = '' OR order_no LIKE ? OR customer_name LIKE ? OR product_name LIKE ? OR salesman LIKE ?)"
+        where = "WHERE (? = '' OR order_no LIKE ? OR customer_name LIKE ? OR product_name LIKE ? OR salesman LIKE ? OR bi_no LIKE ? OR production_no LIKE ?)"
         like = f"%{keyword}%"
-        args: list[Any] = [keyword, like, like, like, like]
+        args: list[Any] = [keyword, like, like, like, like, like, like]
         if salesman:
             where += " AND salesman = ?"
             args.append(salesman)
@@ -378,8 +378,8 @@ class Repository:
             total = int(conn.execute(f"SELECT COUNT(*) FROM orders {where}", args).fetchone()[0])
             rows = conn.execute(
                 f"""SELECT id, order_no, customer_code, customer_name, product_name,
-                           order_type, salesman, quantity, quantity_unit, order_date,
-                           delivery_date, paid_status
+                           order_type, salesman, bi_no, production_no, quantity, spare_quantity, quantity_unit, order_date,
+                           delivery_date, paid_status, shipped_status
                     FROM orders {where} ORDER BY id DESC LIMIT ? OFFSET ?""",
                 (*args, page_size, offset),
             ).fetchall()
@@ -430,7 +430,7 @@ class Repository:
             payload["customer_code"] = prefix_no
             payload["customer_name"] = str(customer["name"])
             required_defaults = {
-                "quantity_unit": "个", "paid_status": 0, "order_prefix_no": prefix_no,
+                "quantity_unit": "个", "spare_quantity": 0, "paid_status": 0, "shipped_status": 0, "order_prefix_no": prefix_no,
                 "size_as_sample": 0, "materials_json": "[]", "plating_json": "[]",
                 "accessories_json": "[]", "polishing_json": "[]", "coloring_json": "[]",
                 "resin_json": "[]", "packaging_json": "[]", "image_paths_json": "[]",
@@ -557,6 +557,13 @@ class Repository:
 
     def set_order_paid(self, order_id: int, paid: bool) -> None:
         self.set_order_paid_many([order_id], paid)
+
+    def set_order_shipped(self, order_id: int, shipped: bool) -> None:
+        with self.connect(write=True) as conn:
+            conn.execute(
+                "UPDATE orders SET shipped_status = ? WHERE id = ?",
+                (int(shipped), order_id),
+            )
     def outsource_records(self, keyword: str = "", page: int = 1, page_size: int = 40) -> dict[str, Any]:
         keyword = keyword.strip()
         page = max(page, 1)

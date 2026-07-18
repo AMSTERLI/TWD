@@ -200,8 +200,12 @@ def _format_quantity(record: dict) -> str:
     quantity = record.get("quantity")
     if quantity in (None, ""):
         return ""
+    spare_quantity = record.get("spare_quantity")
+    quantity_text = str(quantity)
+    if spare_quantity not in (None, "", 0, "0"):
+        quantity_text = f"{quantity_text}+{spare_quantity}"
     unit = record.get("quantity_unit") or "\u4e2a"
-    return f"{quantity}{unit}"
+    return f"{quantity_text}{unit}"
 
 
 def _draw_box_text(

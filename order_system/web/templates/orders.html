@@ -2,8 +2,22 @@
 {% block title %}订单查询 · TWD 订单系统{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>订单查询</h1><p>共 {{ result.total }} 条记录</p></div>{% if user.role in ['admin','sales'] %}<a class="button primary" href="/orders/new">新建订单</a>{% endif %}</div>
-<form class="searchbar"><input name="q" value="{{ q }}" placeholder="搜索订单号、产品或业务员"><button type="submit">搜索</button>{% if q %}<a href="/orders">清除</a>{% endif %}</form>
-<section class="panel table-wrap"><table><thead><tr><th>订单号</th><th>客户</th><th>产品</th><th>类型</th><th>业务员</th><th>数量</th><th>下单日</th><th>交期</th><th>收款</th></tr></thead><tbody>
-{% for row in result.rows %}<tr{% if user.role == 'admin' %} data-admin-context data-edit-url="/orders/{{ row.id }}/edit" data-delete-url="/orders/{{ row.id }}/delete" data-csrf="{{ csrf }}" data-record-label="订单 {{ row.order_no }}"{% elif user.role == 'sales' %} data-context-row data-request-edit-url="/orders/{{ row.id }}/edit-request" data-csrf="{{ csrf }}" data-record-label="订单 {{ row.order_no }}"{% endif %}><td><a href="/orders/{{ row.id }}">{{ row.order_no }}</a></td><td>{{ row.customer_name or '-' }}</td><td>{{ row.product_name or '-' }}</td><td>{{ row.order_type }}</td><td>{{ row.salesman or '-' }}</td><td>{{ row.quantity or 0 }} {{ row.quantity_unit }}</td><td>{{ row.order_date or '-' }}</td><td>{{ row.delivery_date or '-' }}</td><td><span class="badge {{ 'ok' if row.paid_status else 'warn' }}">{{ '已收' if row.paid_status else '未收' }}</span></td></tr>{% else %}<tr><td colspan="9" class="muted">没有匹配的订单</td></tr>{% endfor %}
+<form class="searchbar"><input name="q" value="{{ q }}" placeholder="搜索订单号、客户、PO号、生产制号{% if user.role != 'sales' %}、产品或业务员{% endif %}"><button type="submit">搜索</button>{% if q %}<a href="/orders">清除</a>{% endif %}</form>
+<section class="panel table-wrap"><table><thead><tr>
+{% if user.role == 'sales' %}
+<th>订单号</th><th>客户</th><th>PO号</th><th>类型</th><th>数量</th><th>下单日</th><th>交期</th><th>状态</th>
+{% else %}
+<th>订单号</th><th>客户</th><th>产品</th><th>类型</th><th>业务员</th><th>数量</th><th>下单日</th><th>交期</th><th>收款</th>
+{% endif %}
+</tr></thead><tbody>
+{% for row in result.rows %}
+<tr{% if user.role == 'admin' %} data-admin-context data-edit-url="/orders/{{ row.id }}/edit" data-delete-url="/orders/{{ row.id }}/delete" data-csrf="{{ csrf }}" data-record-label="订单 {{ row.order_no }}"{% elif user.role == 'sales' %} data-context-row data-request-edit-url="/orders/{{ row.id }}/edit-request" data-ship-url="/orders/{{ row.id }}/ship" data-shipped="{{ 1 if row.shipped_status else 0 }}" data-csrf="{{ csrf }}" data-record-label="订单 {{ row.order_no }}"{% endif %}>
+<td><a href="/orders/{{ row.id }}">{{ row.order_no }}</a></td><td>{{ row.customer_name or '-' }}</td>
+{% if user.role == 'sales' %}
+<td>{{ row.bi_no or '-' }}</td><td>{{ row.order_type }}</td><td>{{ row.quantity or 0 }}{% if row.spare_quantity %}+{{ row.spare_quantity }}{% endif %} {{ row.quantity_unit }}</td><td>{{ row.order_date or '-' }}</td><td>{{ row.delivery_date or '-' }}</td><td><span class="badge {{ 'ok' if row.shipped_status else 'warn' }}">{{ '已出货' if row.shipped_status else '待出货' }}</span></td>
+{% else %}
+<td>{{ row.product_name or '-' }}</td><td>{{ row.order_type }}</td><td>{{ row.salesman or '-' }}</td><td>{{ row.quantity or 0 }}{% if row.spare_quantity %}+{{ row.spare_quantity }}{% endif %} {{ row.quantity_unit }}</td><td>{{ row.order_date or '-' }}</td><td>{{ row.delivery_date or '-' }}</td><td><span class="badge {{ 'ok' if row.paid_status else 'warn' }}">{{ '已收' if row.paid_status else '未收' }}</span></td>
+{% endif %}
+</tr>{% else %}<tr><td colspan="{{ 8 if user.role == 'sales' else 9 }}" class="muted">没有匹配的订单</td></tr>{% endfor %}
 </tbody></table></section>{% include "_pager.html" %}
 {% endblock %}
