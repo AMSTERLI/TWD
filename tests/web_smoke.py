@@ -13,6 +13,7 @@ os.environ["TWD_DATA_DIR"] = str(root)
 os.environ["TWD_SESSION_SECRET"] = "test-secret-that-is-long-enough-for-smoke-test"
 
 from fastapi.testclient import TestClient  # noqa: E402
+from order_system.database import loads_json  # noqa: E402
 from order_system.web.app import app, repo  # noqa: E402
 
 
@@ -52,6 +53,7 @@ with TestClient(app) as client:
             "order_no": "TWD1-260715001",
             "bi_no": "PO-001", "production_no": "SC-001", "global_note": "红字备注",
         },
+        files={"product_images": ("sample.png", b"not-a-real-image", "image/png")},
         follow_redirects=False,
     )
     assert response.status_code == 303, response.text
@@ -59,6 +61,9 @@ with TestClient(app) as client:
     detail = client.get(detail_url)
     assert detail.status_code == 200 and "TWD1-260715001" in detail.text
     assert "程炬" in detail.text
+    image_names = loads_json(repo.get_order(1)["image_paths_json"])
+    assert len(image_names) == 1
+    assert client.get(f"/images/{image_names[0]}").status_code == 200
     duplicate_page = client.get("/orders/new")
     duplicate = client.post(
         "/orders/new",
@@ -89,6 +94,7 @@ with TestClient(app) as client:
     edit_page = client.get("/orders/1/edit")
     assert edit_page.status_code == 200
     assert 'data-paste-image-target="#edit-product-images"' in edit_page.text
+    assert 'data-existing-images' in edit_page.text and image_names[0] in edit_page.text
     updated = client.post(
         "/orders/1/edit",
         data={
@@ -101,6 +107,8 @@ with TestClient(app) as client:
     )
     assert updated.status_code == 303
     assert "admin-updated" in client.get(updated.headers["location"]).text
+    assert loads_json(repo.get_order(1)["image_paths_json"]) == []
+    assert client.get(f"/images/{image_names[0]}").status_code == 404
     deleted = client.post(
         f"/orders/{manual_id}/delete",
         data={"csrf": csrf(orders_page.text)},

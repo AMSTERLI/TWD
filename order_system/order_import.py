@@ -473,6 +473,8 @@ def normalize_order_data(data: dict[str, Any], catalogs: dict[str, list[str]]) -
         normalized.pop("order_type", None)
     if normalized.get("back_mode") not in catalogs.get("back_mode", []):
         normalized.pop("back_mode", None)
+    if not normalized.get("resin") and "不加" in catalogs.get("resin", []):
+        normalized["resin"] = ["不加"]
     return normalized
 
 

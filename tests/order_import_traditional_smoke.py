@@ -26,6 +26,7 @@ assert normalized["product_name"] == "台湾铜牌"
 assert "铜  UV" in normalized["materials"]
 assert normalized["coloring"] == ["说明"]
 assert normalized["accessories"] == []
+assert normalized["resin"] == ["不加"]
 assert "OPP袋" in normalized["packaging_note"]
 assert "配件：" in normalized["packaging_note"]
 assert "挂绳" in normalized["packaging_note"]

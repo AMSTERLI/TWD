@@ -96,6 +96,48 @@ function fillOrderForm(data) {
 }
 
 
+
+function refreshImagePreview(fileInput) {
+  const preview = fileInput.closest("label")?.querySelector("[data-image-preview]");
+  if (!preview) return;
+  preview.innerHTML = "";
+  [...fileInput.files].forEach((file, index) => {
+    const item = document.createElement("span");
+    item.className = "image-thumb";
+    const image = document.createElement("img");
+    image.alt = file.name || "产品图片";
+    image.src = URL.createObjectURL(file);
+    image.addEventListener("load", () => URL.revokeObjectURL(image.src), {once: true});
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "删除";
+    remove.addEventListener("click", () => {
+      const transfer = new DataTransfer();
+      [...fileInput.files].forEach((current, currentIndex) => {
+        if (currentIndex !== index) transfer.items.add(current);
+      });
+      fileInput.files = transfer.files;
+      fileInput.dispatchEvent(new Event("change", {bubbles: true}));
+    });
+    item.append(image, remove);
+    preview.appendChild(item);
+  });
+}
+
+document.querySelectorAll("[data-paste-image-file]").forEach(input => {
+  input.addEventListener("change", () => refreshImagePreview(input));
+  refreshImagePreview(input);
+});
+
+document.querySelectorAll("[data-remove-existing-image]").forEach(button => {
+  button.addEventListener("click", () => {
+    const thumb = button.closest(".image-thumb");
+    const checkbox = thumb?.querySelector('input[name="existing_images"]');
+    if (checkbox) checkbox.checked = false;
+    if (thumb) thumb.hidden = true;
+  });
+});
+
 const pastedImageInputs = document.querySelectorAll("[data-paste-image-target]");
 if (pastedImageInputs.length) {
   const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);

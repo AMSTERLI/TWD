@@ -11,7 +11,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
@@ -219,6 +219,45 @@ async def save_preview_images(files: list[UploadFile]) -> list[str]:
                 output.write(chunk)
         paths.append(target.name)
     return paths
+
+
+def safe_image_name(value: Any) -> str:
+    name = Path(str(value or "")).name
+    if not name or name != str(value or "") or Path(name).suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+        return ""
+    return name
+
+
+def image_is_visible_to_user(image_name: str, user: dict[str, Any]) -> bool:
+    if not safe_image_name(image_name):
+        return False
+    with repo.connect() as conn:
+        rows = conn.execute(
+            "SELECT salesman, image_paths_json FROM orders WHERE image_paths_json LIKE ?",
+            (f"%{image_name}%",),
+        ).fetchall()
+    for row in rows:
+        image_names = loads_json(row["image_paths_json"] or "[]")
+        if image_name not in image_names:
+            continue
+        if user.get("role") == "admin" or str(row["salesman"] or "") == user_display_name(user):
+            return True
+    return False
+
+
+def merge_edit_images(form: Any, existing: dict[str, Any], uploaded_images: list[str]) -> tuple[list[str], list[str]]:
+    existing_images = [name for name in loads_json(existing.get("image_paths_json") or "[]") if safe_image_name(name)]
+    allowed_existing = set(existing_images)
+    kept: list[str] = []
+    for raw in form.getlist("existing_images"):
+        name = safe_image_name(raw)
+        if name in allowed_existing and name not in kept:
+            kept.append(name)
+    merged = kept + [name for name in uploaded_images if safe_image_name(name)]
+    if len(merged) > 6:
+        raise ValueError("产品图片最多 6 张")
+    removed = [name for name in existing_images if name not in kept]
+    return merged, removed
 
 async def order_payload(form: Any, *, save_uploaded_images: bool = True) -> dict[str, Any]:
     images = [item for item in form.getlist("product_images") if isinstance(item, UploadFile)]
@@ -619,12 +658,13 @@ async def edit_order(request: Request, order_id: int):
         if not payload["product_name"] or payload["quantity"] <= 0:
             raise ValueError("产品名称和有效数量为必填项")
         payload["paid_status"] = int(existing.get("paid_status") or 0)
-        if loads_json(payload.get("image_paths_json") or "[]"):
-            pass
-        else:
-            payload["image_paths_json"] = existing.get("image_paths_json") or "[]"
+        uploaded_images = loads_json(payload.get("image_paths_json") or "[]")
+        merged_images, removed_images = merge_edit_images(form, existing, uploaded_images)
+        payload["image_paths_json"] = dumps_json(merged_images)
         if not await run_in_threadpool(repo.update_order, order_id, payload):
             return Response(status_code=404)
+        for image_name in removed_images:
+            (IMAGES_DIR / image_name).unlink(missing_ok=True)
         if edit_request:
             await run_in_threadpool(repo.consume_edit_request, int(edit_request["id"]))
         await run_in_threadpool(repo.audit, user, "order.update", str(order_id), client_ip(request))
@@ -712,6 +752,20 @@ def order_detail(request: Request, order_id: int, created: int = 0):
             outsource_records=outsource_records,
         ),
     )
+
+
+@app.get("/images/{image_name}")
+def product_image(request: Request, image_name: str):
+    user, denied = require_page(request)
+    if denied:
+        return denied
+    safe_name = safe_image_name(image_name)
+    if not safe_name or not image_is_visible_to_user(safe_name, user):
+        return Response(status_code=404)
+    target = IMAGES_DIR / safe_name
+    if not target.is_file():
+        return Response(status_code=404)
+    return FileResponse(target)
 
 
 @app.get("/orders/{order_id}/pdf")
