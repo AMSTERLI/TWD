@@ -22,7 +22,7 @@ normalized = normalize_order_data(
     catalogs,
 )
 
-assert normalized["product_name"] == "台湾铜牌"
+assert normalized["product_name"] == "牌"
 assert "铜  UV" in normalized["materials"]
 assert normalized["coloring"] == ["说明"]
 assert normalized["accessories"] == []
@@ -31,4 +31,9 @@ assert "OPP袋" in normalized["packaging_note"]
 assert "配件：" in normalized["packaging_note"]
 assert "挂绳" in normalized["packaging_note"]
 assert normalized["global_note"] == "客户备注"
+
+category_normalized = normalize_order_data({"product_name": "台湾纪念双面币金属礼品"}, catalogs)
+assert category_normalized["product_name"] == "双面币"
+category_fallback = normalize_order_data({"product_name": "台湾铜牌纪念礼品定制"}, catalogs)
+assert category_fallback["product_name"] == "牌"
 print("order import traditional smoke ok")

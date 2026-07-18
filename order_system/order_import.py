@@ -272,6 +272,7 @@ def build_extraction_prompt(catalogs: dict[str, list[str]]) -> str:
         "materials,material_note,plating,plating_note,accessories,accessories_note,polishing,"
         "polishing_note,coloring,coloring_note,resin,resin_note,packaging,"
         "packaging_note,back_mode,back_mode_note,global_note。"
+        "product_name只写产品品类，不写客户、图案、尺寸、材质或用途；如双面币、钥匙扣，且最多8个字符。"
         f"允许值:{allowed}。quantity_unit仅个/套；size_as_sample仅true/false/null。"
         "制作工艺必须从materials允许值中选择；烤漆、珐琅、UV、镭雕属于materials，不要放入coloring。"
         "如果原文为铜冲压烤漆、锌合金压铸UV等，省略冲压/压铸/材质字样并匹配为类似'铜  烤漆'的允许值。"
@@ -427,6 +428,8 @@ def normalize_order_data(data: dict[str, Any], catalogs: dict[str, list[str]]) -
         value = data.get(key)
         if value is not None:
             normalized[key] = str(value).strip()
+    if normalized.get("product_name"):
+        normalized["product_name"] = _product_category_name(normalized["product_name"])
 
     quantity = data.get("quantity")
     if quantity not in (None, ""):
@@ -475,6 +478,18 @@ def normalize_order_data(data: dict[str, Any], catalogs: dict[str, list[str]]) -
         normalized.pop("back_mode", None)
     return normalized
 
+
+def _product_category_name(value: str) -> str:
+    text = re.sub(r"\s+", "", value).strip()
+    category_keywords = [
+        "双面币", "钥匙扣", "钥匙圈", "纪念币", "挑战币", "奖牌", "徽章",
+        "胸章", "胸针", "冰箱贴", "开瓶器", "书签", "吊牌", "袖扣",
+        "领带夹", "狗牌", "铭牌", "标牌", "币", "牌",
+    ]
+    for keyword in category_keywords:
+        if keyword in text:
+            return keyword[:8]
+    return text[:8] if len(text) > 8 else text
 
 def _append_note(existing: Any, addition: str) -> str:
     existing_text = str(existing or "").strip()
