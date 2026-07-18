@@ -95,7 +95,8 @@ with TestClient(app) as client:
     searched = client.get(f"/orders?q={other_no}")
     assert searched.status_code == 200
     assert f'/orders/{other_id}' not in searched.text
-    assert client.get(f"/orders/{own_id}").status_code == 200
+    detail = client.get(f"/orders/{own_id}")
+    assert detail.status_code == 200 and "出货状态" in detail.text and "待出货" in detail.text
     assert client.get(f"/orders/{other_id}").status_code == 403
     assert client.get(f"/orders/{other_id}/pdf").status_code == 403
 
