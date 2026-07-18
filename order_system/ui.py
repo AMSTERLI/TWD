@@ -110,7 +110,7 @@ ACCESSORIES = [
 POLISHING = ["正面", "侧面", "背面", "三面", "喷砂"]
 COLORING_OPTIONS = ["说明", "样品", "彩图", "分色图"]
 RESIN_OPTIONS = ["一般", "厚", "薄", "双面", "单面"]
-PACKAGING = ["空白袋", "夹链袋", "蝴蝶帽", "MIC袋", "OPP袋", "气泡袋", "PVC袋", "装订"]
+PACKAGING = ["空白袋", "夹链袋", "胶帽", "白纸卷", "蝴蝶帽", "MIC袋", "OPP袋", "气泡袋", "PVC袋", "装订"]
 BACK_MODES = ["光平", "布纹", "砂面", "团模", "双面模"]
 OPTION_LABELS = {
     "materials_json": "材质及做法",
