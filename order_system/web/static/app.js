@@ -41,9 +41,24 @@ if (importBox) {
   });
 }
 
+function clearOrderFormForAi(form) {
+  form.reset();
+  form.querySelectorAll('input[type="file"]').forEach(input => {
+    input.value = "";
+    input.dispatchEvent(new Event("change", {bubbles: true}));
+  });
+  form.querySelectorAll("[data-paste-image-status]").forEach(status => {
+    status.textContent = "";
+    status.className = "paste-image-status";
+  });
+  form.querySelector("[data-customer-name]")?.dispatchEvent(new Event("input", {bubbles: true}));
+  form.querySelector("[data-order-date]")?.dispatchEvent(new Event("change", {bubbles: true}));
+}
+
 function fillOrderForm(data) {
   const form = document.querySelector("#order-form");
   if (!form) return;
+  clearOrderFormForAi(form);
   const arrays = new Set(["materials", "plating", "accessories", "polishing", "coloring", "resin", "packaging"]);
   Object.entries(data).forEach(([name, value]) => {
     if (value === null || value === undefined) return;

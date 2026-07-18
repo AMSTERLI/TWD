@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import sys
 from pathlib import Path
@@ -12,15 +12,22 @@ catalogs = import_catalogs()
 normalized = normalize_order_data(
     {
         "product_name": "臺灣銅牌",
-        "materials": ["銅  烤漆"],
-        "coloring": ["說明"],
+        "materials": ["銅"],
+        "coloring": ["說明", "UV"],
+        "accessories": ["安全別針"],
+        "accessories_note": "配件要求：掛繩",
+        "packaging_note": "OPP袋",
         "global_note": "客戶備註",
     },
     catalogs,
 )
 
 assert normalized["product_name"] == "台湾铜牌"
-assert "铜  烤漆" in normalized["materials"]
+assert "铜  UV" in normalized["materials"]
 assert normalized["coloring"] == ["说明"]
+assert normalized["accessories"] == []
+assert "OPP袋" in normalized["packaging_note"]
+assert "配件：" in normalized["packaging_note"]
+assert "挂绳" in normalized["packaging_note"]
 assert normalized["global_note"] == "客户备注"
 print("order import traditional smoke ok")

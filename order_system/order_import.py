@@ -12,7 +12,7 @@ from typing import Any
 
 
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
-DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash")
+DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-pro")
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_DOCUMENT_CHARS = 50_000
 MAX_SUPPLEMENTAL_PROMPT_CHARS = 2_000
@@ -275,7 +275,8 @@ def build_extraction_prompt(catalogs: dict[str, list[str]]) -> str:
         f"允许值:{allowed}。quantity_unit仅个/套；size_as_sample仅true/false/null。"
         "制作工艺必须从materials允许值中选择；烤漆、珐琅、UV、镭雕属于materials，不要放入coloring。"
         "如果原文为铜冲压烤漆、锌合金压铸UV等，省略冲压/压铸/材质字样并匹配为类似'铜  烤漆'的允许值。"
-        "coloring只用于彩图、样品、说明三个选项；包装规则统一写入packaging_note，焊针/配件说明写入accessories_note。"
+        "coloring只用于彩图、样品、说明三个选项；烤漆、珐琅、UV、镭雕绝不能填入coloring。"
+        "客单中的配件、配件说明、包装规则统一写入packaging_note，不要写入accessories或accessories_note。"
         "PO/采购单号填bi_no，生产编号填production_no；不要把客户单号填成系统订单编号。"
         "不要提取下单日期；下单日期由系统按当天日期默认填写。"
     )
@@ -437,6 +438,7 @@ def normalize_order_data(data: dict[str, Any], catalogs: dict[str, list[str]]) -
     if isinstance(size_as_sample, bool):
         normalized["size_as_sample"] = size_as_sample
 
+    misplaced_surface_crafts: list[str] = []
     for key in ("materials", "plating", "accessories", "polishing", "coloring", "resin", "packaging"):
         values = data.get(key)
         allowed = catalogs.get(key, [])
@@ -446,9 +448,21 @@ def normalize_order_data(data: dict[str, Any], catalogs: dict[str, list[str]]) -
                 item = str(value).strip()
                 if key == "materials":
                     item = _normalize_material_option(item, allowed)
+                elif key == "coloring":
+                    craft = _surface_craft_from_text(item, catalogs.get("surface_crafts", []))
+                    if craft:
+                        if craft not in misplaced_surface_crafts:
+                            misplaced_surface_crafts.append(craft)
+                        continue
                 if item in allowed and item not in selected:
                     selected.append(item)
             normalized[key] = selected
+
+    if misplaced_surface_crafts:
+        normalized["materials"] = _apply_surface_crafts_to_materials(
+            normalized.get("materials", []), misplaced_surface_crafts, catalogs.get("materials", [])
+        )
+    _move_accessories_to_packaging_note(normalized)
 
     for key in ("delivery_date",):
         if key in normalized and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", normalized[key]):
@@ -460,6 +474,68 @@ def normalize_order_data(data: dict[str, Any], catalogs: dict[str, list[str]]) -
     if normalized.get("back_mode") not in catalogs.get("back_mode", []):
         normalized.pop("back_mode", None)
     return normalized
+
+
+def _append_note(existing: Any, addition: str) -> str:
+    existing_text = str(existing or "").strip()
+    addition = addition.strip()
+    if not addition:
+        return existing_text
+    if not existing_text:
+        return addition
+    if addition in existing_text:
+        return existing_text
+    return f"{existing_text}；{addition}"
+
+
+def _surface_craft_from_text(value: str, allowed: list[str]) -> str:
+    normalized = _normalize_material_option(value, allowed)
+    if normalized in allowed:
+        return normalized
+    return ""
+
+
+def _apply_surface_crafts_to_materials(materials: Any, crafts: list[str], allowed: list[str]) -> list[str]:
+    current = [str(item).strip() for item in materials if str(item).strip()] if isinstance(materials, list) else []
+    if not current:
+        return current
+    result = list(current)
+    for craft in crafts:
+        if any(item.endswith(f"  {craft}") for item in result):
+            continue
+        combined = []
+        changed = False
+        for item in result:
+            if "  " in item:
+                combined.append(item)
+                continue
+            base = item.split("  ", 1)[0]
+            candidate = f"{base}  {craft}"
+            if candidate in allowed:
+                combined.append(candidate)
+                changed = True
+            else:
+                combined.append(item)
+        result = combined if changed else result
+    deduped: list[str] = []
+    for item in result:
+        if item in allowed and item not in deduped:
+            deduped.append(item)
+    return deduped
+
+
+def _move_accessories_to_packaging_note(normalized: dict[str, Any]) -> None:
+    parts: list[str] = []
+    accessories = normalized.get("accessories")
+    if isinstance(accessories, list):
+        parts.extend(str(item).strip() for item in accessories if str(item).strip())
+    note = str(normalized.get("accessories_note") or "").strip()
+    if note:
+        parts.append(note)
+    if parts:
+        normalized["packaging_note"] = _append_note(normalized.get("packaging_note"), "配件：" + "、".join(dict.fromkeys(parts)))
+    normalized["accessories"] = []
+    normalized.pop("accessories_note", None)
 
 def _normalize_material_option(value: str, allowed: list[str]) -> str:
     if value in allowed:
