@@ -1113,6 +1113,15 @@ def outsource(request: Request, q: str = "", page: int = 1, created: int = 0):
     )
 
 
+@app.get("/outsource/history")
+def outsource_history(request: Request, order_no: str = "", process_name: str = ""):
+    _, denied = require_page(request, {"outsource"})
+    if denied:
+        return denied
+    record = repo.latest_outsource_for_order_process(order_no, process_name)
+    return JSONResponse({"record": record})
+
+
 @app.get("/outsource/{record_id}/edit", response_class=HTMLResponse)
 def edit_outsource_page(request: Request, record_id: int):
     _, denied = require_page(request, {"admin"})

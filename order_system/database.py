@@ -782,6 +782,8 @@ class Database:
                 FROM outsource_records
                 WHERE order_no = ?
                   AND process_name = ?
+                  AND COALESCE(remake_flag, 0) = 0
+                  AND COALESCE(replenishment_flag, 0) = 0
                 ORDER BY outsource_date DESC, created_at DESC, id DESC
                 LIMIT 1
                 """,

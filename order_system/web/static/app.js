@@ -289,7 +289,7 @@ if (outsourceBatch) {
     } else if (process === "印刷/UV") {
       amount += numberValue(row, "plate_fee");
     }
-    if (!amountInput) return;
+    if (!amountInput || amountInput.dataset.manualLocked === "1") return;
     if (!process) {
       amountInput.value = "";
       amountInput.placeholder = "自动计算";
@@ -351,7 +351,10 @@ if (outsourceBatch) {
   }
 
   outsourceBatch.querySelector("[data-add-outsource-row]").addEventListener("click", () => addOutsourceRow());
-  processSelect.addEventListener("change", updateProcessUI);
+  processSelect.addEventListener("change", () => {
+    updateProcessUI();
+    rows.querySelectorAll("tr").forEach(checkExistingOutsource);
+  });
   function fillOrderRow(row) {
     const input = row.querySelector("[name=order_no]");
     const orderNo = input?.value.trim();
@@ -372,24 +375,62 @@ if (outsourceBatch) {
     recalculateRow(row);
   }
 
+
+  function formatHistoryDate(value) {
+    if (!value) return "";
+    const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return match ? `${Number(match[2])}月${Number(match[3])}日` : String(value).slice(0, 10);
+  }
+
+  async function checkExistingOutsource(row) {
+    const orderNo = row.querySelector("[name=order_no]")?.value.trim();
+    const process = processSelect.value;
+    const flagType = row.querySelector("[name=flag_type]")?.value || "";
+    if (!orderNo || !process || flagType === "remake" || flagType === "replenishment") return;
+    const key = `${orderNo}|${process}`;
+    if (row.dataset.lastOutsourceHistoryCheck === key) return;
+    row.dataset.lastOutsourceHistoryCheck = key;
+    try {
+      const response = await fetch(`/outsource/history?order_no=${encodeURIComponent(orderNo)}&process_name=${encodeURIComponent(process)}`);
+      if (!response.ok) return;
+      const result = await response.json();
+      const record = result.record;
+      if (!record) return;
+      const dateText = formatHistoryDate(record.outsource_date || record.created_at);
+      window.alert(`${orderNo}订单于${dateText}外发给${record.factory_name || ""}。`);
+    } catch (error) {
+      console.warn("Failed to check outsource history", error);
+    }
+  }
+
   outsourceBatch.addEventListener("input", event => {
-    if (event.target.matches("[data-manual-amount]")) return;
     const row = event.target.closest("tr");
     if (!row) return;
+    if (event.target.matches("[data-manual-amount]")) {
+      event.target.dataset.manualLocked = event.target.value.trim() ? "1" : "";
+      if (!event.target.dataset.manualLocked) recalculateRow(row);
+      return;
+    }
     if (event.target.matches("[name=order_no]")) fillOrderRow(row);
     else recalculateRow(row);
   });
   outsourceBatch.addEventListener("change", event => {
     if (!event.target.matches("[name=order_no]")) return;
     const row = event.target.closest("tr");
-    if (row) fillOrderRow(row);
+    if (row) {
+      fillOrderRow(row);
+      checkExistingOutsource(row);
+    }
   });
   outsourceBatch.addEventListener("click", event => {
     const button = event.target.closest("[data-remove-outsource-row]");
     if (!button) return;
     if (rows.children.length === 1) {
       const row = button.closest("tr");
-      row.querySelectorAll("input").forEach(input => input.value = input.defaultValue);
+      row.querySelectorAll("input").forEach(input => {
+        input.value = input.defaultValue;
+        delete input.dataset.manualLocked;
+      });
       row.querySelectorAll("select").forEach(select => select.selectedIndex = 0);
       recalculateRow(row);
       row.querySelector("[data-scan-order]").focus();
@@ -401,8 +442,10 @@ if (outsourceBatch) {
     if (event.key !== "Enter" || !event.target.matches("[data-scan-order]")) return;
     event.preventDefault();
     if (!event.target.value.trim()) return;
-    fillOrderRow(event.target.closest("tr"));
-    const next = event.target.closest("tr").nextElementSibling;
+    const row = event.target.closest("tr");
+    fillOrderRow(row);
+    checkExistingOutsource(row);
+    const next = row.nextElementSibling;
     if (next) next.querySelector("[data-scan-order]").focus();
     else addOutsourceRow(true);
   });

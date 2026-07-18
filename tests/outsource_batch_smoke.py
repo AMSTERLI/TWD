@@ -134,12 +134,29 @@ with TestClient(app) as client:
     manual_punch = repo.legacy.get_outsource_record(manual_punch_id)
     assert manual_punch["amount"] == 123.45
 
+    flagged_coloring_id = repo.create_outsource_batch(
+        {"process_name": COLORING, "factory_name": "ignore-factory", "outsource_date": "2026-07-14", "paid_status": 0},
+        [{"order_no": second_no, "product_quantity": 10, "unit_price": 0.2, "color_count": "3", "remake_flag": 1}],
+    )[0]
+    ignored_history = client.get(f"/outsource/history?order_no={second_no}&process_name={COLORING}")
+    assert ignored_history.status_code == 200 and ignored_history.json()["record"] is None
+
     coloring_id = repo.create_outsource_batch(
         {"process_name": COLORING, "factory_name": "color-factory", "outsource_date": "2026-07-15", "paid_status": 0},
         [{"order_no": first_no, "product_quantity": 10, "unit_price": 0.2, "color_count": "3"}],
     )[0]
     coloring = repo.legacy.get_outsource_record(coloring_id)
     assert coloring["color_count"] == 3 and abs(coloring["amount"] - (10 * 0.2 * 3)) < 1e-9
+    coloring_history = client.get(f"/outsource/history?order_no={first_no}&process_name={COLORING}")
+    assert coloring_history.status_code == 200
+    assert coloring_history.json()["record"]["factory_name"] == "color-factory"
+
+    manual_coloring_id = repo.create_outsource_batch(
+        {"process_name": COLORING, "factory_name": "color-factory", "outsource_date": "2026-07-16", "paid_status": 0},
+        [{"order_no": first_no, "product_quantity": 10, "unit_price": 0.2, "color_count": "3", "manual_amount": 99.9}],
+    )[0]
+    manual_coloring = repo.legacy.get_outsource_record(manual_coloring_id)
+    assert manual_coloring["amount"] == 99.9
 
     uv_id = repo.create_outsource_batch(
         {"process_name": "印刷/UV", "factory_name": "print-uv-factory", "outsource_date": "2026-07-15", "paid_status": 0},
@@ -170,6 +187,7 @@ with TestClient(app) as client:
     client.post("/login", data={"csrf": token(client.get("/login").text), "username": "outsource", "password": "test-password"})
     outsource_page = client.get("/outsource")
     assert f'/outsource/{coloring_id}/delete' in outsource_page.text
+    assert repo.get_outsource_record(flagged_coloring_id) is not None
     assert f'/outsource/{coloring_id}/edit' not in outsource_page.text
     deleted = client.post(
         f"/outsource/{coloring_id}/delete",

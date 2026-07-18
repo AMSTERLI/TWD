@@ -628,6 +628,24 @@ class Repository:
             ).fetchone()
         return dict(row) if row else None
 
+    def latest_outsource_for_order_process(self, order_no: str, process_name: str) -> dict[str, Any] | None:
+        order_no = order_no.strip()
+        process_name = process_name.strip()
+        if not order_no or not process_name:
+            return None
+        with self.connect() as conn:
+            row = conn.execute(
+                """SELECT id, order_no, process_name, factory_name, quantity, outsource_date, created_at
+                   FROM outsource_records
+                   WHERE order_no = ? AND process_name = ?
+                     AND COALESCE(remake_flag, 0) = 0
+                     AND COALESCE(replenishment_flag, 0) = 0
+                   ORDER BY outsource_date DESC, created_at DESC, id DESC
+                   LIMIT 1""",
+                (order_no, process_name),
+            ).fetchone()
+        return dict(row) if row else None
+
     def update_outsource_record(self, record_id: int, payload: dict[str, Any]) -> bool:
         columns = [
             "process_name", "factory_name", "quantity", "product_quantity",
@@ -821,7 +839,7 @@ class Repository:
                     amount = quantity * unit_price
 
                 manual_amount = row.get("manual_amount")
-                if manual_amount is not None and process_name != "上色":
+                if manual_amount is not None:
                     manual_amount = float(manual_amount)
                     if manual_amount < 0:
                         raise ValueError(f"Order {order_no} amount cannot be negative")

@@ -2952,7 +2952,7 @@ class OutsourceFormTab(QWidget):
         QMessageBox.information(
             self,
             "已有相同工艺外发记录",
-            f"{order_no}订单于{date_text}向{factory_name}发送了{quantity:g}个。",
+            f"{order_no}订单于{date_text}外发给{factory_name}。",
         )
 
     def remove_selected_rows(self) -> None:
