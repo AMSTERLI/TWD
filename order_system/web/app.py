@@ -951,6 +951,24 @@ async def finance_receivables_status(request: Request):
     return RedirectResponse("/finance/receivables", status_code=303)
 
 
+@app.post("/finance/receivables/invoice")
+async def finance_receivables_invoice(request: Request):
+    user, denied = require_page(request, {"finance"})
+    if denied:
+        return denied
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    ids = selected_ids(form, "selected_ids")
+    invoiced = form.get("invoiced") == "1"
+    changed = await run_in_threadpool(repo.set_order_invoice_many, ids, invoiced)
+    await run_in_threadpool(
+        repo.audit, user, "finance.receivables.invoice",
+        f"{changed}:{int(invoiced)}", client_ip(request),
+    )
+    return RedirectResponse("/finance/receivables", status_code=303)
+
+
 @app.post("/finance/payables/status")
 async def finance_payables_status(request: Request):
     user, denied = require_page(request, {"finance"})

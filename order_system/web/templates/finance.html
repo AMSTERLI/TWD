@@ -9,7 +9,7 @@
 
 {% if active_finance_page == 'receivables' %}
 <section class="finance-section" id="receivables">
-  <div class="section-title"><div><h2>客户收款</h2><p>共 {{ receivables.total }} 条；当前检索结果未收款合计 ¥ {{ '%.2f'|format(receivables.unpaid_total or 0) }}</p></div></div>
+  <div class="section-title"><div><h2>客户收款</h2><p>共 {{ receivables.total }} 条，可按订单日期和收款状态检索</p></div></div>
   <form class="filterbar" method="get" action="/finance/receivables">
     <label>订单关键词<input name="receivable_q" value="{{ receivable_q }}" placeholder="客户名、订单号、PO号或生产制号"></label>
     <label>订单日期从<input type="date" name="receivable_date_from" value="{{ receivable_date_from }}"></label>
@@ -20,9 +20,11 @@
   <form method="post" data-selection-form>
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <div class="selection-toolbar">
-      <span>已选择 <strong data-selected-count>0</strong> 条</span>
+      <span>已选择 <strong data-selected-count>0</strong> 条；已选未收款合计 ¥ <strong data-selected-unpaid-total>0.00</strong></span>
       <button formaction="/finance/receivables/status" name="paid" value="1" data-requires-selection disabled>批量确认收款</button>
       <button formaction="/finance/receivables/status" name="paid" value="0" data-requires-selection disabled>批量改为未收</button>
+      <button formaction="/finance/receivables/invoice" name="invoiced" value="1" data-requires-selection disabled>批量确认开票</button>
+      <button formaction="/finance/receivables/invoice" name="invoiced" value="0" data-requires-selection disabled>批量改为未开票</button>
       <button formaction="/finance/receivables/export" data-requires-selection disabled>导出选中表格</button>
       <button class="primary" formaction="/finance/receivables/pdf" data-requires-selection disabled>合并导出 PDF</button>
     </div>
@@ -30,7 +32,7 @@
       <thead><tr><th><input type="checkbox" data-select-all aria-label="全选当前页"></th><th>订单号</th><th>客户名称</th><th>PO号</th><th>生产制号</th><th>数量</th><th>单价</th><th>应收</th><th>订单日期</th><th>状态</th><th>是否开票</th></tr></thead>
       <tbody>
       {% for row in receivables.rows %}<tr data-context-row data-request-edit-url="/orders/{{ row.id }}/edit-request" data-csrf="{{ csrf }}" data-record-label="订单 {{ row.order_no }}">
-        <td><input type="checkbox" name="selected_ids" value="{{ row.id }}" data-select-item aria-label="选择订单 {{ row.order_no }}"></td>
+        <td><input type="checkbox" name="selected_ids" value="{{ row.id }}" data-select-item data-unpaid-amount="{{ row.amount if not row.paid_status else 0 }}" aria-label="选择订单 {{ row.order_no }}"></td>
         <td><a href="/orders/{{ row.id }}">{{ row.order_no }}</a></td><td>{{ row.customer_name or '-' }}</td><td>{{ row.bi_no or '-' }}</td><td>{{ row.production_no or '-' }}</td>
         <td>{{ row.quantity }} {{ row.quantity_unit }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td><td>¥ {{ '%.2f'|format(row.amount or 0) }}</td><td>{{ row.order_date or '-' }}</td>
         <td><span class="badge {{ 'ok' if row.paid_status else 'warn' }}">{{ '已收款' if row.paid_status else '未收款' }}</span></td>

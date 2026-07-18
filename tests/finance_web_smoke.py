@@ -88,7 +88,7 @@ with TestClient(app) as client:
     assert old_order in finance_page.text and new_order in finance_page.text
     assert "产品" not in finance_page.text and "旧产品" not in finance_page.text and "新产品" not in finance_page.text
     assert "是否开票" in finance_page.text and "未开票" in finance_page.text
-    assert "是否收款" in finance_page.text and "未收款合计 ¥ 56.00" in finance_page.text
+    assert "是否收款" in finance_page.text and "已选未收款合计 ¥" in finance_page.text
     assert f'data-request-edit-url="/orders/1/edit-request"' in finance_page.text
     assert "/finance/receivables/pdf" in finance_page.text
     payables_page = client.get("/finance/payables")
@@ -102,9 +102,9 @@ with TestClient(app) as client:
     filtered_income = client.get("/finance/receivables?receivable_date_from=2026-07-10")
     assert new_order in filtered_income.text and old_order not in filtered_income.text
     filtered_unpaid = client.get("/finance/receivables?receivable_paid_status=unpaid")
-    assert old_order in filtered_unpaid.text and new_order in filtered_unpaid.text and "未收款合计 ¥ 56.00" in filtered_unpaid.text
+    assert old_order in filtered_unpaid.text and new_order in filtered_unpaid.text
     filtered_paid = client.get("/finance/receivables?receivable_paid_status=paid")
-    assert old_order not in filtered_paid.text and new_order not in filtered_paid.text and "未收款合计 ¥ 0.00" in filtered_paid.text
+    assert old_order not in filtered_paid.text and new_order not in filtered_paid.text
     filtered_payable = client.get("/finance/payables?payable_factory=乙厂")
     payable_body = filtered_payable.text.split("<tbody>")[1].split("</tbody>")[0]
     assert "乙厂" in payable_body and "甲厂" not in payable_body
@@ -117,8 +117,24 @@ with TestClient(app) as client:
     )
     assert response.status_code == 303
     assert repo.get_order(1)["paid_status"] == 1 and repo.get_order(2)["paid_status"] == 1
+    invoice_response = client.post(
+        "/finance/receivables/invoice",
+        data={"csrf": token, "selected_ids": ["1", "2"], "invoiced": "1"},
+        follow_redirects=False,
+    )
+    assert invoice_response.status_code == 303
+    assert repo.get_order(1)["invoice_status"] == 1 and repo.get_order(2)["invoice_status"] == 1
+    invoice_page = client.get("/finance/receivables")
+    assert "已开票" in invoice_page.text
+    uninvoice_response = client.post(
+        "/finance/receivables/invoice",
+        data={"csrf": csrf(invoice_page.text), "selected_ids": "2", "invoiced": "0"},
+        follow_redirects=False,
+    )
+    assert uninvoice_response.status_code == 303
+    assert repo.get_order(1)["invoice_status"] == 1 and repo.get_order(2)["invoice_status"] == 0
     filtered_unpaid_after = client.get("/finance/receivables?receivable_paid_status=unpaid")
-    assert old_order not in filtered_unpaid_after.text and new_order not in filtered_unpaid_after.text and "未收款合计 ¥ 0.00" in filtered_unpaid_after.text
+    assert old_order not in filtered_unpaid_after.text and new_order not in filtered_unpaid_after.text
 
     edit_request = client.post(
         "/orders/1/edit-request",

@@ -395,11 +395,17 @@ document.querySelectorAll("[data-selection-form]").forEach(form => {
   const selectAll = form.querySelector("[data-select-all]");
   const items = [...form.querySelectorAll("[data-select-item]")];
   const count = form.querySelector("[data-selected-count]");
+  const unpaidTotal = form.querySelector("[data-selected-unpaid-total]");
   const actions = [...form.querySelectorAll("[data-requires-selection]")];
 
   function refreshSelection() {
-    const selected = items.filter(item => item.checked).length;
+    const selectedItems = items.filter(item => item.checked);
+    const selected = selectedItems.length;
     if (count) count.textContent = String(selected);
+    if (unpaidTotal) {
+      const total = selectedItems.reduce((sum, item) => sum + Number(item.dataset.unpaidAmount || 0), 0);
+      unpaidTotal.textContent = total.toFixed(2);
+    }
     actions.forEach(button => button.disabled = selected === 0);
     if (selectAll) {
       selectAll.checked = items.length > 0 && selected === items.length;

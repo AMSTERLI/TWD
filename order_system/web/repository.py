@@ -570,6 +570,18 @@ class Repository:
     def set_order_paid(self, order_id: int, paid: bool) -> None:
         self.set_order_paid_many([order_id], paid)
 
+    def set_order_invoice_many(self, order_ids: list[int], invoiced: bool) -> int:
+        ids = self._normalized_ids(order_ids)
+        if not ids:
+            return 0
+        placeholders = ", ".join("?" for _ in ids)
+        with self.connect(write=True) as conn:
+            cursor = conn.execute(
+                f"UPDATE orders SET invoice_status = ? WHERE id IN ({placeholders})",
+                (int(invoiced), *ids),
+            )
+            return cursor.rowcount
+
     def set_order_shipped(self, order_id: int, shipped: bool) -> None:
         with self.connect(write=True) as conn:
             conn.execute(
