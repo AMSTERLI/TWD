@@ -352,7 +352,7 @@ def outsource_edit_payload(form: Any) -> dict[str, Any]:
         color_count = as_int(form.get("color_count"))
         if color_count <= 0:
             raise ValueError("上色记录必须填写大于 0 的颜色数量")
-        amount = None
+        amount = quantity * unit_price * color_count
     elif process_name == "印刷/UV":
         plate_fee = as_float(form.get("plate_fee"))
         if plate_fee < 0:
@@ -1164,7 +1164,7 @@ async def edit_outsource(request: Request, record_id: int):
 
 @app.post("/outsource/{record_id}/delete")
 async def delete_outsource(request: Request, record_id: int):
-    user, denied = require_page(request, {"admin"})
+    user, denied = require_page(request, {"admin", "outsource"})
     if denied:
         return denied
     form = await request.form()

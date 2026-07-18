@@ -33,7 +33,8 @@ def order_payload(product: str) -> dict:
     payload = {column: None for column in ORDER_COLUMNS}
     payload.update({
         "order_type": "test", "salesman": "tester", "product_name": product,
-        "order_date": "2026-07-15", "quantity": 100, "quantity_unit": "pcs",
+        "order_date": "2026-07-15", "quantity": 100, "spare_quantity": 7, "quantity_unit": "pcs",
+        "width_mm": 12.5, "height_mm": 8.25, "thickness_mm": 1.2,
         "order_prefix_no": 1, "materials_json": dumps_json(["brass"]),
         "coloring_json": dumps_json([COLORING, "UV"]),
     })
@@ -53,6 +54,7 @@ with TestClient(app) as client:
     page = client.get("/outsource")
     assert page.status_code == 200
     assert "data-outsource-batch" in page.text
+    assert "spare_quantity" in page.text and "12.5" in page.text and "8.25" in page.text
     response = client.post(
         "/outsource",
         data={
@@ -112,11 +114,11 @@ with TestClient(app) as client:
         [{
             "order_no": first_no, "product_quantity": 80, "spare_quantity": 5,
             "unit_price": 0.3, "processing_fee": 2, "length_mm": 10,
-            "width_mm": 5, "thickness_mm": 1, "density": 0.00785, "weight": 0.0055,
+            "width_mm": 5, "thickness_mm": 1, "density": 0.00785, "weight": 0.00555,
         }],
     )[0]
     punch = repo.legacy.get_outsource_record(punch_id)
-    expected_material = (10 + 3) * (5 + 3) * 1 * 0.00785 * 0.0055
+    expected_material = (10 + 3) * (5 + 3) * 1 * 0.00785 * 0.00555
     assert abs(punch["material_unit_price"] - expected_material) < 1e-9
     assert abs(punch["amount"] - (85 * (0.3 + expected_material) + 2)) < 1e-9
 
@@ -125,7 +127,7 @@ with TestClient(app) as client:
         [{
             "order_no": first_no, "product_quantity": 80, "spare_quantity": 5,
             "unit_price": 0.3, "processing_fee": 2, "length_mm": 10,
-            "width_mm": 5, "thickness_mm": 1, "density": 0.00785, "weight": 0.0055,
+            "width_mm": 5, "thickness_mm": 1, "density": 0.00785, "weight": 0.00555,
             "manual_amount": 123.45,
         }],
     )[0]
@@ -137,7 +139,7 @@ with TestClient(app) as client:
         [{"order_no": first_no, "product_quantity": 10, "unit_price": 0.2, "color_count": "3"}],
     )[0]
     coloring = repo.legacy.get_outsource_record(coloring_id)
-    assert coloring["color_count"] == 3 and coloring["amount"] is None
+    assert coloring["color_count"] == 3 and abs(coloring["amount"] - (10 * 0.2 * 3)) < 1e-9
 
     uv_id = repo.create_outsource_batch(
         {"process_name": "印刷/UV", "factory_name": "print-uv-factory", "outsource_date": "2026-07-15", "paid_status": 0},
@@ -162,9 +164,16 @@ with TestClient(app) as client:
         data={"csrf": token(refreshed.text)},
     )
     assert blocked.status_code == 409
+
+    # The outsource role can delete records from the list context menu but cannot edit them.
+    repo.create_user("outsource", "test-password", "outsource")
+    client.post("/login", data={"csrf": token(client.get("/login").text), "username": "outsource", "password": "test-password"})
+    outsource_page = client.get("/outsource")
+    assert f'/outsource/{coloring_id}/delete' in outsource_page.text
+    assert f'/outsource/{coloring_id}/edit' not in outsource_page.text
     deleted = client.post(
         f"/outsource/{coloring_id}/delete",
-        data={"csrf": token(refreshed.text)},
+        data={"csrf": token(outsource_page.text)},
         follow_redirects=False,
     )
     assert deleted.status_code == 303 and repo.get_outsource_record(coloring_id) is None

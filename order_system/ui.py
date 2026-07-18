@@ -3044,6 +3044,22 @@ class OutsourceFormTab(QWidget):
         order_item.setData(Qt.UserRole, record)
         product_item.setText(record.get("product_name") or "")
         order_quantity_item.setText(f"{record.get('quantity') or ''}{record.get('quantity_unit') or ''}")
+        business_quantity = safe_float(record.get("quantity")) + safe_float(record.get("spare_quantity"))
+        product_quantity_item = self.table.item(row_index, OUTSOURCE_TABLE_COLUMNS["product_quantity"])
+        outsource_spare_item = self.table.item(row_index, OUTSOURCE_TABLE_COLUMNS["spare_quantity"])
+        length_item = self.table.item(row_index, OUTSOURCE_TABLE_COLUMNS["length_mm"])
+        width_item = self.table.item(row_index, OUTSOURCE_TABLE_COLUMNS["width_mm"])
+        thickness_item = self.table.item(row_index, OUTSOURCE_TABLE_COLUMNS["thickness_mm"])
+        if product_quantity_item:
+            product_quantity_item.setText(f"{business_quantity:g}")
+        if outsource_spare_item and not outsource_spare_item.text().strip():
+            outsource_spare_item.setText("0")
+        if length_item and record.get("width_mm") not in (None, ""):
+            length_item.setText(f"{safe_float(record.get('width_mm')):g}")
+        if width_item and record.get("height_mm") not in (None, ""):
+            width_item.setText(f"{safe_float(record.get('height_mm')):g}")
+        if thickness_item and record.get("thickness_mm") not in (None, ""):
+            thickness_item.setText(f"{safe_float(record.get('thickness_mm')):g}")
         self.table.blockSignals(False)
         self._recalculate_row(row_index)
 
@@ -3059,6 +3075,7 @@ class OutsourceFormTab(QWidget):
         density_item = self.table.item(row_index, 10)
         weight_item = self.table.item(row_index, 11)
         material_unit_price_item = self.table.item(row_index, 12)
+        color_count_item = self.table.item(row_index, 13)
         plate_fee_item = self.table.item(row_index, 14)
         amount_item = self.table.item(row_index, 19)
         if not all(
@@ -3073,6 +3090,7 @@ class OutsourceFormTab(QWidget):
                 density_item,
                 weight_item,
                 material_unit_price_item,
+                color_count_item,
                 plate_fee_item,
                 amount_item,
             ]
@@ -3088,6 +3106,7 @@ class OutsourceFormTab(QWidget):
         density = safe_float(density_item.text(), 0.00785)
         weight = safe_float(weight_item.text(), 0.0055)
         material_unit_price = (length_mm + 3) * (width_mm + 3) * thickness_mm * density * weight
+        color_count = safe_float(color_count_item.text())
         plate_fee = safe_float(plate_fee_item.text())
 
         self.table.blockSignals(True)
@@ -3099,7 +3118,8 @@ class OutsourceFormTab(QWidget):
             amount = total_quantity * ((unit_price if unit_price != 0 else 0) + material_unit_price) + processing_fee
             amount_item.setText(f"{amount:.2f}")
         elif process_name == "上色":
-            amount_item.setText("")
+            amount = total_quantity * unit_price * color_count
+            amount_item.setText(f"{amount:.2f}")
         elif process_name == "印刷/UV":
             amount = total_quantity * unit_price + plate_fee
             amount_item.setText(f"{amount:.2f}")
@@ -3556,7 +3576,8 @@ class OutsourceRecordEditDialog(QDialog):
             amount = total_quantity * ((unit_price if unit_price != 0 else 0) + material_unit_price) + processing_fee
             self.amount_label.setText(f"{amount:.2f}")
         elif process_name == "上色":
-            self.amount_label.setText("")
+            color_count = safe_float(self.color_count_input.text())
+            self.amount_label.setText(f"{(total_quantity * unit_price * color_count):.2f}")
         elif process_name == "印刷/UV":
             self.amount_label.setText(f"{(total_quantity * unit_price + plate_fee):.2f}")
         else:

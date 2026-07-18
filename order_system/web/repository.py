@@ -811,7 +811,7 @@ class Repository:
                         raise ValueError(f"订单 {order_no} 必须填写颜色数量") from None
                     if color_count <= 0:
                         raise ValueError(f"订单 {order_no} 的颜色数量必须大于 0")
-                    amount = None
+                    amount = quantity * unit_price * color_count
                 elif process_name == "印刷/UV":
                     plate_fee = float(row.get("plate_fee") or 0)
                     if plate_fee < 0:
@@ -821,7 +821,7 @@ class Repository:
                     amount = quantity * unit_price
 
                 manual_amount = row.get("manual_amount")
-                if manual_amount is not None:
+                if manual_amount is not None and process_name != "上色":
                     manual_amount = float(manual_amount)
                     if manual_amount < 0:
                         raise ValueError(f"Order {order_no} amount cannot be negative")
@@ -865,7 +865,8 @@ class Repository:
         keyword = keyword.strip()
         with self.connect() as conn:
             rows = conn.execute(
-                """SELECT id, order_no, product_name, quantity, quantity_unit
+                """SELECT id, order_no, product_name, quantity, spare_quantity, quantity_unit,
+                          width_mm, height_mm, thickness_mm
                    FROM orders WHERE (? = '' OR order_no LIKE ?)
                    ORDER BY id DESC LIMIT 50""",
                 (keyword, f"%{keyword}%"),

@@ -246,6 +246,17 @@ if (outsourceBatch) {
     value: option.value,
     label: option.textContent,
   }));
+  const ordersDataElement = outsourceBatch.querySelector("[data-outsource-orders-json]");
+  const ordersByNo = new Map();
+  if (ordersDataElement) {
+    try {
+      JSON.parse(ordersDataElement.textContent || "[]").forEach(order => {
+        ordersByNo.set(String(order.order_no || "").trim(), order);
+      });
+    } catch (error) {
+      console.warn("Failed to parse order autofill data", error);
+    }
+  }
 
   const numberValue = (row, name) => Number(row.querySelector(`[name="${name}"]`)?.value || 0);
   const cleanNumber = (value, digits = 6) => Number(value.toFixed(digits)).toString();
@@ -273,13 +284,15 @@ if (outsourceBatch) {
       materialOutput.textContent = "-";
     }
 
-    if (process === "印刷/UV") {
+    if (process === "上色") {
+      amount = quantity * unitPrice * numberValue(row, "color_count");
+    } else if (process === "印刷/UV") {
       amount += numberValue(row, "plate_fee");
     }
     if (!amountInput) return;
-    if (process === "上色" || !process) {
+    if (!process) {
       amountInput.value = "";
-      amountInput.placeholder = "手动填写";
+      amountInput.placeholder = "自动计算";
     } else {
       amountInput.value = amount.toFixed(2);
       amountInput.placeholder = "自动计算，可修改";
@@ -320,7 +333,7 @@ if (outsourceBatch) {
     if (process === "冲压") {
       processHelp.textContent = "材料单价 =（长+3）×（宽+3）×厚度×密度×重量；金额 = 总数量×（加工单价+材料单价）+加工费。";
     } else if (process === "上色") {
-      processHelp.textContent = "请逐单填写颜色数量；金额暂留空。";
+      processHelp.textContent = "金额 =（产品数量 + 备品数量）× 加工单价 × 颜色数量。";
     } else if (process === "印刷/UV") {
       processHelp.textContent = "总金额 =（产品数量 + 备品数量）× 单价 + 版费。";
     } else if (process) {
@@ -339,10 +352,37 @@ if (outsourceBatch) {
 
   outsourceBatch.querySelector("[data-add-outsource-row]").addEventListener("click", () => addOutsourceRow());
   processSelect.addEventListener("change", updateProcessUI);
+  function fillOrderRow(row) {
+    const input = row.querySelector("[name=order_no]");
+    const orderNo = input?.value.trim();
+    const order = ordersByNo.get(orderNo);
+    if (!order) return;
+    const businessQuantity = Number(order.quantity || 0);
+    const businessSpare = Number(order.spare_quantity || 0);
+    const productQuantity = row.querySelector("[name=product_quantity]");
+    const outsourceSpare = row.querySelector("[name=spare_quantity]");
+    if (productQuantity) productQuantity.value = cleanNumber(businessQuantity + businessSpare);
+    if (outsourceSpare && !outsourceSpare.value) outsourceSpare.value = "0";
+    const lengthInput = row.querySelector("[name=length_mm]");
+    const widthInput = row.querySelector("[name=width_mm]");
+    const thicknessInput = row.querySelector("[name=thickness_mm]");
+    if (lengthInput && order.width_mm) lengthInput.value = cleanNumber(Number(order.width_mm));
+    if (widthInput && order.height_mm) widthInput.value = cleanNumber(Number(order.height_mm));
+    if (thicknessInput && order.thickness_mm) thicknessInput.value = cleanNumber(Number(order.thickness_mm));
+    recalculateRow(row);
+  }
+
   outsourceBatch.addEventListener("input", event => {
     if (event.target.matches("[data-manual-amount]")) return;
     const row = event.target.closest("tr");
-    if (row) recalculateRow(row);
+    if (!row) return;
+    if (event.target.matches("[name=order_no]")) fillOrderRow(row);
+    else recalculateRow(row);
+  });
+  outsourceBatch.addEventListener("change", event => {
+    if (!event.target.matches("[name=order_no]")) return;
+    const row = event.target.closest("tr");
+    if (row) fillOrderRow(row);
   });
   outsourceBatch.addEventListener("click", event => {
     const button = event.target.closest("[data-remove-outsource-row]");
@@ -361,6 +401,7 @@ if (outsourceBatch) {
     if (event.key !== "Enter" || !event.target.matches("[data-scan-order]")) return;
     event.preventDefault();
     if (!event.target.value.trim()) return;
+    fillOrderRow(event.target.closest("tr"));
     const next = event.target.closest("tr").nextElementSibling;
     if (next) next.querySelector("[data-scan-order]").focus();
     else addOutsourceRow(true);
