@@ -372,16 +372,18 @@ class Repository:
         where = "WHERE (? = '' OR order_no LIKE ? OR customer_name LIKE ? OR product_name LIKE ? OR salesman LIKE ? OR bi_no LIKE ? OR production_no LIKE ?)"
         like = f"%{keyword}%"
         args: list[Any] = [keyword, like, like, like, like, like, like]
+        order_by = "id DESC"
         if salesman:
             where += " AND salesman = ?"
             args.append(salesman)
+            order_by = "CASE WHEN delivery_date IS NULL OR TRIM(delivery_date) = '' THEN 1 ELSE 0 END, delivery_date DESC, id DESC"
         with self.connect() as conn:
             total = int(conn.execute(f"SELECT COUNT(*) FROM orders {where}", args).fetchone()[0])
             rows = conn.execute(
                 f"""SELECT id, order_no, customer_code, customer_name, product_name,
                            order_type, salesman, bi_no, production_no, quantity, spare_quantity, quantity_unit, order_date,
                            delivery_date, paid_status, shipped_status
-                    FROM orders {where} ORDER BY id DESC LIMIT ? OFFSET ?""",
+                    FROM orders {where} ORDER BY {order_by} LIMIT ? OFFSET ?""",
                 (*args, page_size, offset),
             ).fetchall()
         return {"rows": [dict(row) for row in rows], "total": total, "page": page,

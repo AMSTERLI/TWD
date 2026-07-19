@@ -38,7 +38,7 @@ def logout(client: TestClient) -> None:
     client.post("/logout", data={"csrf": csrf(page.text)}, follow_redirects=False)
 
 
-def create_payload(order_no: str, salesman: str, product_name: str) -> dict[str, object]:
+def create_payload(order_no: str, salesman: str, product_name: str, delivery_date: str = "2026-07-20") -> dict[str, object]:
     payload = {column: None for column in ORDER_COLUMNS}
     payload.update({
         "order_type": "新订单",
@@ -46,6 +46,7 @@ def create_payload(order_no: str, salesman: str, product_name: str) -> dict[str,
         "order_no": order_no,
         "product_name": product_name,
         "order_date": "2026-07-17",
+        "delivery_date": delivery_date,
         "quantity": 1,
         "spare_quantity": 5,
         "quantity_unit": "个",
@@ -71,8 +72,9 @@ with TestClient(app) as client:
     repo.create_user("admin", "admin-pass-123", "admin", display_name="管理员")
     repo.create_user("yangjuan", "sales-pass-123", "sales", display_name="杨娟")
     repo.create_user("liaochunfeng", "sales-pass-456", "sales", display_name="廖春凤")
-    own_id, own_no = repo.create_order(create_payload("TWD1-260717901", "杨娟", "杨娟订单"))
-    other_id, other_no = repo.create_order(create_payload("TWD1-260717902", "廖春凤", "廖春凤订单"))
+    own_id, own_no = repo.create_order(create_payload("TWD1-260717901", "杨娟", "杨娟订单", "2026-07-20"))
+    other_id, other_no = repo.create_order(create_payload("TWD1-260717902", "廖春凤", "廖春凤订单", "2026-07-25"))
+    later_id, later_no = repo.create_order(create_payload("TWD1-260717903", "杨娟", "杨娟晚交期订单", "2026-08-20"))
 
     login(client, "yangjuan", "sales-pass-123")
     new_page = client.get("/orders/new")
@@ -82,7 +84,8 @@ with TestClient(app) as client:
 
     orders = client.get("/orders")
     assert orders.status_code == 200
-    assert own_no in orders.text
+    assert own_no in orders.text and later_no in orders.text
+    assert orders.text.index(later_no) < orders.text.index(own_no)
     assert other_no not in orders.text
     assert "PO号" in orders.text and "PO-901" in orders.text
     assert "杨娟订单" not in orders.text and "业务员" not in orders.text
