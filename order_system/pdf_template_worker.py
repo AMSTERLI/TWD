@@ -96,7 +96,9 @@ def _draw_header(pdf: canvas.Canvas, record: dict) -> None:
     _draw_order_qr_code(pdf, record.get("order_no") or "")
 
     pdf.setFont(FONT_NAME, 12)
-    _draw_box_text(pdf, record.get("order_type") or "", 108, 66, 76, 20)
+    order_type = record.get("order_type") or ""
+    order_type_color = RED if str(order_type).startswith("补数单") else BLACK
+    _draw_box_text(pdf, order_type, 108, 66, 76, 20, color=order_type_color)
     _draw_box_text(pdf, record.get("salesman") or "", 271, 66, 76, 20)
     _draw_box_text(pdf, record.get("product_name") or "", 434, 66, 77, 20)
 
@@ -216,12 +218,13 @@ def _draw_box_text(
     width: float,
     height: float,
     top_offset: float | None = None,
+    color: tuple[float, float, float] = BLACK,
 ) -> None:
     clean = str(text or "").strip()
     if not clean:
         return
     pdf.setFont(FONT_NAME, 12)
-    pdf.setFillColorRGB(*BLACK)
+    pdf.setFillColorRGB(*color)
     if top_offset is None:
         y = PAGE_HEIGHT - top - (height / 2) - 4
     else:

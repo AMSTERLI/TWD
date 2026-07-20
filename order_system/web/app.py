@@ -441,12 +441,21 @@ def orders(request: Request, q: str = "", page: int = 1):
         return denied
     salesman = user_display_name(user) if user["role"] == "sales" else None
     result = repo.list_orders(q, page, salesman=salesman)
-    return templates.TemplateResponse(request, "orders.html", page_context(request, result=result, q=q))
+    return templates.TemplateResponse(request, "orders.html", page_context(request, result=result, q=q, list_mode="orders"))
+
+
+@app.get("/production", response_class=HTMLResponse)
+def production_orders(request: Request, q: str = "", page: int = 1):
+    _, denied = require_page(request, {"production"})
+    if denied:
+        return denied
+    result = repo.list_orders(q, page)
+    return templates.TemplateResponse(request, "orders.html", page_context(request, result=result, q=q, list_mode="production"))
 
 
 @app.get("/messages", response_class=HTMLResponse)
 def messages(request: Request, status: str = ""):
-    user, denied = require_page(request, {"admin", "sales", "finance"})
+    user, denied = require_page(request, {"admin", "sales", "finance", "production"})
     if denied:
         return denied
     default_status = "pending" if user["role"] == "admin" and status == "" else status
@@ -709,6 +718,38 @@ async def request_order_edit(request: Request, order_id: int):
             status_code=400,
         )
     return RedirectResponse("/finance/receivables" if user["role"] == "finance" else "/orders", status_code=303)
+
+
+@app.post("/orders/{order_id}/replenishment-request")
+async def request_order_replenishment(request: Request, order_id: int):
+    user, denied = require_page(request, {"production"})
+    if denied:
+        return denied
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    try:
+        request_id = await run_in_threadpool(
+            repo.create_replenishment_request,
+            order_id,
+            user,
+            as_int(form.get("quantity")),
+        )
+        await run_in_threadpool(
+            repo.audit,
+            user,
+            "order.replenishment_request.create",
+            f"{request_id}:{order_id}",
+            client_ip(request),
+        )
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "error.html",
+            page_context(request, status=400, message=str(exc)),
+            status_code=400,
+        )
+    return RedirectResponse("/production", status_code=303)
 
 @app.post("/orders/{order_id}/ship")
 async def ship_order(request: Request, order_id: int):

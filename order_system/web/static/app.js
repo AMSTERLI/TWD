@@ -512,7 +512,7 @@ if (contextRows.length) {
   const menu = document.createElement("div");
   menu.className = "admin-context-menu";
   menu.hidden = true;
-  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-delete>删除</button>';
+  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-replenish>申请补数</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-delete>删除</button>';
   document.body.appendChild(menu);
   let activeRow = null;
 
@@ -524,6 +524,7 @@ if (contextRows.length) {
   function refreshContextButtons() {
     menu.querySelector("[data-context-edit]").hidden = !activeRow?.dataset.editUrl;
     menu.querySelector("[data-context-request]").hidden = !activeRow?.dataset.requestEditUrl;
+    menu.querySelector("[data-context-replenish]").hidden = !activeRow?.dataset.replenishmentUrl;
     const shipButton = menu.querySelector("[data-context-ship]");
     shipButton.hidden = !activeRow?.dataset.shipUrl;
     if (!shipButton.hidden) shipButton.textContent = activeRow.dataset.shipped === "1" ? "撤回出货" : "出货";
@@ -560,6 +561,30 @@ if (contextRows.length) {
     reasonInput.name = "reason";
     reasonInput.value = reason.trim();
     form.append(csrf, reasonInput);
+    document.body.appendChild(form);
+    form.submit();
+  });
+  menu.querySelector("[data-context-replenish]").addEventListener("click", () => {
+    if (!activeRow?.dataset.replenishmentUrl) return;
+    const rawQuantity = window.prompt(`请输入${activeRow.dataset.recordLabel || "该订单"}的补数数量`);
+    if (rawQuantity === null) return;
+    const quantity = rawQuantity.trim();
+    if (!/^[1-9]\d*$/.test(quantity)) {
+      window.alert("补数数量必须是大于 0 的整数");
+      return;
+    }
+    const form = document.createElement("form");
+    form.method = "post";
+    form.action = activeRow.dataset.replenishmentUrl;
+    const csrf = document.createElement("input");
+    csrf.type = "hidden";
+    csrf.name = "csrf";
+    csrf.value = activeRow.dataset.csrf || "";
+    const quantityInput = document.createElement("input");
+    quantityInput.type = "hidden";
+    quantityInput.name = "quantity";
+    quantityInput.value = quantity;
+    form.append(csrf, quantityInput);
     document.body.appendChild(form);
     form.submit();
   });

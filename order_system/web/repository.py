@@ -76,12 +76,16 @@ class Repository:
                     requester_id INTEGER NOT NULL,
                     requester_name TEXT NOT NULL,
                     reason TEXT NOT NULL,
+                    request_type TEXT NOT NULL DEFAULT 'edit',
+                    supplement_quantity INTEGER,
                     status TEXT NOT NULL DEFAULT 'pending',
                     reviewer_id INTEGER,
                     reviewer_name TEXT,
                     review_note TEXT,
                     reviewed_at TEXT,
                     consumed_at TEXT,
+                    created_order_id INTEGER,
+                    created_order_no TEXT,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
                 );                CREATE TABLE IF NOT EXISTS audit_log (
@@ -107,6 +111,15 @@ class Repository:
             existing_user_columns = {row[1] for row in conn.execute("PRAGMA table_info(web_users)").fetchall()}
             if "display_name" not in existing_user_columns:
                 conn.execute("ALTER TABLE web_users ADD COLUMN display_name TEXT")
+            existing_request_columns = {row[1] for row in conn.execute("PRAGMA table_info(order_edit_requests)").fetchall()}
+            if "request_type" not in existing_request_columns:
+                conn.execute("ALTER TABLE order_edit_requests ADD COLUMN request_type TEXT NOT NULL DEFAULT 'edit'")
+            if "supplement_quantity" not in existing_request_columns:
+                conn.execute("ALTER TABLE order_edit_requests ADD COLUMN supplement_quantity INTEGER")
+            if "created_order_id" not in existing_request_columns:
+                conn.execute("ALTER TABLE order_edit_requests ADD COLUMN created_order_id INTEGER")
+            if "created_order_no" not in existing_request_columns:
+                conn.execute("ALTER TABLE order_edit_requests ADD COLUMN created_order_no TEXT")
             conn.execute(
                 "UPDATE web_users SET display_name = username "
                 "WHERE display_name IS NULL OR TRIM(display_name) = ''"
@@ -162,7 +175,7 @@ class Repository:
         display_name = display_name.strip() or username
         if not username or len(password) < 10:
             raise ValueError("用户名不能为空，密码至少需要 10 位")
-        if role not in {"admin", "sales", "finance", "outsource"}:
+        if role not in {"admin", "sales", "finance", "outsource", "production"}:
             raise ValueError("无效角色")
         with self.connect(write=True) as conn:
             cursor = conn.execute(
@@ -284,6 +297,7 @@ class Repository:
             existing = conn.execute(
                 """SELECT id FROM order_edit_requests
                    WHERE order_id = ? AND requester_id = ? AND status = 'pending'
+                     AND request_type = 'edit'
                    LIMIT 1""",
                 (order_id, int(user.get("id") or 0)),
             ).fetchone()
@@ -291,11 +305,73 @@ class Repository:
                 raise ValueError("这张订单已有待审批的修改申请")
             cursor = conn.execute(
                 """INSERT INTO order_edit_requests
-                   (order_id, order_no, requester_id, requester_name, reason)
-                   VALUES (?, ?, ?, ?, ?)""",
+                   (order_id, order_no, requester_id, requester_name, reason, request_type)
+                   VALUES (?, ?, ?, ?, ?, 'edit')""",
                 (order_id, str(order["order_no"]), int(user.get("id") or 0), str(user.get("display_name") or user.get("username") or ""), reason),
             )
             return int(cursor.lastrowid)
+
+    def create_replenishment_request(self, order_id: int, user: dict[str, Any], quantity: int) -> int:
+        quantity = int(quantity or 0)
+        if quantity <= 0:
+            raise ValueError("补数数量必须大于 0")
+        with self.connect(write=True) as conn:
+            order = conn.execute(
+                "SELECT id, order_no FROM orders WHERE id = ?", (order_id,)
+            ).fetchone()
+            if not order:
+                raise ValueError("订单不存在")
+            existing = conn.execute(
+                """SELECT id FROM order_edit_requests
+                   WHERE order_id = ? AND requester_id = ? AND status = 'pending'
+                     AND request_type = 'replenishment'
+                   LIMIT 1""",
+                (order_id, int(user.get("id") or 0)),
+            ).fetchone()
+            if existing:
+                raise ValueError("这张订单已有待审批的补数申请")
+            requester_name = str(user.get("display_name") or user.get("username") or "")
+            cursor = conn.execute(
+                """INSERT INTO order_edit_requests
+                   (order_id, order_no, requester_id, requester_name, reason, request_type, supplement_quantity)
+                   VALUES (?, ?, ?, ?, ?, 'replenishment', ?)""",
+                (
+                    order_id,
+                    str(order["order_no"]),
+                    int(user.get("id") or 0),
+                    requester_name,
+                    f"补数数量：{quantity}",
+                    quantity,
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def _create_replenishment_order(self, conn: sqlite3.Connection, request_row: sqlite3.Row) -> tuple[int, str]:
+        source = conn.execute("SELECT * FROM orders WHERE id = ?", (int(request_row["order_id"]),)).fetchone()
+        if not source:
+            raise ValueError("订单不存在")
+        quantity = int(request_row["supplement_quantity"] or 0)
+        if quantity <= 0:
+            raise ValueError("补数数量必须大于 0")
+        payload = {column: source[column] for column in ORDER_COLUMNS}
+        order_date = str(payload.get("order_date") or datetime.now().date().isoformat())
+        prefix_no = int(payload.get("customer_code") or payload.get("order_prefix_no") or 1)
+        payload["order_no"] = self._next_order_no(conn, order_date, prefix_no)
+        payload["order_type"] = f"补数单（{request_row['requester_name']}）"
+        payload["quantity"] = quantity
+        payload["spare_quantity"] = 0
+        payload["paid_status"] = 0
+        payload["shipped_status"] = 0
+        payload["invoice_status"] = 0
+        payload["order_prefix_no"] = prefix_no
+        payload["customer_code"] = prefix_no
+        values = [payload.get(column) for column in ORDER_COLUMNS]
+        placeholders = ", ".join("?" for _ in ORDER_COLUMNS)
+        cursor = conn.execute(
+            f"INSERT INTO orders ({', '.join(ORDER_COLUMNS)}) VALUES ({placeholders})",
+            values,
+        )
+        return int(cursor.lastrowid), str(payload["order_no"])
 
     def review_edit_request(
         self,
@@ -313,14 +389,26 @@ class Repository:
                 raise ValueError("申请不存在")
             if str(row["status"]) != "pending":
                 raise ValueError("该申请已处理")
+            created_order_id = None
+            created_order_no = None
+            if approved and str(row["request_type"] or "edit") == "replenishment":
+                created_order_id, created_order_no = self._create_replenishment_order(conn, row)
             conn.execute(
                 """UPDATE order_edit_requests
                    SET status = ?, reviewer_id = ?, reviewer_name = ?, review_note = ?,
-                       reviewed_at = CURRENT_TIMESTAMP
+                       reviewed_at = CURRENT_TIMESTAMP, created_order_id = ?, created_order_no = ?
                    WHERE id = ?""",
-                (status, int(admin.get("id") or 0), str(admin.get("display_name") or admin.get("username") or ""), note.strip()[:1000], request_id),
+                (
+                    status,
+                    int(admin.get("id") or 0),
+                    str(admin.get("display_name") or admin.get("username") or ""),
+                    note.strip()[:1000],
+                    created_order_id,
+                    created_order_no,
+                    request_id,
+                ),
             )
-            return str(row["order_no"])
+            return created_order_no or str(row["order_no"])
 
     def edit_request_for_edit(self, request_id: int, order_id: int, user_id: int) -> dict[str, Any] | None:
         with self.connect() as conn:
@@ -328,6 +416,7 @@ class Repository:
                 """SELECT * FROM order_edit_requests
                    WHERE id = ? AND order_id = ? AND requester_id = ?
                      AND status = 'approved' AND consumed_at IS NULL
+                     AND request_type = 'edit'
                    LIMIT 1""",
                 (request_id, order_id, user_id),
             ).fetchone()
@@ -338,6 +427,7 @@ class Repository:
                 """SELECT * FROM order_edit_requests
                    WHERE order_id = ? AND requester_id = ? AND status = 'approved'
                      AND consumed_at IS NULL
+                     AND request_type = 'edit'
                    ORDER BY reviewed_at DESC, id DESC LIMIT 1""",
                 (order_id, user_id),
             ).fetchone()
@@ -347,7 +437,8 @@ class Repository:
         with self.connect() as conn:
             rows = conn.execute(
                 """SELECT DISTINCT order_id FROM order_edit_requests
-                   WHERE requester_id = ? AND status = 'approved' AND consumed_at IS NULL""",
+                   WHERE requester_id = ? AND status = 'approved' AND consumed_at IS NULL
+                     AND request_type = 'edit'""",
                 (user_id,),
             ).fetchall()
         return {int(row[0]) for row in rows}

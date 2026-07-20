@@ -12,7 +12,7 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     create = sub.add_parser("create-user", help="创建登录账号")
     create.add_argument("username")
-    create.add_argument("--role", choices=["admin", "sales", "finance", "outsource"], default="sales")
+    create.add_argument("--role", choices=["admin", "sales", "finance", "outsource", "production"], default="sales")
     create.add_argument("--password", help="建议省略，由终端安全输入")
     reset = sub.add_parser("reset-password", help="重置账号密码")
     reset.add_argument("username")

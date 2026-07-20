@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}TWD 订单系统{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}?v=20260718-orders-v2">
-  <script defer src="{{ url_for('static', path='app.js') }}?v=20260718-orders-v2"></script>
+  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}?v=20260720-production-v1">
+  <script defer src="{{ url_for('static', path='app.js') }}?v=20260720-production-v1"></script>
 </head>
 <body>
 {% if user %}
@@ -16,9 +16,10 @@
       <a href="/orders">订单</a>
       {% if user.role in ['admin', 'sales'] %}<a href="/orders/new">业务下单</a>{% endif %}
       {% if user.role in ['admin', 'finance'] %}<a href="/finance">财务</a>{% endif %}
+      {% if user.role in ['admin', 'production'] %}<a href="/production">生管</a>{% endif %}
       {% if user.role == 'outsource' %}<a href="/finance/payables">付款</a>{% endif %}
       {% if user.role in ['admin', 'outsource'] %}<a href="/outsource">外发</a>{% endif %}
-      {% if user.role in ['admin', 'sales', 'finance'] %}<a href="/messages">消息{% if user.role == 'admin' and pending_message_count %}<span class="nav-badge">{{ pending_message_count }}</span>{% endif %}</a>{% endif %}
+      {% if user.role in ['admin', 'sales', 'finance', 'production'] %}<a href="/messages">消息{% if user.role == 'admin' and pending_message_count %}<span class="nav-badge">{{ pending_message_count }}</span>{% endif %}</a>{% endif %}
     </nav>
     <div class="userbox"><span>{{ user.username }}</span><span class="role">{{ user.role }}</span>
       <form action="/logout" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link-button">退出</button></form>
