@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -86,6 +87,7 @@ class Repository:
                     consumed_at TEXT,
                     created_order_id INTEGER,
                     created_order_no TEXT,
+                    proposed_payload_json TEXT,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
                 );                CREATE TABLE IF NOT EXISTS audit_log (
@@ -120,6 +122,8 @@ class Repository:
                 conn.execute("ALTER TABLE order_edit_requests ADD COLUMN created_order_id INTEGER")
             if "created_order_no" not in existing_request_columns:
                 conn.execute("ALTER TABLE order_edit_requests ADD COLUMN created_order_no TEXT")
+            if "proposed_payload_json" not in existing_request_columns:
+                conn.execute("ALTER TABLE order_edit_requests ADD COLUMN proposed_payload_json TEXT")
             conn.execute(
                 "UPDATE web_users SET display_name = username "
                 "WHERE display_name IS NULL OR TRIM(display_name) = ''"
@@ -275,6 +279,30 @@ class Repository:
                 args,
             ).fetchall()
         return [dict(row) for row in rows]
+    def _check_edit_request_allowed(self, conn: sqlite3.Connection, order_id: int, user: dict[str, Any]) -> sqlite3.Row:
+        order = conn.execute(
+            "SELECT id, order_no, salesman FROM orders WHERE id = ?", (order_id,)
+        ).fetchone()
+        if not order:
+            raise ValueError("订单不存在")
+        if str(user.get("role") or "") == "sales":
+            user_names = {
+                str(user.get("username") or "").strip(),
+                str(user.get("display_name") or "").strip(),
+            }
+            if str(order["salesman"] or "").strip() not in user_names:
+                raise ValueError("只能申请修改自己的订单")
+        return order
+
+    def _pending_edit_request_exists(self, conn: sqlite3.Connection, order_id: int, user_id: int) -> bool:
+        return bool(conn.execute(
+            """SELECT id FROM order_edit_requests
+               WHERE order_id = ? AND requester_id = ? AND status = 'pending'
+                 AND request_type = 'edit'
+               LIMIT 1""",
+            (order_id, int(user_id or 0)),
+        ).fetchone())
+
     def create_edit_request(self, order_id: int, user: dict[str, Any], reason: str) -> int:
         reason = reason.strip()
         if not reason:
@@ -282,32 +310,45 @@ class Repository:
         if len(reason) > 1000:
             raise ValueError("修改原因不能超过 1000 个字")
         with self.connect(write=True) as conn:
-            order = conn.execute(
-                "SELECT id, order_no, salesman FROM orders WHERE id = ?", (order_id,)
-            ).fetchone()
-            if not order:
-                raise ValueError("订单不存在")
-            if str(user.get("role") or "") == "sales":
-                user_names = {
-                    str(user.get("username") or "").strip(),
-                    str(user.get("display_name") or "").strip(),
-                }
-                if str(order["salesman"] or "").strip() not in user_names:
-                    raise ValueError("只能申请修改自己的订单")
-            existing = conn.execute(
-                """SELECT id FROM order_edit_requests
-                   WHERE order_id = ? AND requester_id = ? AND status = 'pending'
-                     AND request_type = 'edit'
-                   LIMIT 1""",
-                (order_id, int(user.get("id") or 0)),
-            ).fetchone()
-            if existing:
+            order = self._check_edit_request_allowed(conn, order_id, user)
+            if self._pending_edit_request_exists(conn, order_id, int(user.get("id") or 0)):
                 raise ValueError("这张订单已有待审批的修改申请")
             cursor = conn.execute(
                 """INSERT INTO order_edit_requests
                    (order_id, order_no, requester_id, requester_name, reason, request_type)
                    VALUES (?, ?, ?, ?, ?, 'edit')""",
                 (order_id, str(order["order_no"]), int(user.get("id") or 0), str(user.get("display_name") or user.get("username") or ""), reason),
+            )
+            return int(cursor.lastrowid)
+
+    def create_proposed_edit_request(
+        self,
+        order_id: int,
+        user: dict[str, Any],
+        payload: dict[str, Any],
+        change_summary: str,
+    ) -> int:
+        change_summary = str(change_summary or "").strip()
+        if not change_summary:
+            raise ValueError("没有检测到修改内容")
+        if len(change_summary) > 1000:
+            change_summary = change_summary[:997] + "..."
+        with self.connect(write=True) as conn:
+            order = self._check_edit_request_allowed(conn, order_id, user)
+            if self._pending_edit_request_exists(conn, order_id, int(user.get("id") or 0)):
+                raise ValueError("这张订单已有待审批的修改申请")
+            cursor = conn.execute(
+                """INSERT INTO order_edit_requests
+                   (order_id, order_no, requester_id, requester_name, reason, request_type, proposed_payload_json)
+                   VALUES (?, ?, ?, ?, ?, 'edit', ?)""",
+                (
+                    order_id,
+                    str(order["order_no"]),
+                    int(user.get("id") or 0),
+                    str(user.get("display_name") or user.get("username") or ""),
+                    change_summary,
+                    json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                ),
             )
             return int(cursor.lastrowid)
 
@@ -395,8 +436,13 @@ class Repository:
                 raise ValueError("该申请已处理")
             created_order_id = None
             created_order_no = None
-            if approved and str(row["request_type"] or "edit") == "replenishment":
+            request_type = str(row["request_type"] or "edit")
+            if approved and request_type == "replenishment":
                 created_order_id, created_order_no = self._create_replenishment_order(conn, row)
+            elif approved and request_type == "edit" and row["proposed_payload_json"]:
+                payload = json.loads(str(row["proposed_payload_json"]))
+                if not self._update_order_with_payload(conn, int(row["order_id"]), payload):
+                    raise ValueError("订单不存在")
             conn.execute(
                 """UPDATE order_edit_requests
                    SET status = ?, reviewer_id = ?, reviewer_name = ?, review_note = ?,
@@ -559,6 +605,21 @@ class Repository:
                 (*values, order_id),
             )
             return cursor.rowcount == 1
+
+    def _update_order_with_payload(self, conn: sqlite3.Connection, order_id: int, payload: dict[str, Any]) -> bool:
+        prefix_no = int(payload.get("customer_code") or payload.get("order_prefix_no") or 0)
+        customer = self._customer_for_code(conn, prefix_no)
+        payload = dict(payload)
+        payload["order_prefix_no"] = prefix_no
+        payload["customer_code"] = prefix_no
+        payload["customer_name"] = str(customer["name"])
+        assignments = ", ".join(f"{column} = ?" for column in ORDER_COLUMNS)
+        values = [payload.get(column) for column in ORDER_COLUMNS]
+        cursor = conn.execute(
+            f"UPDATE orders SET {assignments} WHERE id = ?",
+            (*values, order_id),
+        )
+        return cursor.rowcount == 1
 
     def delete_order(self, order_id: int) -> str:
         with self.connect(write=True) as conn:

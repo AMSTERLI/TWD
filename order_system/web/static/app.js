@@ -546,23 +546,7 @@ if (contextRows.length) {
     if (activeRow?.dataset.editUrl) window.location.href = activeRow.dataset.editUrl;
   });
   menu.querySelector("[data-context-request]").addEventListener("click", () => {
-    if (!activeRow?.dataset.requestEditUrl) return;
-    const reason = window.prompt(`请输入${activeRow.dataset.recordLabel || "该订单"}的修改原因`);
-    if (!reason || !reason.trim()) return;
-    const form = document.createElement("form");
-    form.method = "post";
-    form.action = activeRow.dataset.requestEditUrl;
-    const csrf = document.createElement("input");
-    csrf.type = "hidden";
-    csrf.name = "csrf";
-    csrf.value = activeRow.dataset.csrf || "";
-    const reasonInput = document.createElement("input");
-    reasonInput.type = "hidden";
-    reasonInput.name = "reason";
-    reasonInput.value = reason.trim();
-    form.append(csrf, reasonInput);
-    document.body.appendChild(form);
-    form.submit();
+    if (activeRow?.dataset.requestEditUrl) window.location.href = activeRow.dataset.requestEditUrl;
   });
   menu.querySelector("[data-context-replenish]").addEventListener("click", () => {
     if (!activeRow?.dataset.replenishmentUrl) return;

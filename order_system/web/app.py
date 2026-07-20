@@ -25,7 +25,7 @@ from order_system.order_import import OrderImportError, analyze_order_document
 
 from .catalogs import import_catalogs
 from .pdf import merge_order_pdfs, render_order_pdf
-from .repository import Repository
+from .repository import ORDER_COLUMNS, Repository
 from .security import csrf_token, valid_csrf
 from .settings import (
     DB_PATH, IMAGES_DIR, MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES, SESSION_HTTPS_ONLY,
@@ -317,6 +317,93 @@ async def order_payload(form: Any, *, save_uploaded_images: bool = True) -> dict
         "global_note_red": 1,
         "image_paths_json": dumps_json(image_paths),
     }
+
+
+JSON_CHANGE_FIELDS = {
+    "materials_json", "plating_json", "accessories_json", "polishing_json",
+    "coloring_json", "resin_json", "packaging_json", "image_paths_json",
+}
+ORDER_CHANGE_LABELS = {
+    "order_type": "订单类型",
+    "salesman": "业务员",
+    "order_no": "订单编号",
+    "product_name": "品名",
+    "order_date": "下单日期",
+    "delivery_date": "交货日期",
+    "quantity": "数量",
+    "spare_quantity": "备品数量",
+    "quantity_unit": "单位",
+    "unit_price": "单价",
+    "extra_fee": "附加费",
+    "invoice_status": "开票状态",
+    "order_prefix_no": "客户编码",
+    "customer_code": "客户编码",
+    "production_no": "生产制号",
+    "bi_no": "PO号",
+    "width_mm": "宽",
+    "height_mm": "高",
+    "thickness_mm": "厚",
+    "size_as_sample": "尺寸如样",
+    "materials_json": "制作工艺",
+    "material_note": "制作工艺备注",
+    "plating_json": "电镀工艺",
+    "plating_note": "电镀备注",
+    "accessories_json": "焊针",
+    "accessories_note": "焊针备注",
+    "polishing_json": "抛光",
+    "polishing_note": "抛光备注",
+    "coloring_json": "上色",
+    "coloring_note": "上色备注",
+    "resin_json": "树脂",
+    "resin_note": "树脂备注",
+    "packaging_json": "包装",
+    "packaging_note": "包装备注",
+    "back_mode": "背面方式",
+    "back_mode_note": "背面备注",
+    "global_note": "订单总备注",
+    "image_paths_json": "产品图片",
+}
+SUMMARY_SKIP_FIELDS = {
+    "paid_status", "shipped_status", "customer_name", "coloring_text", "packaging_rule",
+    "material_note_red", "plating_note_red", "accessories_note_red", "polishing_note_red",
+    "coloring_note_red", "resin_note_red", "packaging_note_red", "back_mode_note_red", "global_note_red",
+}
+
+
+def _summary_json_value(value: Any) -> str:
+    if isinstance(value, list):
+        items = [str(item) for item in value if str(item).strip()]
+    else:
+        try:
+            loaded = loads_json(str(value or "[]"))
+            items = [str(item) for item in loaded if str(item).strip()]
+        except Exception:
+            items = []
+    return "、".join(items) if items else "空"
+
+
+def _summary_scalar_value(key: str, value: Any) -> str:
+    if key in JSON_CHANGE_FIELDS:
+        return _summary_json_value(value)
+    if key in {"size_as_sample", "invoice_status"}:
+        return "是" if int(value or 0) else "否"
+    if value is None or value == "":
+        return "空"
+    return str(value)
+
+
+def summarize_order_changes(existing: dict[str, Any], proposed: dict[str, Any]) -> str:
+    changes: list[str] = []
+    for key in ORDER_COLUMNS:
+        if key in SUMMARY_SKIP_FIELDS:
+            continue
+        old_value = _summary_scalar_value(key, existing.get(key))
+        new_value = _summary_scalar_value(key, proposed.get(key))
+        if old_value == new_value:
+            continue
+        label = ORDER_CHANGE_LABELS.get(key, key)
+        changes.append(f"{label}从{old_value}修改为{new_value}")
+    return "，".join(changes)
 
 
 def outsource_edit_payload(form: Any) -> dict[str, Any]:
@@ -618,17 +705,10 @@ def edit_order_page(request: Request, order_id: int, request_id: int = 0):
     user, denied = require_page(request)
     if denied:
         return denied
-    edit_request = None
-    if user["role"] != "admin":
-        if user["role"] not in {"sales", "finance"}:
-            return templates.TemplateResponse(
-                request, "error.html", page_context(request, status=403, message="没有此功能的访问权限"), status_code=403
-            )
-        edit_request = repo.edit_request_for_edit(request_id, order_id, int(user["id"])) if request_id else None
-        if not edit_request:
-            return templates.TemplateResponse(
-                request, "error.html", page_context(request, status=403, message="请从消息里的修改按钮进入订单修改页面"), status_code=403
-            )
+    if user["role"] != "admin" and user["role"] not in {"sales", "finance"}:
+        return templates.TemplateResponse(
+            request, "error.html", page_context(request, status=403, message="没有此功能的访问权限"), status_code=403
+        )
     record = _editable_order(order_id)
     if not record:
         return Response(status_code=404)
@@ -638,7 +718,7 @@ def edit_order_page(request: Request, order_id: int, request_id: int = 0):
         )
     return templates.TemplateResponse(
         request, "order_edit.html",
-        page_context(request, order=record, catalogs=import_catalogs(), error="", edit_request=edit_request),
+        page_context(request, order=record, catalogs=import_catalogs(), error="", edit_request=None),
     )
 
 
@@ -648,14 +728,8 @@ async def edit_order(request: Request, order_id: int):
     if denied:
         return denied
     form = await request.form()
-    edit_request = None
-    if user["role"] != "admin":
-        if user["role"] not in {"sales", "finance"}:
-            return Response(status_code=403)
-        request_id = as_int(form.get("edit_request_id"))
-        edit_request = repo.edit_request_for_edit(request_id, order_id, int(user["id"])) if request_id else None
-        if not edit_request:
-            return Response(status_code=403)
+    if user["role"] != "admin" and user["role"] not in {"sales", "finance"}:
+        return Response(status_code=403)
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
     existing = repo.get_order(order_id)
@@ -676,21 +750,30 @@ async def edit_order(request: Request, order_id: int):
         uploaded_images = loads_json(payload.get("image_paths_json") or "[]")
         merged_images, removed_images = merge_edit_images(form, existing, uploaded_images)
         payload["image_paths_json"] = dumps_json(merged_images)
-        if not await run_in_threadpool(repo.update_order, order_id, payload):
-            return Response(status_code=404)
-        for image_name in removed_images:
-            (IMAGES_DIR / image_name).unlink(missing_ok=True)
-        if edit_request:
-            await run_in_threadpool(repo.consume_edit_request, int(edit_request["id"]))
-        await run_in_threadpool(repo.audit, user, "order.update", str(order_id), client_ip(request))
+        if user["role"] == "admin":
+            if not await run_in_threadpool(repo.update_order, order_id, payload):
+                return Response(status_code=404)
+            for image_name in removed_images:
+                (IMAGES_DIR / image_name).unlink(missing_ok=True)
+            await run_in_threadpool(repo.audit, user, "order.update", str(order_id), client_ip(request))
+            return RedirectResponse(f"/orders/{order_id}", status_code=303)
+        change_summary = summarize_order_changes(existing, payload)
+        request_id = await run_in_threadpool(repo.create_proposed_edit_request, order_id, user, payload, change_summary)
+        await run_in_threadpool(
+            repo.audit,
+            user,
+            "order.edit_request.propose",
+            f"{request_id}:{order_id}",
+            client_ip(request),
+        )
     except ValueError as exc:
         record = _editable_order(order_id)
         return templates.TemplateResponse(
             request, "order_edit.html",
-            page_context(request, order=record, catalogs=import_catalogs(), error=str(exc), edit_request=edit_request),
+            page_context(request, order=record, catalogs=import_catalogs(), error=str(exc), edit_request=None),
             status_code=422,
         )
-    return RedirectResponse(f"/orders/{order_id}", status_code=303)
+    return RedirectResponse("/messages", status_code=303)
 
 @app.post("/orders/{order_id}/edit-request")
 async def request_order_edit(request: Request, order_id: int):

@@ -89,7 +89,7 @@ with TestClient(app) as client:
     assert "产品" not in finance_page.text and "旧产品" not in finance_page.text and "新产品" not in finance_page.text
     assert "是否开票" in finance_page.text and "未开票" in finance_page.text
     assert "是否收款" in finance_page.text and "已选未收款合计 ¥" in finance_page.text
-    assert f'data-request-edit-url="/orders/1/edit-request"' in finance_page.text
+    assert f'data-request-edit-url="/orders/1/edit"' in finance_page.text
     assert "/finance/receivables/pdf" in finance_page.text
     payables_page = client.get("/finance/payables")
     assert payables_page.status_code == 200
@@ -136,30 +136,52 @@ with TestClient(app) as client:
     filtered_unpaid_after = client.get("/finance/receivables?receivable_paid_status=unpaid")
     assert old_order not in filtered_unpaid_after.text and new_order not in filtered_unpaid_after.text
 
+    finance_edit_page = client.get("/orders/1/edit")
+    assert finance_edit_page.status_code == 200
+    assert "提交订单修改申请" in finance_edit_page.text and "提交审批" in finance_edit_page.text
     edit_request = client.post(
-        "/orders/1/edit-request",
-        data={"csrf": token, "reason": "财务申请修改开票信息"},
+        "/orders/1/edit",
+        data={
+            "csrf": csrf(finance_edit_page.text),
+            "order_type": "新订单",
+            "salesman": "测试",
+            "order_no": old_order,
+            "product_name": "旧订单",
+            "order_date": "2026-07-01",
+            "delivery_date": "2026-07-30",
+            "quantity": "50",
+            "spare_quantity": "0",
+            "quantity_unit": "个",
+            "unit_price": "2.5",
+            "extra_fee": "3",
+            "order_prefix_no": "1",
+            "invoice_status": "1",
+        },
         follow_redirects=False,
     )
     assert edit_request.status_code == 303, edit_request.text
+    assert edit_request.headers["location"] == "/messages"
+    assert repo.get_order(1)["quantity"] == 10
     finance_messages = client.get("/messages")
-    assert finance_messages.status_code == 200 and "财务申请修改开票信息" in finance_messages.text
+    assert finance_messages.status_code == 200 and "数量从10修改为50" in finance_messages.text
     page = client.get("/")
     client.post("/logout", data={"csrf": csrf(page.text)})
     login(client, "admin", "admin-password")
     admin_messages = client.get("/messages")
+    assert "数量从10修改为50" in admin_messages.text
     approve = client.post(
         "/messages/1/review",
         data={"csrf": csrf(admin_messages.text), "decision": "approve", "review_note": "同意财务修改"},
         follow_redirects=False,
     )
     assert approve.status_code == 303
+    assert repo.get_order(1)["quantity"] == 50
     page = client.get("/")
     client.post("/logout", data={"csrf": csrf(page.text)})
     login(client, "finance", "finance-password")
     approved_messages = client.get("/messages?status=approved")
-    assert "同意财务修改" in approved_messages.text and f"/orders/1/edit?request_id=1" in approved_messages.text
-    assert client.get("/orders/1/edit?request_id=1").status_code == 200
+    assert "同意财务修改" in approved_messages.text and "/orders/1" in approved_messages.text
+    assert "/orders/1/edit?request_id=1" not in approved_messages.text
     token = csrf(client.get("/finance/receivables").text)
 
     response = client.post(

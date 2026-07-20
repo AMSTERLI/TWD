@@ -127,30 +127,53 @@ with TestClient(app) as client:
     assert repo.get_order(own_id)["shipped_status"] == 0
     orders = client.get("/orders")
 
-    denied_request = client.post(
-        f"/orders/{other_id}/edit-request",
-        data={"csrf": csrf(orders.text), "reason": "想改别人的订单"},
-        follow_redirects=False,
-    )
-    assert denied_request.status_code == 400
+    assert f'data-request-edit-url="/orders/{own_id}/edit"' in orders.text
+    assert client.get(f"/orders/{other_id}/edit").status_code == 403
+    edit_page = client.get(f"/orders/{own_id}/edit")
+    assert edit_page.status_code == 200
+    assert "提交订单修改申请" in edit_page.text and "提交审批" in edit_page.text
     own_request = client.post(
-        f"/orders/{own_id}/edit-request",
-        data={"csrf": csrf(orders.text), "reason": "补充说明"},
+        f"/orders/{own_id}/edit",
+        data={
+            "csrf": csrf(edit_page.text),
+            "order_type": "新订单",
+            "salesman": "廖春凤",
+            "order_no": own_no,
+            "product_name": "杨娟订单已改",
+            "order_date": "2026-07-17",
+            "delivery_date": "2026-07-20",
+            "quantity": "50",
+            "spare_quantity": "5",
+            "quantity_unit": "个",
+            "unit_price": "0",
+            "extra_fee": "0",
+            "order_prefix_no": "1",
+            "bi_no": "PO-901",
+            "production_no": "SC-901",
+        },
         follow_redirects=False,
     )
     assert own_request.status_code == 303
+    assert own_request.headers["location"] == "/messages"
+    unchanged = repo.get_order(own_id)
+    assert unchanged["quantity"] == 1 and unchanged["product_name"] == "杨娟订单"
     logout(client)
 
     login(client, "admin", "admin-pass-123")
     messages = client.get("/messages")
     assert messages.status_code == 200
     assert "杨娟" in messages.text
+    assert "数量从1修改为50" in messages.text
+    assert "品名从杨娟订单修改为杨娟订单已改" in messages.text
     review = client.post(
         "/messages/1/review",
         data={"csrf": csrf(messages.text), "decision": "approve", "review_note": "同意"},
         follow_redirects=False,
     )
     assert review.status_code == 303
+    updated = repo.get_order(own_id)
+    assert updated["quantity"] == 50 and updated["product_name"] == "杨娟订单已改"
+    assert updated["salesman"] == "杨娟"
     logout(client)
 
     login(client, "yangjuan", "sales-pass-123")
@@ -158,5 +181,6 @@ with TestClient(app) as client:
     assert messages.status_code == 200
     assert "管理员" in messages.text
     assert "同意" in messages.text
+    assert f"/orders/{own_id}" in messages.text
 
 print(f"sales access smoke ok: {root}")

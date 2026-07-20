@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}修改订单 · TWD 订单系统{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>修改订单</h1><p>{{ order.order_no }}</p></div></div>
+<div class="page-head"><div><h1>{{ '修改订单' if user.role == 'admin' else '提交订单修改申请' }}</h1><p>{{ order.order_no }}</p></div></div>
 {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
 <form method="post" enctype="multipart/form-data" class="order-form" id="order-form">
 <input type="hidden" name="csrf" value="{{ csrf }}">{% if edit_request %}<input type="hidden" name="edit_request_id" value="{{ edit_request.id }}">{% endif %}
@@ -30,5 +30,5 @@
 <section class="form-section"><h2>上色</h2><div class="checks">{% for item in catalogs.coloring %}<label class="check"><input type="checkbox" name="coloring" value="{{ item }}"{% if item in order.coloring_json %} checked{% endif %}> {{ item }}</label>{% endfor %}</div><label>备注<textarea name="coloring_note" rows="2">{{ order.coloring_note or '' }}</textarea></label></section>
 <section class="form-section"><h2>背面方式</h2><div class="checks">{% for item in catalogs.back_mode %}<label class="check radio"><input type="radio" name="back_mode" value="{{ item }}"{% if item == order.back_mode %} checked{% endif %}> {{ item }}</label>{% endfor %}</div><label>备注<textarea name="back_mode_note" rows="2">{{ order.back_mode_note or '' }}</textarea></label></section>
 <section class="form-section"><h2>其他</h2><div class="form-grid cols-2 note-image-grid"><label>订单总备注<textarea name="global_note" rows="4">{{ order.global_note or '' }}</textarea></label><label>产品图片（最多 6 张）<input type="file" id="edit-product-images" name="product_images" accept="image/jpeg,image/png,image/webp" multiple data-paste-image-file><span class="image-preview-grid" data-image-preview></span></label>{% if order.image_paths_json %}<div class="existing-images span-2" data-existing-images>{% for image_name in order.image_paths_json %}<label class="image-thumb"><input type="checkbox" name="existing_images" value="{{ image_name }}" checked hidden><img src="/images/{{ image_name }}" alt="产品图片"><button type="button" data-remove-existing-image>删除</button></label>{% endfor %}</div>{% endif %}<label>点击此输入框后按 Ctrl+V 粘贴图片<input type="text" data-paste-image-target="#edit-product-images" autocomplete="off" readonly placeholder="点击后按 Ctrl+V"><span class="paste-image-status" data-paste-image-status></span></label></div></section>
-<div class="form-actions"><a class="button" href="/orders/{{ order.id }}">取消</a><button class="button primary" type="submit">保存修改</button></div>
+<div class="form-actions"><a class="button" href="/orders/{{ order.id }}">取消</a><button class="button primary" type="submit">{{ '保存修改' if user.role == 'admin' else '提交审批' }}</button></div>
 </form>{% endblock %}
