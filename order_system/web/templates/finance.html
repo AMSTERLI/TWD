@@ -34,7 +34,7 @@
       {% for row in receivables.rows %}<tr data-context-row data-request-edit-url="/orders/{{ row.id }}/edit" data-csrf="{{ csrf }}" data-record-label="订单 {{ row.order_no }}">
         <td><input type="checkbox" name="selected_ids" value="{{ row.id }}" data-select-item data-unpaid-amount="{{ row.amount if not row.paid_status else 0 }}" aria-label="选择订单 {{ row.order_no }}"></td>
         <td><a href="/orders/{{ row.id }}">{{ row.order_no }}</a></td><td>{{ row.customer_name or '-' }}</td><td>{{ row.bi_no or '-' }}</td><td>{{ row.production_no or '-' }}</td>
-        <td>{{ row.quantity }} {{ row.quantity_unit }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td><td>¥ {{ '%.2f'|format(row.amount or 0) }}</td><td>{{ row.order_date or '-' }}</td>
+        <td>{{ row.quantity }} {{ row.quantity_unit }}</td><td>{{ '多单价' if row.multi_price else '%.4f'|format(row.unit_price or 0) }}</td><td>¥ {{ '%.2f'|format(row.amount or 0) }}</td><td>{{ row.order_date or '-' }}</td>
         <td><span class="badge {{ 'ok' if row.paid_status else 'warn' }}">{{ '已收款' if row.paid_status else '未收款' }}</span></td>
         <td><span class="badge {{ 'ok' if row.invoice_status else 'warn' }}">{{ '已开票' if row.invoice_status else '未开票' }}</span></td>
       </tr>{% else %}<tr><td colspan="11" class="muted">暂无匹配的收款记录</td></tr>{% endfor %}

@@ -16,7 +16,7 @@ REQUIRED_WEB_PROCESSES = ["冲压", "上色", "印刷/UV"]
 
 ORDER_COLUMNS = [
     "order_type", "salesman", "order_no", "product_name", "order_date",
-    "delivery_date", "quantity", "spare_quantity", "quantity_unit", "unit_price", "extra_fee",
+    "delivery_date", "quantity", "spare_quantity", "quantity_unit", "unit_price", "price_tiers_json", "extra_fee",
     "paid_status", "shipped_status", "invoice_status", "order_prefix_no", "customer_code", "customer_name",
     "production_no", "bi_no", "width_mm",
     "height_mm", "thickness_mm", "size_as_sample", "materials_json",
@@ -30,6 +30,43 @@ ORDER_COLUMNS = [
     "global_note_red", "image_paths_json",
 ]
 
+
+
+def price_tiers_from_json(value: Any) -> list[dict[str, float]]:
+    try:
+        raw_items = json.loads(str(value or "[]"))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    tiers: list[dict[str, float]] = []
+    if not isinstance(raw_items, list):
+        return []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        try:
+            quantity = float(item.get("quantity") or 0)
+            unit_price = float(item.get("unit_price") or 0)
+        except (TypeError, ValueError):
+            continue
+        if quantity > 0 and unit_price >= 0:
+            tiers.append({"quantity": quantity, "unit_price": unit_price})
+    return tiers
+
+
+def order_receivable_amount(row: dict[str, Any]) -> float:
+    tiers = price_tiers_from_json(row.get("price_tiers_json"))
+    if tiers:
+        base = sum(item["quantity"] * item["unit_price"] for item in tiers)
+    else:
+        base = float(row.get("quantity") or 0) * float(row.get("unit_price") or 0)
+    return base + float(row.get("extra_fee") or 0)
+
+
+def price_tier_label(value: Any) -> str:
+    tiers = price_tiers_from_json(value)
+    if not tiers:
+        return ""
+    return "、".join(f"{item['quantity']:g}×{item['unit_price']:g}" for item in tiers)
 
 class Repository:
     def __init__(self, db_path: Path) -> None:
@@ -577,7 +614,7 @@ class Repository:
                 "quantity_unit": "个", "spare_quantity": 0, "paid_status": 0, "shipped_status": 0, "invoice_status": 0, "order_prefix_no": prefix_no,
                 "size_as_sample": 0, "materials_json": "[]", "plating_json": "[]",
                 "accessories_json": "[]", "polishing_json": "[]", "coloring_json": "[]",
-                "resin_json": "[]", "packaging_json": "[]", "image_paths_json": "[]",
+                "resin_json": "[]", "packaging_json": "[]", "price_tiers_json": "[]", "image_paths_json": "[]",
                 "material_note_red": 1, "plating_note_red": 1, "accessories_note_red": 1,
                 "polishing_note_red": 1, "coloring_note_red": 1, "resin_note_red": 1,
                 "packaging_note_red": 1, "back_mode_note_red": 1, "global_note_red": 1,
@@ -661,25 +698,32 @@ class Repository:
         if paid_status in {"paid", "unpaid"}:
             where += " AND paid_status = ?"
             args.append(1 if paid_status == "paid" else 0)
-        amount_sql = "(COALESCE(quantity, 0) * COALESCE(unit_price, 0) + COALESCE(extra_fee, 0))"
         with self.connect() as conn:
             total = int(conn.execute(f"SELECT COUNT(*) FROM orders {where}", args).fetchone()[0])
-            unpaid_total = float(conn.execute(
-                f"SELECT COALESCE(SUM(CASE WHEN paid_status = 0 THEN {amount_sql} ELSE 0 END), 0) FROM orders {where}",
+            all_amount_rows = conn.execute(
+                f"""SELECT quantity, unit_price, price_tiers_json, extra_fee, paid_status
+                    FROM orders {where}""",
                 args,
-            ).fetchone()[0] or 0)
+            ).fetchall()
+            unpaid_total = sum(
+                order_receivable_amount(dict(row)) for row in all_amount_rows if not int(row["paid_status"] or 0)
+            )
             rows = conn.execute(
                 f"""SELECT id, order_no, customer_code, customer_name, bi_no,
                            production_no, quantity, quantity_unit,
-                           unit_price, extra_fee, paid_status, invoice_status, order_date,
-                           {amount_sql} AS amount
+                           unit_price, price_tiers_json, extra_fee, paid_status, invoice_status, order_date
                     FROM orders {where} ORDER BY order_date DESC, id DESC LIMIT ? OFFSET ?""",
                 (*args, page_size, offset),
             ).fetchall()
-        return {"rows": [dict(row) for row in rows], "total": total, "page": page,
+        result_rows = []
+        for row in rows:
+            item = dict(row)
+            item["amount"] = order_receivable_amount(item)
+            item["multi_price"] = bool(price_tiers_from_json(item.get("price_tiers_json")))
+            result_rows.append(item)
+        return {"rows": result_rows, "total": total, "page": page,
                 "pages": max(1, (total + page_size - 1) // page_size),
                 "unpaid_total": unpaid_total}
-
     @staticmethod
     def _normalized_ids(values: list[int]) -> list[int]:
         return sorted({int(value) for value in values if int(value) > 0})[:1000]
@@ -693,14 +737,18 @@ class Repository:
             rows = conn.execute(
                 f"""SELECT id, order_no, customer_code, customer_name, bi_no,
                            production_no, product_name, quantity, quantity_unit,
-                           unit_price, extra_fee, paid_status, invoice_status, order_date,
-                           (COALESCE(quantity, 0) * COALESCE(unit_price, 0) + COALESCE(extra_fee, 0)) AS amount
+                           unit_price, price_tiers_json, extra_fee, paid_status, invoice_status, order_date
                     FROM orders WHERE id IN ({placeholders})
                     ORDER BY order_date DESC, id DESC""",
                 ids,
             ).fetchall()
-        return [dict(row) for row in rows]
-
+        result_rows = []
+        for row in rows:
+            item = dict(row)
+            item["amount"] = order_receivable_amount(item)
+            item["multi_price"] = bool(price_tiers_from_json(item.get("price_tiers_json")))
+            result_rows.append(item)
+        return result_rows
     def order_pdf_rows(self, order_ids: list[int]) -> list[dict[str, Any]]:
         ids = self._normalized_ids(order_ids)
         if not ids:

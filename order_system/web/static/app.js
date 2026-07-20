@@ -189,6 +189,27 @@ if (pastedImageInputs.length) {
     });
   });
 }
+
+document.querySelectorAll("[data-price-tiers]").forEach(section => {
+  const rows = section.querySelector("[data-price-tier-rows]");
+  const addButton = section.querySelector("[data-add-price-tier]");
+  function addRow(quantity = "", unitPrice = "") {
+    const row = document.createElement("tr");
+    row.innerHTML = `<td><input type="number" min="0" step="0.0001" name="split_quantity" value="${quantity}"></td><td><input type="number" min="0" step="0.0001" name="split_unit_price" value="${unitPrice}"></td><td><button type="button" data-remove-price-tier>删除</button></td>`;
+    rows.appendChild(row);
+  }
+  addButton?.addEventListener("click", () => addRow());
+  section.addEventListener("click", event => {
+    const button = event.target.closest("[data-remove-price-tier]");
+    if (!button) return;
+    const row = button.closest("tr");
+    if (rows.children.length <= 1) {
+      row.querySelectorAll("input").forEach(input => input.value = "");
+    } else {
+      row.remove();
+    }
+  });
+});
 const orderNumberInput = document.querySelector("[data-order-number]");
 const orderDateInput = document.querySelector("[data-order-date]");
 const orderPrefixInput = document.querySelector("[data-order-prefix]");

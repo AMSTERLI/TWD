@@ -25,7 +25,7 @@ from order_system.order_import import OrderImportError, analyze_order_document
 
 from .catalogs import import_catalogs
 from .pdf import merge_order_pdfs, render_order_pdf
-from .repository import ORDER_COLUMNS, Repository
+from .repository import ORDER_COLUMNS, Repository, price_tier_label, price_tiers_from_json
 from .security import csrf_token, valid_csrf
 from .settings import (
     DB_PATH, IMAGES_DIR, MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES, SESSION_HTTPS_ONLY,
@@ -116,6 +116,26 @@ def as_int(value: Any, default: int = 0) -> int:
     except ValueError:
         return default
 
+
+
+def parse_price_tiers(form: Any) -> list[dict[str, float]]:
+    quantities = form.getlist("split_quantity")
+    unit_prices = form.getlist("split_unit_price")
+    tiers: list[dict[str, float]] = []
+    for index, raw_quantity in enumerate(quantities):
+        raw_price = unit_prices[index] if index < len(unit_prices) else ""
+        if not str(raw_quantity or "").strip() and not str(raw_price or "").strip():
+            continue
+        quantity = as_float(raw_quantity)
+        unit_price = as_float(raw_price)
+        if quantity <= 0 or unit_price < 0:
+            raise ValueError("拆分数量必须大于 0，单价不能为负数")
+        tiers.append({"quantity": quantity, "unit_price": unit_price})
+    return tiers[:50]
+
+
+def format_price_tiers(tiers: list[dict[str, float]]) -> str:
+    return "、".join(f"{item['quantity']:g}×{item['unit_price']:g}" for item in tiers) if tiers else "空"
 
 def selected_ids(form: Any, field: str) -> list[int]:
     values: list[int] = []
@@ -274,6 +294,7 @@ async def order_payload(form: Any, *, save_uploaded_images: bool = True) -> dict
         "spare_quantity": as_int(form.get("spare_quantity")),
         "quantity_unit": str(form.get("quantity_unit") or "个"),
         "unit_price": as_float(form.get("unit_price")),
+        "price_tiers_json": dumps_json(parse_price_tiers(form)),
         "extra_fee": as_float(form.get("extra_fee")),
         "paid_status": 0,
         "shipped_status": 0,
@@ -321,7 +342,7 @@ async def order_payload(form: Any, *, save_uploaded_images: bool = True) -> dict
 
 JSON_CHANGE_FIELDS = {
     "materials_json", "plating_json", "accessories_json", "polishing_json",
-    "coloring_json", "resin_json", "packaging_json", "image_paths_json",
+    "coloring_json", "resin_json", "packaging_json", "image_paths_json", "price_tiers_json",
 }
 ORDER_CHANGE_LABELS = {
     "order_type": "订单类型",
@@ -334,6 +355,7 @@ ORDER_CHANGE_LABELS = {
     "spare_quantity": "备品数量",
     "quantity_unit": "单位",
     "unit_price": "单价",
+    "price_tiers_json": "拆分单价",
     "extra_fee": "附加费",
     "invoice_status": "开票状态",
     "order_prefix_no": "客户编码",
@@ -383,6 +405,8 @@ def _summary_json_value(value: Any) -> str:
 
 
 def _summary_scalar_value(key: str, value: Any) -> str:
+    if key == "price_tiers_json":
+        return price_tier_label(value) or "空"
     if key in JSON_CHANGE_FIELDS:
         return _summary_json_value(value)
     if key in {"size_as_sample", "invoice_status"}:
@@ -694,6 +718,7 @@ def _editable_order(order_id: int) -> dict[str, Any] | None:
     for key in ("materials_json", "plating_json", "accessories_json", "polishing_json",
                 "coloring_json", "resin_json", "packaging_json", "image_paths_json"):
         record[key] = loads_json(record.get(key) or "[]")
+    record["price_tiers"] = price_tiers_from_json(record.get("price_tiers_json"))
     material_bases, material_crafts = split_materials(record["materials_json"])
     record["material_base_json"] = material_bases
     record["material_craft_json"] = material_crafts
@@ -739,6 +764,9 @@ async def edit_order(request: Request, order_id: int):
         return Response(status_code=403)
     try:
         payload = await order_payload(form)
+        tiers = price_tiers_from_json(payload.get("price_tiers_json"))
+        if tiers and abs(sum(item["quantity"] for item in tiers) - float(payload["quantity"] or 0)) > 1e-6:
+            raise ValueError("拆分数量合计必须等于订单数量")
         if user["role"] == "sales":
             payload["salesman"] = user_display_name(user)
         if not payload["product_name"] or payload["quantity"] <= 0 or payload["spare_quantity"] < 0 or not str(form.get("spare_quantity") or "").strip():
@@ -1127,7 +1155,7 @@ async def finance_receivables_export(request: Request):
         row["order_no"], row.get("customer_name") or "", row.get("bi_no") or "",
         row.get("production_no") or "", row.get("product_name") or "",
         row.get("quantity") or 0,
-        row.get("quantity_unit") or "", row.get("unit_price") or 0,
+        row.get("quantity_unit") or "", "多单价" if row.get("multi_price") else row.get("unit_price") or 0,
         row.get("extra_fee") or 0, row.get("amount") or 0,
         row.get("order_date") or "", "已收款" if row.get("paid_status") else "未收款",
     ] for row in rows]

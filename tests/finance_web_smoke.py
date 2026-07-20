@@ -153,6 +153,8 @@ with TestClient(app) as client:
             "spare_quantity": "0",
             "quantity_unit": "个",
             "unit_price": "2.5",
+            "split_quantity": ["20", "30"],
+            "split_unit_price": ["2", "3"],
             "extra_fee": "3",
             "order_prefix_no": "1",
             "invoice_status": "1",
@@ -164,11 +166,13 @@ with TestClient(app) as client:
     assert repo.get_order(1)["quantity"] == 10
     finance_messages = client.get("/messages")
     assert finance_messages.status_code == 200 and "数量从10修改为50" in finance_messages.text
+    assert "拆分单价从空修改为20×2、30×3" in finance_messages.text
     page = client.get("/")
     client.post("/logout", data={"csrf": csrf(page.text)})
     login(client, "admin", "admin-password")
     admin_messages = client.get("/messages")
     assert "数量从10修改为50" in admin_messages.text
+    assert "拆分单价从空修改为20×2、30×3" in admin_messages.text
     approve = client.post(
         "/messages/1/review",
         data={"csrf": csrf(admin_messages.text), "decision": "approve", "review_note": "同意财务修改"},
@@ -176,13 +180,16 @@ with TestClient(app) as client:
     )
     assert approve.status_code == 303
     assert repo.get_order(1)["quantity"] == 50
+    assert repo.finance_order_rows([1])[0]["amount"] == 133
     page = client.get("/")
     client.post("/logout", data={"csrf": csrf(page.text)})
     login(client, "finance", "finance-password")
     approved_messages = client.get("/messages?status=approved")
     assert "同意财务修改" in approved_messages.text and "/orders/1" in approved_messages.text
     assert "/orders/1/edit?request_id=1" not in approved_messages.text
-    token = csrf(client.get("/finance/receivables").text)
+    receivables_after_edit = client.get("/finance/receivables")
+    assert "多单价" in receivables_after_edit.text and "¥ 133.00" in receivables_after_edit.text
+    token = csrf(receivables_after_edit.text)
 
     response = client.post(
         "/finance/payables/status",
