@@ -734,6 +734,7 @@ async def request_order_replenishment(request: Request, order_id: int):
             order_id,
             user,
             as_int(form.get("quantity")),
+            str(form.get("reason") or "").strip(),
         )
         await run_in_threadpool(
             repo.audit,

@@ -573,6 +573,11 @@ if (contextRows.length) {
       window.alert("补数数量必须是大于 0 的整数");
       return;
     }
+    const rawReason = window.prompt(`请输入${activeRow.dataset.recordLabel || "该订单"}的补数原因`);
+    if (!rawReason || !rawReason.trim()) {
+      window.alert("请填写补数原因");
+      return;
+    }
     const form = document.createElement("form");
     form.method = "post";
     form.action = activeRow.dataset.replenishmentUrl;
@@ -584,7 +589,11 @@ if (contextRows.length) {
     quantityInput.type = "hidden";
     quantityInput.name = "quantity";
     quantityInput.value = quantity;
-    form.append(csrf, quantityInput);
+    const reasonInput = document.createElement("input");
+    reasonInput.type = "hidden";
+    reasonInput.name = "reason";
+    reasonInput.value = rawReason.trim();
+    form.append(csrf, quantityInput, reasonInput);
     document.body.appendChild(form);
     form.submit();
   });

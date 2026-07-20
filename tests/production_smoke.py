@@ -91,7 +91,7 @@ with TestClient(app) as client:
     assert searched.status_code == 200 and first_no in searched.text and second_no not in searched.text
     request = client.post(
         f"/orders/{first_id}/replenishment-request",
-        data={"csrf": csrf(page.text), "quantity": "25"},
+        data={"csrf": csrf(page.text), "quantity": "25", "reason": "\u5ba2\u6237\u8981\u6c42\u8865\u53d1"},
         follow_redirects=False,
     )
     assert request.status_code == 303
@@ -103,7 +103,7 @@ with TestClient(app) as client:
     login(client, "admin", "admin-pass-123")
     messages = client.get("/messages")
     assert messages.status_code == 200
-    assert "\u8865\u6570\u7533\u8bf7" in messages.text and "\u8865\u6570\u6570\u91cf\uff1a25" in messages.text
+    assert "\u8865\u6570\u7533\u8bf7" in messages.text and "\u5ba2\u6237\u8981\u6c42\u8865\u53d1" in messages.text
     review = client.post(
         "/messages/1/review",
         data={"csrf": csrf(messages.text), "decision": "approve", "review_note": "\u540c\u610f"},
@@ -113,7 +113,7 @@ with TestClient(app) as client:
     approved = repo.list_edit_requests("approved")[0]
     new_order = repo.get_order(int(approved["created_order_id"]))
     original = repo.get_order(first_id)
-    assert new_order["order_no"] != original["order_no"]
+    assert new_order["order_no"] == original["order_no"]
     assert new_order["order_type"] == "\u8865\u6570\u5355\uff08\u9ec4\u519b\u56fd\uff09"
     assert new_order["quantity"] == 25 and new_order["spare_quantity"] == 0
     assert new_order["customer_name"] == original["customer_name"]

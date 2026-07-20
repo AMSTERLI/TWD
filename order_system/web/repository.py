@@ -311,10 +311,15 @@ class Repository:
             )
             return int(cursor.lastrowid)
 
-    def create_replenishment_request(self, order_id: int, user: dict[str, Any], quantity: int) -> int:
+    def create_replenishment_request(self, order_id: int, user: dict[str, Any], quantity: int, reason: str) -> int:
         quantity = int(quantity or 0)
+        reason = str(reason or "").strip()
         if quantity <= 0:
             raise ValueError("补数数量必须大于 0")
+        if not reason:
+            raise ValueError("请填写补数原因")
+        if len(reason) > 1000:
+            raise ValueError("补数原因不能超过 1000 个字")
         with self.connect(write=True) as conn:
             order = conn.execute(
                 "SELECT id, order_no FROM orders WHERE id = ?", (order_id,)
@@ -340,7 +345,7 @@ class Repository:
                     str(order["order_no"]),
                     int(user.get("id") or 0),
                     requester_name,
-                    f"补数数量：{quantity}",
+                    reason,
                     quantity,
                 ),
             )
@@ -354,9 +359,8 @@ class Repository:
         if quantity <= 0:
             raise ValueError("补数数量必须大于 0")
         payload = {column: source[column] for column in ORDER_COLUMNS}
-        order_date = str(payload.get("order_date") or datetime.now().date().isoformat())
         prefix_no = int(payload.get("customer_code") or payload.get("order_prefix_no") or 1)
-        payload["order_no"] = self._next_order_no(conn, order_date, prefix_no)
+        payload["order_no"] = str(source["order_no"] or "")
         payload["order_type"] = f"补数单（{request_row['requester_name']}）"
         payload["quantity"] = quantity
         payload["spare_quantity"] = 0
