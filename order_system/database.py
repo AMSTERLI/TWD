@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS orders (
     production_no TEXT,
     bi_no TEXT,
     width_mm TEXT,
+    diameter_mm TEXT,
     height_mm TEXT,
     thickness_mm TEXT,
     size_as_sample INTEGER NOT NULL DEFAULT 0,
@@ -163,6 +164,7 @@ class Database:
             self._ensure_column(conn, "orders", "customer_code", "INTEGER")
             self._ensure_column(conn, "orders", "customer_name", "TEXT")
             self._ensure_column(conn, "orders", "coloring_text", "TEXT")
+            self._ensure_column(conn, "orders", "diameter_mm", "TEXT")
             self._ensure_column(conn, "outsource_records", "product_quantity", "REAL NOT NULL DEFAULT 0")
             self._ensure_column(conn, "outsource_records", "spare_quantity", "REAL NOT NULL DEFAULT 0")
             self._ensure_column(conn, "outsource_records", "processing_fee", "REAL NOT NULL DEFAULT 0")
@@ -215,6 +217,13 @@ class Database:
                 SET amount = (COALESCE(product_quantity, 0) + COALESCE(spare_quantity, 0))
                            * COALESCE(unit_price, 0) + COALESCE(plate_fee, 0)
                 WHERE process_name = '印刷/UV'
+                """
+            )
+            conn.execute(
+                """
+                UPDATE orders
+                SET materials_json = REPLACE(materials_json, '  UV"', '  UV印刷"')
+                WHERE materials_json LIKE '%  UV"%'
                 """
             )
             self._seed_customers(conn)
@@ -316,6 +325,7 @@ class Database:
             "production_no",
             "bi_no",
             "width_mm",
+            "diameter_mm",
             "height_mm",
             "thickness_mm",
             "size_as_sample",

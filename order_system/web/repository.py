@@ -19,7 +19,7 @@ ORDER_COLUMNS = [
     "delivery_date", "quantity", "spare_quantity", "quantity_unit", "unit_price", "price_tiers_json", "extra_fee",
     "paid_status", "shipped_status", "invoice_status", "order_prefix_no", "customer_code", "customer_name",
     "production_no", "bi_no", "width_mm",
-    "height_mm", "thickness_mm", "size_as_sample", "materials_json",
+    "diameter_mm", "height_mm", "thickness_mm", "size_as_sample", "materials_json",
     "material_note", "material_note_red", "plating_json", "plating_note",
     "plating_note_red", "accessories_json", "accessories_note",
     "accessories_note_red", "polishing_json", "polishing_note",
@@ -1090,7 +1090,7 @@ class Repository:
         with self.connect() as conn:
             rows = conn.execute(
                 """SELECT id, order_no, product_name, quantity, spare_quantity, quantity_unit,
-                          width_mm, height_mm, thickness_mm
+                          width_mm, diameter_mm, height_mm, thickness_mm
                    FROM orders WHERE (? = '' OR order_no LIKE ?)
                    ORDER BY id DESC LIMIT 50""",
                 (keyword, f"%{keyword}%"),

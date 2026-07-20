@@ -268,17 +268,18 @@ def build_extraction_prompt(catalogs: dict[str, list[str]]) -> str:
         "日期统一YYYY-MM-DD；数量为整数；金额/尺寸为数字字符串且不带单位。"
         "多选值只能逐字使用允许值，无法匹配的原文写入对应note。"
         "字段:order_type,product_name,delivery_date,quantity,quantity_unit,"
-        "unit_price,extra_fee,production_no,bi_no,width_mm,height_mm,thickness_mm,size_as_sample,"
+        "unit_price,extra_fee,production_no,bi_no,width_mm,diameter_mm,height_mm,thickness_mm,size_as_sample,"
         "materials,material_note,plating,plating_note,accessories,accessories_note,polishing,"
         "polishing_note,coloring,coloring_note,resin,resin_note,packaging,"
         "packaging_note,back_mode,back_mode_note,global_note。"
         "product_name只写产品品类，不写客户、图案、尺寸、材质或用途；如双面币、钥匙扣，且最多8个字符。"
         f"允许值:{allowed}。quantity_unit仅个/套；size_as_sample仅true/false/null。"
-        "制作工艺必须从materials允许值中选择；烤漆、珐琅、UV、镭雕属于materials，不要放入coloring。"
-        "如果原文为铜冲压烤漆、锌合金压铸UV等，省略冲压/压铸/材质字样并匹配为类似'铜  烤漆'的允许值。"
-        "coloring只用于彩图、样品、说明三个选项；烤漆、珐琅、UV、镭雕绝不能填入coloring。"
+        "制作工艺必须从materials允许值中选择；烤漆、珐琅、UV印刷、平面印刷、镭雕属于materials，不要放入coloring。"
+        "如果原文为铜冲压烤漆、锌合金压铸UV印刷等，省略冲压/压铸/材质字样并匹配为类似'铜  烤漆'的允许值。"
+        "coloring只用于彩图、样品、说明三个选项；烤漆、珐琅、UV印刷、平面印刷、镭雕绝不能填入coloring。"
         "客单中的配件、焊针、宝石都属于accessories；蝴蝶帽属于packaging，不要写入accessories。"
         "忽略客单上的客户公司、电话、地址、联系人、邮箱等一切对方公司信息，不要写入任何字段或备注。"
+        "直径/直徑/圆形尺寸填diameter_mm；有直径时仍可保留高和厚，直径不要写入width_mm。"
         "PO/采购单号填bi_no，生产编号填production_no；不要把客户单号填成系统订单编号。"
         "不要提取下单日期；下单日期由系统按当天日期默认填写。"
     )
@@ -419,7 +420,7 @@ def normalize_order_data(data: dict[str, Any], catalogs: dict[str, list[str]]) -
     data = _to_simplified(data)
     scalar_fields = {
         "order_type", "product_name", "delivery_date", "quantity_unit",
-        "unit_price", "extra_fee", "production_no", "bi_no", "width_mm", "height_mm", "thickness_mm",
+        "unit_price", "extra_fee", "production_no", "bi_no", "width_mm", "diameter_mm", "height_mm", "thickness_mm",
         "material_note", "plating_note", "accessories_note", "polishing_note",
         "coloring_note", "resin_note", "packaging_rule", "packaging_note", "back_mode",
         "back_mode_note", "global_note",
@@ -510,10 +511,23 @@ def _append_note(existing: Any, addition: str) -> str:
 
 
 def _surface_craft_from_text(value: str, allowed: list[str]) -> str:
-    normalized = _normalize_material_option(value, allowed)
-    if normalized in allowed:
-        return normalized
-    return ""
+    cleaned = re.sub(r"\s+", "", value)
+    aliases = {
+        "UV印刷": "UV印刷",
+        "UV": "UV印刷",
+        "uv": "UV印刷",
+        "平面印刷": "平面印刷",
+        "印刷": "平面印刷",
+        "烤漆": "烤漆",
+        "珐琅": "珐琅",
+        "法琅": "珐琅",
+        "镭雕": "镭雕",
+        "雷雕": "镭雕",
+    }
+    for raw, normalized in aliases.items():
+        if raw in cleaned and normalized in allowed:
+            return normalized
+    return cleaned if cleaned in allowed else ""
 
 
 def _apply_surface_crafts_to_materials(materials: Any, crafts: list[str], allowed: list[str]) -> list[str]:
@@ -626,8 +640,11 @@ def _normalize_material_option(value: str, allowed: list[str]) -> str:
         "法琅": "珐琅",
         "假珐琅": "珐琅",
         "软珐琅": "珐琅",
-        "UV": "UV",
-        "uv": "UV",
+        "UV印刷": "UV印刷",
+        "UV": "UV印刷",
+        "uv": "UV印刷",
+        "平面印刷": "平面印刷",
+        "印刷": "平面印刷",
         "镭雕": "镭雕",
         "雷雕": "镭雕",
     }

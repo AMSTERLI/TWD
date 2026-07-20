@@ -111,7 +111,7 @@ POLISHING = ["正面", "侧面", "背面", "三面", "喷砂"]
 COLORING_OPTIONS = ["说明", "样品", "彩图", "分色图"]
 RESIN_OPTIONS = ["一般", "厚", "薄", "双面", "单面"]
 PACKAGING = ["空白袋", "夹链袋", "胶帽", "白纸卷", "蝴蝶帽", "MIC袋", "OPP袋", "气泡袋", "PVC袋", "装订"]
-BACK_MODES = ["光平", "布纹", "砂面", "团模", "双面模"]
+BACK_MODES = ["如样", "光平", "布纹", "砂面", "团模", "双面模"]
 OPTION_LABELS = {
     "materials_json": "材质及做法",
     "plating_json": "电镀工艺",
@@ -185,6 +185,7 @@ OUTSOURCE_TABLE_COLUMNS = {
     "processing_fee": 6,
     "length_mm": 7,
     "width_mm": 8,
+    "diameter_mm": 8,
     "thickness_mm": 9,
     "density": 10,
     "weight": 11,
@@ -665,7 +666,7 @@ class OrderFormTab(QWidget):
             "salesman": self.salesman, "product_name": self.product_name,
             "unit_price": self.unit_price, "extra_fee": self.extra_fee,
             "production_no": self.production_no, "bi_no": self.bi_no,
-            "width_mm": self.width_mm, "height_mm": self.height_mm,
+            "width_mm": self.width_mm, "diameter_mm": self.diameter_mm, "height_mm": self.height_mm,
             "thickness_mm": self.thickness_mm, "packaging_rule": self.packaging_rule,
         }
         for key, widget in line_edits.items():
@@ -742,6 +743,7 @@ class OrderFormTab(QWidget):
         self.production_no = QLineEdit()
         self.bi_no = QLineEdit()
         self.width_mm = QLineEdit()
+        self.diameter_mm = QLineEdit()
         self.height_mm = QLineEdit()
         self.thickness_mm = QLineEdit()
         self.size_as_sample = QCheckBox("如样")
@@ -1059,6 +1061,7 @@ class OrderFormTab(QWidget):
             "production_no": self.production_no.text().strip(),
             "bi_no": self.bi_no.text().strip(),
             "width_mm": self.width_mm.text().strip(),
+            "diameter_mm": self.diameter_mm.text().strip(),
             "height_mm": self.height_mm.text().strip(),
             "thickness_mm": self.thickness_mm.text().strip(),
             "size_as_sample": 1 if self.size_as_sample.isChecked() else 0,
@@ -1134,6 +1137,7 @@ class OrderFormTab(QWidget):
         self.production_no.clear()
         self.bi_no.clear()
         self.width_mm.clear()
+        self.diameter_mm.clear()
         self.height_mm.clear()
         self.thickness_mm.clear()
         self.size_as_sample.setChecked(False)

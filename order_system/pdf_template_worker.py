@@ -103,7 +103,11 @@ def _draw_header(pdf: canvas.Canvas, record: dict) -> None:
     _draw_box_text(pdf, record.get("product_name") or "", 434, 66, 77, 20)
 
     _draw_box_text(pdf, _format_quantity(record), 108, 107, 76, 20)
-    _draw_box_text(pdf, record.get("width_mm") or "", 271, 107, 76, 20, top_offset=4)
+    width_text = record.get("width_mm") or ""
+    diameter = str(record.get("diameter_mm") or "").strip()
+    if diameter:
+        width_text = f"{diameter}（直径）"
+    _draw_box_text(pdf, width_text, 271, 107, 76, 20, top_offset=4)
     _draw_box_text(pdf, record.get("height_mm") or "", 353, 107, 76, 20, top_offset=4)
     thickness = record.get("thickness_mm") or ""
     if record.get("size_as_sample"):
