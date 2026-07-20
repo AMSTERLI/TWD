@@ -135,7 +135,7 @@ def _draw_process_table(pdf: canvas.Canvas, record: dict) -> None:
     process_rows = [
         ("材料", _join_selected(record.get("materials_json")), record.get("material_note") or "", 214, 43, True, _note_color(record, "material_note_red")),
         ("电镀", _join_selected(record.get("plating_json")), record.get("plating_note") or "", 257, 39, False, _note_color(record, "plating_note_red")),
-        ("焊针", _join_selected(record.get("accessories_json")), record.get("accessories_note") or "", 296, 40, False, _note_color(record, "accessories_note_red")),
+        ("配件", _join_selected(record.get("accessories_json")), record.get("accessories_note") or "", 296, 40, False, _note_color(record, "accessories_note_red")),
         ("抛光", _join_selected(record.get("polishing_json")), record.get("polishing_note") or "", 336, 40, False, _note_color(record, "polishing_note_red")),
         ("上色", _coloring_content(record), record.get("coloring_note") or "", 376, 39, False, _note_color(record, "coloring_note_red")),
         ("树脂", _join_selected(record.get("resin_json")), record.get("resin_note") or "", 415, 40, False, _note_color(record, "resin_note_red")),

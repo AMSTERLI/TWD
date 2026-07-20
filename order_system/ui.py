@@ -115,7 +115,7 @@ BACK_MODES = ["光平", "布纹", "砂面", "团模", "双面模"]
 OPTION_LABELS = {
     "materials_json": "材质及做法",
     "plating_json": "电镀工艺",
-    "accessories_json": "焊针配件",
+    "accessories_json": "配件",
     "polishing_json": "抛光工艺",
     "resin_json": "树脂(滴胶)",
     "packaging_json": "包装方式",
@@ -168,7 +168,7 @@ OUTSOURCE_PROCESS_OPTIONS = [
     "低温锌合金",
     "咬板",
     "电镀电泳",
-    "焊针",
+    "配件",
     "抛光",
     "上色",
     "树脂",
@@ -489,7 +489,7 @@ class OrderFormTab(QWidget):
         layout.addWidget(self._build_basic_info_group())
         layout.addWidget(self._build_options_group("2. 材质及做法", "materials", MATERIALS))
         layout.addWidget(self._build_options_group("3. 电镀工艺", "plating", PLATING))
-        layout.addWidget(self._build_options_group("4. 焊针配件", "accessories", ACCESSORIES))
+        layout.addWidget(self._build_options_group("4. 配件", "accessories", ACCESSORIES))
         layout.addWidget(self._build_options_group("5. 抛光工艺", "polishing", POLISHING))
         layout.addWidget(self._build_coloring_group())
         layout.addWidget(self._build_resin_group())
@@ -623,7 +623,7 @@ class OrderFormTab(QWidget):
             "order_date": "下单日期", "delivery_date": "交货日期", "quantity": "数量",
             "quantity_unit": "单位", "unit_price": "单价", "extra_fee": "附加费用",
             "production_no": "生产制号", "bi_no": "PO编号", "materials": "材质及做法",
-            "plating": "电镀工艺", "accessories": "焊针配件", "polishing": "抛光工艺",
+            "plating": "电镀工艺", "accessories": "配件", "polishing": "抛光工艺",
             "coloring": "上色", "resin": "树脂", "packaging": "包装", "back_mode": "背模",
         }
         summary: list[str] = []

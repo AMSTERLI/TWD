@@ -14,10 +14,10 @@ normalized = normalize_order_data(
         "product_name": "臺灣銅牌",
         "materials": ["銅"],
         "coloring": ["說明", "UV"],
-        "accessories": ["安全別針"],
-        "accessories_note": "配件要求：掛繩",
-        "packaging_note": "OPP袋",
-        "global_note": "客戶備註",
+        "accessories": ["安全別針", "寶石", "蝴蝶帽"],
+        "accessories_note": "配件要求：焊針；電話：123456；地址：台北市",
+        "packaging_note": "OPP袋；客户公司：ABC",
+        "global_note": "客戶備註；电话：123",
     },
     catalogs,
 )
@@ -25,11 +25,14 @@ normalized = normalize_order_data(
 assert normalized["product_name"] == "牌"
 assert "铜  UV" in normalized["materials"]
 assert normalized["coloring"] == ["说明"]
-assert normalized["accessories"] == []
+assert "安全别针" in normalized["accessories"]
+assert "宝石" in normalized["accessories"]
+assert "焊针" in normalized["accessories"]
+assert "蝴蝶帽" in normalized["packaging"]
 assert not normalized.get("resin")
-assert "OPP袋" in normalized["packaging_note"]
-assert "配件：" in normalized["packaging_note"]
-assert "挂绳" in normalized["packaging_note"]
+assert "电话" not in normalized.get("accessories_note", "")
+assert "地址" not in normalized.get("accessories_note", "")
+assert "客户公司" not in normalized.get("packaging_note", "")
 assert normalized["global_note"] == "客户备注"
 
 category_normalized = normalize_order_data({"product_name": "台湾纪念双面币金属礼品"}, catalogs)

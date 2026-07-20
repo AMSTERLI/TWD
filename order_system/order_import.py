@@ -277,7 +277,8 @@ def build_extraction_prompt(catalogs: dict[str, list[str]]) -> str:
         "制作工艺必须从materials允许值中选择；烤漆、珐琅、UV、镭雕属于materials，不要放入coloring。"
         "如果原文为铜冲压烤漆、锌合金压铸UV等，省略冲压/压铸/材质字样并匹配为类似'铜  烤漆'的允许值。"
         "coloring只用于彩图、样品、说明三个选项；烤漆、珐琅、UV、镭雕绝不能填入coloring。"
-        "客单中的配件、配件说明、包装规则统一写入packaging_note，不要写入accessories或accessories_note。"
+        "客单中的配件、焊针、宝石都属于accessories；蝴蝶帽属于packaging，不要写入accessories。"
+        "忽略客单上的客户公司、电话、地址、联系人、邮箱等一切对方公司信息，不要写入任何字段或备注。"
         "PO/采购单号填bi_no，生产编号填production_no；不要把客户单号填成系统订单编号。"
         "不要提取下单日期；下单日期由系统按当天日期默认填写。"
     )
@@ -451,6 +452,8 @@ def normalize_order_data(data: dict[str, Any], catalogs: dict[str, list[str]]) -
                 item = str(value).strip()
                 if key == "materials":
                     item = _normalize_material_option(item, allowed)
+                elif key == "accessories":
+                    item = _normalize_accessory_option(item, allowed, catalogs.get("packaging", []))
                 elif key == "coloring":
                     craft = _surface_craft_from_text(item, catalogs.get("surface_crafts", []))
                     if craft:
@@ -459,13 +462,16 @@ def normalize_order_data(data: dict[str, Any], catalogs: dict[str, list[str]]) -
                         continue
                 if item in allowed and item not in selected:
                     selected.append(item)
+                elif key == "accessories" and item in catalogs.get("packaging", []) and item not in selected:
+                    selected.append(item)
             normalized[key] = selected
 
     if misplaced_surface_crafts:
         normalized["materials"] = _apply_surface_crafts_to_materials(
             normalized.get("materials", []), misplaced_surface_crafts, catalogs.get("materials", [])
         )
-    _move_accessories_to_packaging_note(normalized)
+    _normalize_accessories_and_packaging(normalized, catalogs)
+    _strip_counterparty_info(normalized)
 
     for key in ("delivery_date",):
         if key in normalized and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", normalized[key]):
@@ -539,19 +545,76 @@ def _apply_surface_crafts_to_materials(materials: Any, crafts: list[str], allowe
     return deduped
 
 
-def _move_accessories_to_packaging_note(normalized: dict[str, Any]) -> None:
-    parts: list[str] = []
+def _normalize_accessories_and_packaging(normalized: dict[str, Any], catalogs: dict[str, list[str]]) -> None:
+    accessories_allowed = catalogs.get("accessories", [])
+    packaging_allowed = catalogs.get("packaging", [])
+    selected_accessories: list[str] = []
+    selected_packaging = [
+        str(item).strip() for item in normalized.get("packaging", [])
+        if str(item).strip() in packaging_allowed
+    ] if isinstance(normalized.get("packaging"), list) else []
     accessories = normalized.get("accessories")
-    if isinstance(accessories, list):
-        parts.extend(str(item).strip() for item in accessories if str(item).strip())
-    note = str(normalized.get("accessories_note") or "").strip()
-    if note:
-        parts.append(note)
-    if parts:
-        normalized["packaging_note"] = _append_note(normalized.get("packaging_note"), "配件：" + "、".join(dict.fromkeys(parts)))
-    normalized["accessories"] = []
-    normalized.pop("accessories_note", None)
+    candidates = list(accessories) if isinstance(accessories, list) else []
+    note_text = str(normalized.get("accessories_note") or "").strip()
+    if note_text:
+        candidates.append(note_text)
+    if candidates:
+        for raw in candidates:
+            item = _normalize_accessory_option(str(raw).strip(), accessories_allowed, packaging_allowed)
+            if item == "蝴蝶帽":
+                if item not in selected_packaging:
+                    selected_packaging.append(item)
+            elif item in accessories_allowed and item not in selected_accessories:
+                selected_accessories.append(item)
+    normalized["accessories"] = selected_accessories
+    normalized["packaging"] = selected_packaging
 
+
+def _normalize_accessory_option(value: str, accessories_allowed: list[str], packaging_allowed: list[str]) -> str:
+    if value in accessories_allowed or value in packaging_allowed:
+        return value
+    cleaned = re.sub(r"\s+", "", value)
+    aliases = {
+        "焊针": "焊针",
+        "焊針": "焊针",
+        "针": "焊针",
+        "針": "焊针",
+        "宝石": "宝石",
+        "寶石": "宝石",
+        "蝴蝶帽": "蝴蝶帽",
+    }
+    for raw, normalized in aliases.items():
+        if raw in cleaned:
+            return normalized
+    return value
+
+
+_COUNTERPARTY_INFO_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"客户公司|客戶公司|公司名称|公司名稱|公司名|客户名称|客戶名稱",
+        r"电话|電話|手机|手機|tel|phone|mobile",
+        r"地址|收货地址|收貨地址|寄送地址|shipping address|address",
+        r"联系人|聯絡人|contact|email|邮箱|郵箱",
+    )
+]
+
+
+def _strip_counterparty_info(normalized: dict[str, Any]) -> None:
+    for key in ("material_note", "plating_note", "accessories_note", "polishing_note",
+                "coloring_note", "resin_note", "packaging_note", "back_mode_note", "global_note"):
+        value = normalized.get(key)
+        if not isinstance(value, str) or not value.strip():
+            continue
+        parts = re.split(r"[；;\n]", value)
+        kept = [
+            part.strip() for part in parts
+            if part.strip() and not any(pattern.search(part) for pattern in _COUNTERPARTY_INFO_PATTERNS)
+        ]
+        if kept:
+            normalized[key] = "；".join(kept)
+        else:
+            normalized.pop(key, None)
 def _normalize_material_option(value: str, allowed: list[str]) -> str:
     if value in allowed:
         return value
