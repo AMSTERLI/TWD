@@ -17,6 +17,7 @@ LOGIN_USERS = {
     "yewu": "business",
     "caiwu": "finance",
     "waifa": "outsource",
+    "chejian": "workshop",
 }
 BUNDLED_PYTHON_PATH = Path(
     r"C:\Users\LBL99\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"

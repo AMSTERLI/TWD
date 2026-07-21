@@ -3,26 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}TWD 订单系统{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}?v=20260720-production-v1">
-  <script defer src="{{ url_for('static', path='app.js') }}?v=20260720-production-v1"></script>
+  <title>{% block title %}TWD &#35746;&#21333;&#31995;&#32479;{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}?v=20260721-workshop-v1">
+  <script defer src="{{ url_for('static', path='app.js') }}?v=20260721-workshop-v1"></script>
 </head>
 <body>
 {% if user %}
   <header class="topbar">
-    <a class="brand" href="/">TWD 订单系统</a>
-    <button class="nav-toggle" type="button" data-nav-toggle>菜单</button>
+    <a class="brand" href="/">TWD &#35746;&#21333;&#31995;&#32479;</a>
+    <button class="nav-toggle" type="button" data-nav-toggle>&#33756;&#21333;</button>
     <nav data-nav>
-      <a href="/orders">订单</a>
-      {% if user.role in ['admin', 'sales'] %}<a href="/orders/new">业务下单</a>{% endif %}
-      {% if user.role in ['admin', 'finance'] %}<a href="/finance">财务</a>{% endif %}
-      {% if user.role in ['admin', 'production'] %}<a href="/production">生管</a>{% endif %}
-      {% if user.role == 'outsource' %}<a href="/finance/payables">付款</a>{% endif %}
-      {% if user.role in ['admin', 'outsource'] %}<a href="/outsource">外发</a>{% endif %}
-      {% if user.role in ['admin', 'sales', 'finance', 'production'] %}<a href="/messages">消息{% if user.role == 'admin' and pending_message_count %}<span class="nav-badge">{{ pending_message_count }}</span>{% endif %}</a>{% endif %}
+      {% if user.role in ['admin', 'sales', 'finance', 'production'] %}<a href="/orders">&#35746;&#21333;</a>{% endif %}
+      {% if user.role in ['admin', 'sales'] %}<a href="/orders/new">&#19994;&#21153;&#19979;&#21333;</a>{% endif %}
+      {% if user.role in ['admin', 'finance'] %}<a href="/finance">&#36130;&#21153;</a>{% endif %}
+      {% if user.role in ['admin', 'production'] %}<a href="/production">&#29983;&#31649;</a>{% endif %}
+      {% if user.role == 'outsource' %}<a href="/finance/payables">&#20184;&#27454;</a>{% endif %}
+      {% if user.role in ['admin', 'outsource'] %}<a href="/outsource">&#22806;&#21457;</a>{% endif %}
+      {% if user.role in ['admin', 'workshop'] %}<a href="/workshop">&#36710;&#38388;</a>{% endif %}
+      {% if user.role in ['admin', 'sales', 'finance', 'production'] %}<a href="/messages">&#28040;&#24687;{% if user.role == 'admin' and pending_message_count %}<span class="nav-badge">{{ pending_message_count }}</span>{% endif %}</a>{% endif %}
     </nav>
     <div class="userbox"><span>{{ user.username }}</span><span class="role">{{ user.role }}</span>
-      <form action="/logout" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link-button">退出</button></form>
+      <form action="/logout" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link-button">&#36864;&#20986;</button></form>
     </div>
   </header>
 {% endif %}
@@ -31,4 +32,3 @@
 </main>
 </body>
 </html>
-

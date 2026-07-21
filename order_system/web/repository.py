@@ -139,6 +139,19 @@ class Repository:
                     used_at TEXT,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
+                CREATE TABLE IF NOT EXISTS workshop_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id INTEGER NOT NULL,
+                    order_no TEXT NOT NULL,
+                    department_key TEXT NOT NULL,
+                    department_name TEXT NOT NULL,
+                    unit_price REAL NOT NULL DEFAULT 0,
+                    operator_id INTEGER,
+                    operator_name TEXT,
+                    reported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+                );
                 CREATE TABLE IF NOT EXISTS audit_log (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER,
@@ -160,6 +173,10 @@ class Repository:
                     ON order_edit_requests(order_id, requester_id, status, consumed_at);
                 CREATE INDEX IF NOT EXISTS idx_order_no_reservations_lookup
                     ON order_no_reservations(order_date, order_prefix_no, order_no);
+                CREATE INDEX IF NOT EXISTS idx_workshop_records_lookup
+                    ON workshop_records(order_id, department_key, reported_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_workshop_records_order_no
+                    ON workshop_records(order_no, department_key, reported_at DESC);
                 """
             )
             existing_user_columns = {row[1] for row in conn.execute("PRAGMA table_info(web_users)").fetchall()}
@@ -231,7 +248,7 @@ class Repository:
         display_name = display_name.strip() or username
         if not username or len(password) < 10:
             raise ValueError("用户名不能为空，密码至少需要 10 位")
-        if role not in {"admin", "sales", "finance", "outsource", "production"}:
+        if role not in {"admin", "sales", "finance", "outsource", "production", "workshop"}:
             raise ValueError("无效角色")
         with self.connect(write=True) as conn:
             cursor = conn.execute(
@@ -281,6 +298,12 @@ class Repository:
                 "INSERT INTO audit_log (user_id, username, action, detail, ip) VALUES (?, ?, ?, ?, ?)",
                 (user.get("id"), user.get("username"), action, detail[:1000], ip[:100]),
             )
+
+    def pending_message_count(self) -> int:
+        with self.connect() as conn:
+            return int(conn.execute(
+                "SELECT COUNT(*) FROM order_edit_requests WHERE status = 'pending'"
+            ).fetchone()[0])
 
     def dashboard(self) -> dict[str, Any]:
         today = datetime.now().date().isoformat()
@@ -936,6 +959,86 @@ class Repository:
                 "UPDATE orders SET shipped_status = ? WHERE id = ?",
                 (int(shipped), order_id),
             )
+
+    def create_workshop_records(
+        self,
+        department_key: str,
+        department_name: str,
+        rows: list[dict[str, Any]],
+        user: dict[str, Any],
+    ) -> list[int]:
+        department_key = str(department_key or "").strip()
+        department_name = str(department_name or "").strip()
+        if not department_key or not department_name:
+            raise ValueError("\u8f66\u95f4\u90e8\u95e8\u65e0\u6548")
+        clean_rows: list[dict[str, Any]] = []
+        for row in rows:
+            order_no = str(row.get("order_no") or "").strip()
+            if not order_no:
+                continue
+            try:
+                unit_price = float(row.get("unit_price") or 0)
+            except (TypeError, ValueError):
+                raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u5355\u4ef7\u65e0\u6548")
+            if unit_price < 0:
+                raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u5355\u4ef7\u4e0d\u80fd\u5c0f\u4e8e 0")
+            clean_rows.append({"order_no": order_no, "unit_price": unit_price})
+        if not clean_rows:
+            raise ValueError("\u8bf7\u81f3\u5c11\u626b\u63cf\u4e00\u4e2a\u8ba2\u5355")
+        created_ids: list[int] = []
+        with self.connect(write=True) as conn:
+            operator_id = int(user.get("id") or 0) or None
+            operator_name = str(user.get("display_name") or user.get("username") or "")
+            for row in clean_rows:
+                order = conn.execute(
+                    "SELECT id, order_no FROM orders WHERE order_no = ? ORDER BY id DESC LIMIT 1",
+                    (row["order_no"],),
+                ).fetchone()
+                if not order:
+                    raise ValueError(f"\u8ba2\u5355 {row['order_no']} \u4e0d\u5b58\u5728")
+                cursor = conn.execute(
+                    """INSERT INTO workshop_records
+                       (order_id, order_no, department_key, department_name, unit_price, operator_id, operator_name)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        int(order["id"]), str(order["order_no"]), department_key, department_name,
+                        row["unit_price"], operator_id, operator_name,
+                    ),
+                )
+                created_ids.append(int(cursor.lastrowid))
+        return created_ids
+
+    def workshop_records(self, keyword: str = "", department_key: str = "", page: int = 1, page_size: int = 40) -> dict[str, Any]:
+        keyword = keyword.strip()
+        department_key = department_key.strip()
+        page = max(page, 1)
+        offset = (page - 1) * page_size
+        where = "WHERE (? = '' OR w.order_no LIKE ? OR o.product_name LIKE ? OR w.operator_name LIKE ?) AND (? = '' OR w.department_key = ?)"
+        like = f"%{keyword}%"
+        args = (keyword, like, like, like, department_key, department_key)
+        with self.connect() as conn:
+            total = int(conn.execute(f"SELECT COUNT(*) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0])
+            rows = conn.execute(
+                f"""SELECT w.*, o.product_name, o.customer_name
+                    FROM workshop_records w
+                    LEFT JOIN orders o ON o.id = w.order_id
+                    {where}
+                    ORDER BY w.reported_at DESC, w.id DESC LIMIT ? OFFSET ?""",
+                (*args, page_size, offset),
+            ).fetchall()
+        return {"rows": [dict(row) for row in rows], "total": total, "page": page,
+                "pages": max(1, (total + page_size - 1) // page_size)}
+
+    def order_workshop_records(self, order_id: int) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT * FROM workshop_records
+                   WHERE order_id = ?
+                   ORDER BY reported_at ASC, id ASC""",
+                (order_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def outsource_records(self, keyword: str = "", page: int = 1, page_size: int = 40) -> dict[str, Any]:
         keyword = keyword.strip()
         page = max(page, 1)
@@ -1244,5 +1347,3 @@ class Repository:
 
     def factories(self, process_name: str = "") -> list[dict[str, Any]]:
         return self.legacy.list_outsource_factories(process_name)
-
-

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ department.name }} ? &#36710;&#38388;{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ department.name }}</h1><p>&#25195;&#25551;&#35746;&#21333;&#21495;&#24182;&#22635;&#20889;&#21333;&#20215;&#65292;&#20445;&#23384;&#21518;&#35746;&#21333;&#20301;&#32622;&#20250;&#26356;&#26032;&#21040;{{ department.name }}&#12290;</p></div><a class="button" href="/workshop">&#36820;&#22238;&#36710;&#38388;</a></div>
+{% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+{% if created %}<div class="alert success">&#24050;&#25253;&#21040; {{ created }} &#26465;&#35746;&#21333;&#12290;</div>{% endif %}
+<section class="panel create-panel" data-workshop-scan><div class="padded">
+<form method="post" class="workshop-scan-form">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<div class="table-wrap batch-table"><table><thead><tr><th>&#35746;&#21333;&#21495;</th><th>&#21333;&#20215;</th><th></th></tr></thead><tbody data-workshop-rows><tr><td><input name="order_no" autocomplete="off" data-workshop-order placeholder="&#25195;&#25551;&#25110;&#25163;&#21160;&#36755;&#20837;"></td><td><input type="number" name="unit_price" step="0.0001" min="0" value="0"></td><td><button type="button" class="small danger-button" data-remove-workshop-row>&#21024;&#38500;</button></td></tr></tbody></table></div>
+<template data-workshop-row-template><tr><td><input name="order_no" autocomplete="off" data-workshop-order placeholder="&#25195;&#25551;&#25110;&#25163;&#21160;&#36755;&#20837;"></td><td><input type="number" name="unit_price" step="0.0001" min="0" value="0"></td><td><button type="button" class="small danger-button" data-remove-workshop-row>&#21024;&#38500;</button></td></tr></template>
+<div class="batch-actions"><button type="button" class="button" data-add-workshop-row>&#65291; &#28155;&#21152;&#19968;&#34892;</button><button class="button primary">&#20445;&#23384;&#25253;&#21040;</button></div>
+</form></div></section>
+<form class="searchbar"><input name="q" value="{{ q }}" placeholder="&#25628;&#32034;&#35746;&#21333;&#21495;&#12289;&#20135;&#21697;&#25110;&#25805;&#20316;&#20154;"><button>&#25628;&#32034;</button></form>
+<section class="panel table-wrap"><table><thead><tr><th>&#35746;&#21333;&#21495;</th><th>&#20135;&#21697;</th><th>&#23458;&#25143;</th><th>&#37096;&#38376;</th><th>&#21333;&#20215;</th><th>&#25805;&#20316;&#20154;</th><th>&#25253;&#21040;&#26102;&#38388;</th></tr></thead><tbody>
+{% for row in result.rows %}<tr><td><a href="/orders/{{ row.order_id }}">{{ row.order_no }}</a></td><td>{{ row.product_name or '-' }}</td><td>{{ row.customer_name or '-' }}</td><td>{{ row.department_name }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td><td>{{ row.operator_name or '-' }}</td><td>{{ row.reported_at }}</td></tr>{% else %}<tr><td colspan="7" class="muted">&#26242;&#26080;&#35760;&#24405;</td></tr>{% endfor %}
+</tbody></table></section>{% include "_pager.html" %}
+{% endblock %}

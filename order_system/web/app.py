@@ -36,6 +36,13 @@ from .settings import (
 repo = Repository(DB_PATH)
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 ai_slots = asyncio.Semaphore(max(1, int(os.environ.get("TWD_AI_CONCURRENCY", "2"))))
+WORKSHOP_DEPARTMENTS = {
+    "mold": {
+        "name": "\u523b\u6a21",
+        "password_env": "TWD_WORKSHOP_MOLD_PASSWORD",
+        "default_password": "kemu888",
+    },
+}
 
 
 @asynccontextmanager
@@ -64,11 +71,14 @@ def current_user(request: Request) -> dict[str, Any] | None:
 
 
 def page_context(request: Request, **values: Any) -> dict[str, Any]:
+    user = current_user(request)
     values.update({
         "request": request,
-        "user": current_user(request),
+        "user": user,
         "csrf": csrf_token(request.session),
     })
+    if user and user.get("role") == "admin" and "pending_message_count" not in values:
+        values["pending_message_count"] = repo.pending_message_count()
     return values
 
 
@@ -546,6 +556,8 @@ async def login(request: Request):
     request.session["user_id"] = user["id"]
     csrf_token(request.session)
     await run_in_threadpool(repo.audit, user, "login", "", client_ip(request))
+    if user.get("role") == "workshop":
+        return RedirectResponse("/workshop", status_code=303)
     return RedirectResponse("/", status_code=303)
 
 
@@ -559,15 +571,17 @@ async def logout(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
-    _, denied = require_page(request)
+    user, denied = require_page(request)
     if denied:
         return denied
+    if user["role"] == "workshop":
+        return RedirectResponse("/workshop", status_code=303)
     return templates.TemplateResponse(request, "dashboard.html", page_context(request, stats=repo.dashboard()))
 
 
 @app.get("/orders", response_class=HTMLResponse)
 def orders(request: Request, q: str = "", page: int = 1):
-    user, denied = require_page(request)
+    user, denied = require_page(request, {"admin", "sales", "finance", "production"})
     if denied:
         return denied
     salesman = user_display_name(user) if user["role"] == "sales" else None
@@ -944,6 +958,8 @@ def order_detail(request: Request, order_id: int, created: int = 0):
                 "coloring_json", "resin_json", "packaging_json", "image_paths_json", "component_parts_json"):
         record[key] = loads_json(record.get(key) or "[]")
     outsource_records = repo.order_outsource_records(order_id)
+    workshop_records = repo.order_workshop_records(order_id)
+    workflow_steps = build_order_workflow(workshop_records, outsource_records)
     return templates.TemplateResponse(
         request,
         "order_detail.html",
@@ -952,6 +968,8 @@ def order_detail(request: Request, order_id: int, created: int = 0):
             order=record,
             created=bool(created),
             outsource_records=outsource_records,
+            workshop_records=workshop_records,
+            workflow_steps=workflow_steps,
         ),
     )
 
@@ -1028,6 +1046,156 @@ async def import_order(request: Request):
         return JSONResponse({"error": str(exc)}, status_code=422)
     finally:
         target.unlink(missing_ok=True)
+
+
+
+
+def workshop_department(name: str) -> dict[str, str] | None:
+    department = WORKSHOP_DEPARTMENTS.get(str(name or "").strip())
+    if not department:
+        return None
+    return {"key": name, "name": department["name"]}
+
+
+def workshop_department_password(name: str) -> str:
+    department = WORKSHOP_DEPARTMENTS.get(str(name or "").strip()) or {}
+    env_name = str(department.get("password_env") or "")
+    return os.environ.get(env_name) or str(department.get("default_password") or "")
+
+
+def workshop_unlocked(request: Request, department_key: str) -> bool:
+    return request.session.get(f"workshop:{department_key}:unlocked") is True
+
+
+def build_order_workflow(workshop_records: list[dict[str, Any]], outsource_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    steps: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for record in workshop_records:
+        name = str(record.get("department_name") or "")
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        steps.append({"name": name, "done": True, "at": record.get("reported_at"), "source": "workshop"})
+    for record in sorted(outsource_records, key=lambda item: (str(item.get("outsource_date") or ""), int(item.get("id") or 0))):
+        name = str(record.get("process_name") or "")
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        steps.append({"name": name, "done": True, "at": record.get("outsource_date"), "source": "outsource"})
+    defaults = ["\u523b\u6a21", "\u51b2\u538b", "\u629b\u5149", "\u7535\u9540", "\u4e0a\u8272", "\u5305\u88c5"]
+    for name in defaults:
+        if name not in seen:
+            steps.append({"name": name, "done": False, "at": "", "source": "planned"})
+    last_done = None
+    for index, step in enumerate(steps):
+        if step.get("done"):
+            last_done = index
+    if last_done is not None:
+        steps[last_done]["current"] = True
+    return steps
+
+
+@app.get("/workshop", response_class=HTMLResponse)
+def workshop_home(request: Request):
+    _, denied = require_page(request, {"workshop"})
+    if denied:
+        return denied
+    departments = [workshop_department(key) for key in WORKSHOP_DEPARTMENTS]
+    return templates.TemplateResponse(
+        request,
+        "workshop.html",
+        page_context(request, departments=[item for item in departments if item], error=""),
+    )
+
+
+@app.post("/workshop/{department_key}/unlock", response_class=HTMLResponse)
+async def workshop_unlock(request: Request, department_key: str):
+    _, denied = require_page(request, {"workshop"})
+    if denied:
+        return denied
+    department = workshop_department(department_key)
+    if not department:
+        return Response(status_code=404)
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    if str(form.get("password") or "") != workshop_department_password(department_key):
+        departments = [workshop_department(key) for key in WORKSHOP_DEPARTMENTS]
+        return templates.TemplateResponse(
+            request,
+            "workshop.html",
+            page_context(request, departments=[item for item in departments if item], error="\u90e8\u95e8\u5bc6\u7801\u9519\u8bef"),
+            status_code=403,
+        )
+    request.session[f"workshop:{department_key}:unlocked"] = True
+    return RedirectResponse(f"/workshop/{department_key}", status_code=303)
+
+
+@app.get("/workshop/{department_key}", response_class=HTMLResponse)
+def workshop_department_page(request: Request, department_key: str, q: str = "", page: int = 1, created: int = 0):
+    _, denied = require_page(request, {"workshop"})
+    if denied:
+        return denied
+    department = workshop_department(department_key)
+    if not department:
+        return Response(status_code=404)
+    if not workshop_unlocked(request, department_key):
+        return RedirectResponse("/workshop", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "workshop_department.html",
+        page_context(
+            request,
+            department=department,
+            result=repo.workshop_records(q, department_key, page),
+            q=q,
+            created=max(0, created),
+            error="",
+        ),
+    )
+
+
+@app.post("/workshop/{department_key}", response_class=HTMLResponse)
+async def workshop_department_submit(request: Request, department_key: str):
+    user, denied = require_page(request, {"workshop"})
+    if denied:
+        return denied
+    department = workshop_department(department_key)
+    if not department:
+        return Response(status_code=404)
+    if not workshop_unlocked(request, department_key):
+        return RedirectResponse("/workshop", status_code=303)
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    rows = [
+        {"order_no": order_no, "unit_price": unit_price}
+        for order_no, unit_price in zip(form.getlist("order_no"), form.getlist("unit_price"))
+    ]
+    try:
+        created_ids = await run_in_threadpool(
+            repo.create_workshop_records,
+            department_key,
+            department["name"],
+            rows,
+            user,
+        )
+        await run_in_threadpool(repo.audit, user, "workshop.report", f"{department_key}:{len(created_ids)}", client_ip(request))
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "workshop_department.html",
+            page_context(
+                request,
+                department=department,
+                result=repo.workshop_records("", department_key, 1),
+                q="",
+                created=0,
+                error=str(exc),
+            ),
+            status_code=422,
+        )
+    return RedirectResponse(f"/workshop/{department_key}?created={len(created_ids)}", status_code=303)
 
 
 @app.get("/finance", response_class=HTMLResponse)

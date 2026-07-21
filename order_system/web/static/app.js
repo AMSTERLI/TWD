@@ -238,6 +238,55 @@ document.querySelectorAll("[data-price-tiers]").forEach(section => {
     }
   });
 });
+
+
+document.querySelectorAll("[data-workshop-scan]").forEach(section => {
+  const rows = section.querySelector("[data-workshop-rows]");
+  const template = section.querySelector("[data-workshop-row-template]");
+  const addButton = section.querySelector("[data-add-workshop-row]");
+  function focusEnd(input) {
+    if (!input) return;
+    requestAnimationFrame(() => {
+      input.scrollLeft = input.scrollWidth;
+      if (document.activeElement === input && typeof input.setSelectionRange === "function") {
+        const end = input.value.length;
+        input.setSelectionRange(end, end);
+      }
+    });
+  }
+  function addRow(focus = true) {
+    rows.appendChild(template.content.cloneNode(true));
+    const input = rows.lastElementChild.querySelector("[data-workshop-order]");
+    if (focus) input.focus();
+    focusEnd(input);
+  }
+  addButton?.addEventListener("click", () => addRow());
+  section.addEventListener("click", event => {
+    const button = event.target.closest("[data-remove-workshop-row]");
+    if (!button) return;
+    const row = button.closest("tr");
+    if (rows.children.length <= 1) {
+      row.querySelectorAll("input").forEach(input => input.value = input.name === "unit_price" ? "0" : "");
+      row.querySelector("[data-workshop-order]")?.focus();
+    } else row.remove();
+  });
+  section.addEventListener("keydown", event => {
+    if (event.key !== "Enter" || !event.target.matches("[data-workshop-order]")) return;
+    event.preventDefault();
+    if (!event.target.value.trim()) return;
+    const row = event.target.closest("tr");
+    const next = row.nextElementSibling;
+    if (next) {
+      const input = next.querySelector("[data-workshop-order]");
+      input.focus();
+      focusEnd(input);
+    } else addRow(true);
+  });
+  const first = rows.querySelector("[data-workshop-order]");
+  first?.focus();
+  focusEnd(first);
+});
+
 const orderNumberInput = document.querySelector("[data-order-number]");
 const orderDateInput = document.querySelector("[data-order-date]");
 const orderPrefixInput = document.querySelector("[data-order-prefix]");

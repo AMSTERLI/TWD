@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}&#36710;&#38388; ? TWD &#35746;&#21333;&#31995;&#32479;{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>&#36710;&#38388;</h1><p>&#36873;&#25321;&#37096;&#38376;&#21518;&#36755;&#20837;&#37096;&#38376;&#23494;&#30721;&#36827;&#20837;&#25195;&#30721;&#25253;&#21040;&#12290;</p></div></div>
+{% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+<section class="panel"><div class="workshop-departments">{% for item in departments %}
+  <form class="workshop-department" method="post" action="/workshop/{{ item.key }}/unlock"><input type="hidden" name="csrf" value="{{ csrf }}"><h2>{{ item.name }}</h2><label>&#37096;&#38376;&#23494;&#30721;<input type="password" name="password" required autocomplete="current-password"></label><button class="button primary">&#36827;&#20837;{{ item.name }}</button></form>
+{% else %}<p class="muted padded">&#26242;&#26080;&#36710;&#38388;&#37096;&#38376;</p>{% endfor %}</div></section>
+{% endblock %}
