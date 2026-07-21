@@ -244,6 +244,10 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   const rows = section.querySelector("[data-workshop-rows]");
   const template = section.querySelector("[data-workshop-row-template]");
   const addButton = section.querySelector("[data-add-workshop-row]");
+  const historyUrl = section.dataset.workshopHistoryUrl || "";
+  const historyChecks = new WeakMap();
+  const cleanNumber = value => Number(Number(value || 0).toFixed(4)).toString();
+
   function focusEnd(input) {
     if (!input) return;
     requestAnimationFrame(() => {
@@ -254,12 +258,55 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       }
     });
   }
+
+  async function loadWorkshopHistory(row) {
+    const input = row?.querySelector("[data-workshop-order]");
+    const orderNo = input?.value.trim() || "";
+    if (!row || !historyUrl || !orderNo) {
+      if (row) {
+        row.dataset.existingWorkshopRecord = "0";
+        row.dataset.existingWorkshopOrderNo = "";
+      }
+      return null;
+    }
+    if (row.dataset.historyKey === orderNo) return row.dataset.existingWorkshopRecord === "1" ? row.dataset.existingWorkshopOrderNo : null;
+    row.dataset.historyKey = orderNo;
+    try {
+      const response = await fetch(`${historyUrl}?order_no=${encodeURIComponent(orderNo)}`);
+      if (!response.ok) throw new Error("history lookup failed");
+      const result = await response.json();
+      const record = result.record;
+      if (!record) {
+        row.dataset.existingWorkshopRecord = "0";
+        row.dataset.existingWorkshopOrderNo = "";
+        return null;
+      }
+      row.dataset.existingWorkshopRecord = "1";
+      row.dataset.existingWorkshopOrderNo = orderNo;
+      const priceInput = row.querySelector('[name="unit_price"]');
+      if (priceInput) priceInput.value = cleanNumber(record.unit_price);
+      return orderNo;
+    } catch (error) {
+      console.warn("Failed to load workshop history", error);
+      row.dataset.existingWorkshopRecord = "0";
+      row.dataset.existingWorkshopOrderNo = "";
+      return null;
+    }
+  }
+
+  function scheduleWorkshopHistory(row) {
+    if (!row) return;
+    clearTimeout(historyChecks.get(row));
+    historyChecks.set(row, setTimeout(() => loadWorkshopHistory(row), 200));
+  }
+
   function addRow(focus = true) {
     rows.appendChild(template.content.cloneNode(true));
     const input = rows.lastElementChild.querySelector("[data-workshop-order]");
     if (focus) input.focus();
     focusEnd(input);
   }
+
   addButton?.addEventListener("click", () => addRow());
   section.addEventListener("click", event => {
     const button = event.target.closest("[data-remove-workshop-row]");
@@ -267,20 +314,54 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     const row = button.closest("tr");
     if (rows.children.length <= 1) {
       row.querySelectorAll("input").forEach(input => input.value = input.name === "unit_price" ? "0" : "");
+      row.dataset.existingWorkshopRecord = "0";
+      row.dataset.existingWorkshopOrderNo = "";
+      row.dataset.historyKey = "";
       row.querySelector("[data-workshop-order]")?.focus();
     } else row.remove();
+  });
+  section.addEventListener("input", event => {
+    if (!event.target.matches("[data-workshop-order]")) return;
+    const row = event.target.closest("tr");
+    if (row) {
+      row.dataset.historyKey = "";
+      row.dataset.existingWorkshopRecord = "0";
+      focusEnd(event.target);
+      scheduleWorkshopHistory(row);
+    }
+  });
+  section.addEventListener("change", event => {
+    if (!event.target.matches("[data-workshop-order]")) return;
+    const row = event.target.closest("tr");
+    if (row) loadWorkshopHistory(row);
   });
   section.addEventListener("keydown", event => {
     if (event.key !== "Enter" || !event.target.matches("[data-workshop-order]")) return;
     event.preventDefault();
     if (!event.target.value.trim()) return;
     const row = event.target.closest("tr");
+    loadWorkshopHistory(row);
     const next = row.nextElementSibling;
     if (next) {
       const input = next.querySelector("[data-workshop-order]");
       input.focus();
       focusEnd(input);
     } else addRow(true);
+  });
+  section.querySelector("form")?.addEventListener("submit", async event => {
+    const submitter = event.submitter || document.activeElement;
+    const action = submitter?.getAttribute?.("formaction") || "";
+    if (action.endsWith("/ship")) return;
+    const activeRows = [...rows.querySelectorAll("tr")].filter(row => row.querySelector("[data-workshop-order]")?.value.trim());
+    if (!activeRows.length) return;
+    event.preventDefault();
+    const duplicates = [];
+    for (const row of activeRows) {
+      const existingOrderNo = await loadWorkshopHistory(row);
+      if (existingOrderNo && !duplicates.includes(existingOrderNo)) duplicates.push(existingOrderNo);
+    }
+    if (duplicates.length && !window.confirm(`以下订单已在当前车间报到过：${duplicates.join("、")}。是否继续保存新的报到记录？`)) return;
+    event.target.submit();
   });
   const first = rows.querySelector("[data-workshop-order]");
   first?.focus();

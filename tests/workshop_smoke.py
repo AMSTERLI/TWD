@@ -104,17 +104,47 @@ with TestClient(app) as client:
     assert len(records) == 1
     assert records[0]["department_name"] == "\u523b\u6a21"
     assert abs(records[0]["unit_price"] - 10.5) < 1e-9
+    assert records[0]["shipped_status"] == 0
     assert repo.get_order(order_id)["shipped_status"] == 0
     list_page = client.get("/workshop/mold")
     assert "operator_name" not in list_page.text and "&#25805;&#20316;&#20154;" not in list_page.text
     assert "&#20986;&#36135;&#29366;&#24577;" in list_page.text
+    assert 'data-delete-url="/workshop/mold/records/' in list_page.text
+    history = client.get(f"/workshop/mold/history?order_no={order_no}")
+    assert history.status_code == 200
+    assert abs(history.json()["record"]["unit_price"] - 10.5) < 1e-9
     ship = client.post(
         "/workshop/mold/ship",
         data={"csrf": csrf(list_page.text), "order_no": [order_no], "unit_price": [""]},
         follow_redirects=False,
     )
     assert ship.status_code == 303 and "shipped=1" in ship.headers["location"]
-    assert repo.get_order(order_id)["shipped_status"] == 1
+    records = repo.order_workshop_records(order_id)
+    assert records[0]["shipped_status"] == 1
+    assert repo.get_order(order_id)["shipped_status"] == 0
+
+    duplicate_report = client.post(
+        "/workshop/mold",
+        data={"csrf": csrf(client.get("/workshop/mold").text), "order_no": [order_no], "unit_price": ["20"]},
+        follow_redirects=False,
+    )
+    assert duplicate_report.status_code == 303
+    records = repo.order_workshop_records(order_id)
+    assert len(records) == 2
+    assert records[0]["shipped_status"] == 1
+    assert records[1]["shipped_status"] == 0
+    assert abs(records[1]["unit_price"] - 20) < 1e-9
+    history = client.get(f"/workshop/mold/history?order_no={order_no}")
+    assert abs(history.json()["record"]["unit_price"] - 20) < 1e-9
+    delete = client.post(
+        f"/workshop/mold/records/{records[1]['id']}/delete",
+        data={"csrf": csrf(client.get("/workshop/mold").text)},
+        follow_redirects=False,
+    )
+    assert delete.status_code == 303
+    records = repo.order_workshop_records(order_id)
+    assert len(records) == 1 and records[0]["shipped_status"] == 1
+
     missing_ship = client.post(
         "/workshop/mold/ship",
         data={"csrf": csrf(client.get("/workshop/mold").text), "order_no": ["TWD1-260721999"], "unit_price": [""]},

@@ -1157,6 +1157,41 @@ def workshop_department_page(request: Request, department_key: str, q: str = "",
     )
 
 
+@app.get("/workshop/{department_key}/history")
+def workshop_department_history(request: Request, department_key: str, order_no: str = ""):
+    _, denied = require_page(request, {"workshop"})
+    if denied:
+        return denied
+    department = workshop_department(department_key)
+    if not department:
+        return Response(status_code=404)
+    if not workshop_unlocked(request, department_key):
+        return JSONResponse({"record": None}, status_code=403)
+    record = repo.latest_workshop_record_for_order(department_key, order_no)
+    return JSONResponse({"record": record})
+
+
+@app.post("/workshop/{department_key}/records/{record_id}/delete")
+async def workshop_record_delete(request: Request, department_key: str, record_id: int):
+    user, denied = require_page(request, {"workshop"})
+    if denied:
+        return denied
+    department = workshop_department(department_key)
+    if not department:
+        return Response(status_code=404)
+    if not workshop_unlocked(request, department_key):
+        return RedirectResponse("/workshop", status_code=303)
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    try:
+        order_no = await run_in_threadpool(repo.delete_workshop_record, record_id, department_key)
+    except ValueError as exc:
+        return Response(str(exc), status_code=404)
+    await run_in_threadpool(repo.audit, user, "workshop.delete", f"{department_key}:{order_no}", client_ip(request))
+    return RedirectResponse(f"/workshop/{department_key}", status_code=303)
+
+
 @app.post("/workshop/{department_key}/ship", response_class=HTMLResponse)
 async def workshop_department_ship(request: Request, department_key: str):
     user, denied = require_page(request, {"workshop"})

@@ -146,6 +146,7 @@ class Repository:
                     department_key TEXT NOT NULL,
                     department_name TEXT NOT NULL,
                     unit_price REAL NOT NULL DEFAULT 0,
+                    shipped_status INTEGER NOT NULL DEFAULT 0,
                     operator_id INTEGER,
                     operator_name TEXT,
                     reported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -193,6 +194,9 @@ class Repository:
                 conn.execute("ALTER TABLE order_edit_requests ADD COLUMN created_order_no TEXT")
             if "proposed_payload_json" not in existing_request_columns:
                 conn.execute("ALTER TABLE order_edit_requests ADD COLUMN proposed_payload_json TEXT")
+            existing_workshop_columns = {row[1] for row in conn.execute("PRAGMA table_info(workshop_records)").fetchall()}
+            if "shipped_status" not in existing_workshop_columns:
+                conn.execute("ALTER TABLE workshop_records ADD COLUMN shipped_status INTEGER NOT NULL DEFAULT 0")
             conn.execute(
                 "UPDATE web_users SET display_name = username "
                 "WHERE display_name IS NULL OR TRIM(display_name) = ''"
@@ -969,32 +973,67 @@ class Repository:
 
     def ship_workshop_orders(self, department_key: str, order_nos: list[str]) -> list[str]:
         department_key = str(department_key or "").strip()
-        clean_order_nos: list[str] = []
-        for raw in order_nos:
-            order_no = str(raw or "").strip()
-            if order_no and order_no not in clean_order_nos:
-                clean_order_nos.append(order_no)
-        if not clean_order_nos:
+        normalized = []
+        for order_no in order_nos:
+            value = str(order_no or "").strip()
+            if value and value not in normalized:
+                normalized.append(value)
+        if not normalized:
             raise ValueError("请至少扫描一个订单")
         shipped: list[str] = []
         with self.connect(write=True) as conn:
-            for order_no in clean_order_nos:
+            for order_no in normalized:
                 row = conn.execute(
-                    """SELECT o.id, o.order_no
-                       FROM orders o
-                       WHERE o.order_no = ?
-                         AND EXISTS (
-                             SELECT 1 FROM workshop_records w
-                             WHERE w.order_id = o.id AND w.department_key = ?
-                         )
-                       ORDER BY o.id DESC LIMIT 1""",
+                    """SELECT id, order_no
+                       FROM workshop_records
+                       WHERE order_no = ? AND department_key = ? AND shipped_status = 0
+                       ORDER BY reported_at DESC, id DESC
+                       LIMIT 1""",
                     (order_no, department_key),
                 ).fetchone()
                 if not row:
+                    existing = conn.execute(
+                        """SELECT id FROM workshop_records
+                           WHERE order_no = ? AND department_key = ?
+                           ORDER BY reported_at DESC, id DESC LIMIT 1""",
+                        (order_no, department_key),
+                    ).fetchone()
+                    if existing:
+                        raise ValueError(f"订单 {order_no} 已出货")
                     raise ValueError(f"订单 {order_no} 尚未在当前车间报到")
-                conn.execute("UPDATE orders SET shipped_status = 1 WHERE id = ?", (int(row["id"]),))
+                conn.execute("UPDATE workshop_records SET shipped_status = 1 WHERE id = ?", (int(row["id"]),))
                 shipped.append(str(row["order_no"]))
         return shipped
+
+    def latest_workshop_record_for_order(self, department_key: str, order_no: str) -> dict[str, Any] | None:
+        department_key = str(department_key or "").strip()
+        order_no = str(order_no or "").strip()
+        if not department_key or not order_no:
+            return None
+        with self.connect() as conn:
+            row = conn.execute(
+                """SELECT id, order_id, order_no, department_key, department_name, unit_price,
+                          shipped_status, reported_at
+                   FROM workshop_records
+                   WHERE department_key = ? AND order_no = ?
+                   ORDER BY reported_at DESC, id DESC
+                   LIMIT 1""",
+                (department_key, order_no),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def delete_workshop_record(self, record_id: int, department_key: str = "") -> str:
+        department_key = str(department_key or "").strip()
+        with self.connect(write=True) as conn:
+            row = conn.execute(
+                """SELECT order_no FROM workshop_records
+                   WHERE id = ? AND (? = '' OR department_key = ?)""",
+                (int(record_id), department_key, department_key),
+            ).fetchone()
+            if not row:
+                raise ValueError("车间报到记录不存在")
+            conn.execute("DELETE FROM workshop_records WHERE id = ?", (int(record_id),))
+            return str(row["order_no"])
 
     def create_workshop_records(
         self,
@@ -1055,7 +1094,7 @@ class Repository:
         with self.connect() as conn:
             total = int(conn.execute(f"SELECT COUNT(*) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0])
             rows = conn.execute(
-                f"""SELECT w.*, o.product_name, o.customer_name, o.shipped_status
+                f"""SELECT w.*, o.product_name, o.customer_name
                     FROM workshop_records w
                     LEFT JOIN orders o ON o.id = w.order_id
                     {where}
@@ -1068,9 +1107,8 @@ class Repository:
     def order_workshop_records(self, order_id: int) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
-                """SELECT w.*, o.shipped_status
+                """SELECT w.*
                    FROM workshop_records w
-                   LEFT JOIN orders o ON o.id = w.order_id
                    WHERE w.order_id = ?
                    ORDER BY w.reported_at ASC, w.id ASC""",
                 (order_id,),

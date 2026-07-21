@@ -5,7 +5,7 @@
 {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
 {% if created %}<div class="alert success">&#24050;&#25253;&#21040; {{ created }} &#26465;&#35746;&#21333;&#12290;</div>{% endif %}
 {% if shipped %}<div class="alert success">&#24050;&#20986;&#36135; {{ shipped }} &#26465;&#35746;&#21333;&#12290;</div>{% endif %}
-<section class="panel create-panel" data-workshop-scan><div class="padded">
+<section class="panel create-panel" data-workshop-scan data-workshop-history-url="/workshop/{{ department.key }}/history"><div class="padded">
 <form method="post" class="workshop-scan-form">
 <input type="hidden" name="csrf" value="{{ csrf }}">
 <div class="table-wrap batch-table"><table><thead><tr><th>&#35746;&#21333;&#21495;</th><th>&#21333;&#20215;</th><th></th></tr></thead><tbody data-workshop-rows><tr><td><input name="order_no" autocomplete="off" data-workshop-order placeholder="&#25195;&#25551;&#25110;&#25163;&#21160;&#36755;&#20837;"></td><td><input type="number" name="unit_price" step="0.0001" min="0" value="0"></td><td><button type="button" class="small danger-button" data-remove-workshop-row>&#21024;&#38500;</button></td></tr></tbody></table></div>
@@ -14,6 +14,6 @@
 </form></div></section>
 <form class="searchbar"><input name="q" value="{{ q }}" placeholder="&#25628;&#32034;&#35746;&#21333;&#21495;&#25110;&#20135;&#21697;"><button>&#25628;&#32034;</button></form>
 <section class="panel table-wrap"><table><thead><tr><th>&#35746;&#21333;&#21495;</th><th>&#20135;&#21697;</th><th>&#23458;&#25143;</th><th>&#37096;&#38376;</th><th>&#21333;&#20215;</th><th>&#20986;&#36135;&#29366;&#24577;</th><th>&#25253;&#21040;&#26102;&#38388;</th></tr></thead><tbody>
-{% for row in result.rows %}<tr><td><a href="/orders/{{ row.order_id }}">{{ row.order_no }}</a></td><td>{{ row.product_name or '-' }}</td><td>{{ row.customer_name or '-' }}</td><td>{{ row.department_name }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td><td><span class="badge {{ 'ok' if row.shipped_status else 'warn' }}">{% if row.shipped_status %}&#24050;&#20986;&#36135;{% else %}&#24453;&#20986;&#36135;{% endif %}</span></td><td>{{ row.reported_at }}</td></tr>{% else %}<tr><td colspan="7" class="muted">&#26242;&#26080;&#35760;&#24405;</td></tr>{% endfor %}
+{% for row in result.rows %}<tr data-admin-context data-delete-url="/workshop/{{ department.key }}/records/{{ row.id }}/delete" data-csrf="{{ csrf }}" data-record-label="车间记录 {{ row.order_no }}"><td><a href="/orders/{{ row.order_id }}">{{ row.order_no }}</a></td><td>{{ row.product_name or '-' }}</td><td>{{ row.customer_name or '-' }}</td><td>{{ row.department_name }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td><td><span class="badge {{ 'ok' if row.shipped_status else 'warn' }}">{% if row.shipped_status %}&#24050;&#20986;&#36135;{% else %}&#24453;&#20986;&#36135;{% endif %}</span></td><td>{{ row.reported_at }}</td></tr>{% else %}<tr><td colspan="7" class="muted">&#26242;&#26080;&#35760;&#24405;</td></tr>{% endfor %}
 </tbody></table></section>{% include "_pager.html" %}
 {% endblock %}
