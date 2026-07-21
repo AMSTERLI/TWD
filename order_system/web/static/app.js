@@ -365,10 +365,26 @@ if (outsourceBatch) {
     rows.querySelectorAll("tr").forEach(recalculateRow);
   }
 
+  function showOrderNoEnd(input) {
+    if (!input) return;
+    requestAnimationFrame(() => {
+      input.scrollLeft = input.scrollWidth;
+      if (document.activeElement === input && typeof input.setSelectionRange === "function") {
+        const end = input.value.length;
+        input.setSelectionRange(end, end);
+      }
+    });
+  }
+
   function addOutsourceRow(focus = true) {
     rows.appendChild(template.content.cloneNode(true));
     updateProcessUI();
-    if (focus) rows.lastElementChild.querySelector("[data-scan-order]").focus();
+    const orderInput = rows.lastElementChild.querySelector("[data-scan-order]");
+    showOrderNoEnd(orderInput);
+    if (focus) {
+      orderInput.focus();
+      showOrderNoEnd(orderInput);
+    }
   }
 
   outsourceBatch.querySelector("[data-add-outsource-row]").addEventListener("click", () => addOutsourceRow());
@@ -378,6 +394,7 @@ if (outsourceBatch) {
   });
   function fillOrderRow(row) {
     const input = row.querySelector("[name=order_no]");
+    showOrderNoEnd(input);
     const orderNo = input?.value.trim();
     const order = ordersByNo.get(orderNo);
     if (!order) return;
@@ -432,13 +449,16 @@ if (outsourceBatch) {
       if (!event.target.dataset.manualLocked) recalculateRow(row);
       return;
     }
-    if (event.target.matches("[name=order_no]")) fillOrderRow(row);
-    else recalculateRow(row);
+    if (event.target.matches("[name=order_no]")) {
+      showOrderNoEnd(event.target);
+      fillOrderRow(row);
+    } else recalculateRow(row);
   });
   outsourceBatch.addEventListener("change", event => {
     if (!event.target.matches("[name=order_no]")) return;
     const row = event.target.closest("tr");
     if (row) {
+      showOrderNoEnd(event.target);
       fillOrderRow(row);
       checkExistingOutsource(row);
     }
@@ -454,7 +474,9 @@ if (outsourceBatch) {
       });
       row.querySelectorAll("select").forEach(select => select.selectedIndex = 0);
       recalculateRow(row);
-      row.querySelector("[data-scan-order]").focus();
+      const orderInput = row.querySelector("[data-scan-order]");
+      orderInput.focus();
+      showOrderNoEnd(orderInput);
       return;
     }
     button.closest("tr").remove();
@@ -464,11 +486,15 @@ if (outsourceBatch) {
     event.preventDefault();
     if (!event.target.value.trim()) return;
     const row = event.target.closest("tr");
+    showOrderNoEnd(event.target);
     fillOrderRow(row);
     checkExistingOutsource(row);
     const next = row.nextElementSibling;
-    if (next) next.querySelector("[data-scan-order]").focus();
-    else addOutsourceRow(true);
+    if (next) {
+      const orderInput = next.querySelector("[data-scan-order]");
+      orderInput.focus();
+      showOrderNoEnd(orderInput);
+    } else addOutsourceRow(true);
   });
   outsourceBatch.addEventListener("submit", event => {
     const process = processSelect.value;
@@ -493,8 +519,13 @@ if (outsourceBatch) {
       }
     }
   });
+  outsourceBatch.addEventListener("focusin", event => {
+    if (event.target.matches("[name=order_no]")) showOrderNoEnd(event.target);
+  });
   updateProcessUI();
-  rows.querySelector("[data-scan-order]").focus();
+  const firstOrderInput = rows.querySelector("[data-scan-order]");
+  firstOrderInput.focus();
+  showOrderNoEnd(firstOrderInput);
 }
 document.querySelectorAll("[data-selection-form]").forEach(form => {
   const selectAll = form.querySelector("[data-select-all]");
