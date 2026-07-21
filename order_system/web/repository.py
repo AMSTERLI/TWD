@@ -967,6 +967,35 @@ class Repository:
                 (int(shipped), order_id),
             )
 
+    def ship_workshop_orders(self, department_key: str, order_nos: list[str]) -> list[str]:
+        department_key = str(department_key or "").strip()
+        clean_order_nos: list[str] = []
+        for raw in order_nos:
+            order_no = str(raw or "").strip()
+            if order_no and order_no not in clean_order_nos:
+                clean_order_nos.append(order_no)
+        if not clean_order_nos:
+            raise ValueError("请至少扫描一个订单")
+        shipped: list[str] = []
+        with self.connect(write=True) as conn:
+            for order_no in clean_order_nos:
+                row = conn.execute(
+                    """SELECT o.id, o.order_no
+                       FROM orders o
+                       WHERE o.order_no = ?
+                         AND EXISTS (
+                             SELECT 1 FROM workshop_records w
+                             WHERE w.order_id = o.id AND w.department_key = ?
+                         )
+                       ORDER BY o.id DESC LIMIT 1""",
+                    (order_no, department_key),
+                ).fetchone()
+                if not row:
+                    raise ValueError(f"订单 {order_no} 尚未在当前车间报到")
+                conn.execute("UPDATE orders SET shipped_status = 1 WHERE id = ?", (int(row["id"]),))
+                shipped.append(str(row["order_no"]))
+        return shipped
+
     def create_workshop_records(
         self,
         department_key: str,
@@ -1026,7 +1055,7 @@ class Repository:
         with self.connect() as conn:
             total = int(conn.execute(f"SELECT COUNT(*) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0])
             rows = conn.execute(
-                f"""SELECT w.*, o.product_name, o.customer_name
+                f"""SELECT w.*, o.product_name, o.customer_name, o.shipped_status
                     FROM workshop_records w
                     LEFT JOIN orders o ON o.id = w.order_id
                     {where}
@@ -1039,9 +1068,11 @@ class Repository:
     def order_workshop_records(self, order_id: int) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
-                """SELECT * FROM workshop_records
-                   WHERE order_id = ?
-                   ORDER BY reported_at ASC, id ASC""",
+                """SELECT w.*, o.shipped_status
+                   FROM workshop_records w
+                   LEFT JOIN orders o ON o.id = w.order_id
+                   WHERE w.order_id = ?
+                   ORDER BY w.reported_at ASC, w.id ASC""",
                 (order_id,),
             ).fetchall()
         return [dict(row) for row in rows]

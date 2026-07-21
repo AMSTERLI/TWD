@@ -1133,7 +1133,7 @@ async def workshop_unlock(request: Request, department_key: str):
 
 
 @app.get("/workshop/{department_key}", response_class=HTMLResponse)
-def workshop_department_page(request: Request, department_key: str, q: str = "", page: int = 1, created: int = 0):
+def workshop_department_page(request: Request, department_key: str, q: str = "", page: int = 1, created: int = 0, shipped: int = 0):
     _, denied = require_page(request, {"workshop"})
     if denied:
         return denied
@@ -1151,9 +1151,45 @@ def workshop_department_page(request: Request, department_key: str, q: str = "",
             result=repo.workshop_records(q, department_key, page),
             q=q,
             created=max(0, created),
+            shipped=max(0, shipped),
             error="",
         ),
     )
+
+
+@app.post("/workshop/{department_key}/ship", response_class=HTMLResponse)
+async def workshop_department_ship(request: Request, department_key: str):
+    user, denied = require_page(request, {"workshop"})
+    if denied:
+        return denied
+    department = workshop_department(department_key)
+    if not department:
+        return Response(status_code=404)
+    if not workshop_unlocked(request, department_key):
+        return RedirectResponse("/workshop", status_code=303)
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    order_nos = [str(item or "").strip() for item in form.getlist("order_no")]
+    try:
+        shipped_nos = await run_in_threadpool(repo.ship_workshop_orders, department_key, order_nos)
+        await run_in_threadpool(repo.audit, user, "workshop.ship", f"{department_key}:{len(shipped_nos)}", client_ip(request))
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "workshop_department.html",
+            page_context(
+                request,
+                department=department,
+                result=repo.workshop_records("", department_key, 1),
+                q="",
+                created=0,
+                shipped=0,
+                error=str(exc),
+            ),
+            status_code=422,
+        )
+    return RedirectResponse(f"/workshop/{department_key}?shipped={len(shipped_nos)}", status_code=303)
 
 
 @app.post("/workshop/{department_key}", response_class=HTMLResponse)
@@ -1192,6 +1228,7 @@ async def workshop_department_submit(request: Request, department_key: str):
                 result=repo.workshop_records("", department_key, 1),
                 q="",
                 created=0,
+                shipped=0,
                 error=str(exc),
             ),
             status_code=422,
