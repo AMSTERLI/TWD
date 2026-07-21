@@ -13,7 +13,7 @@
 .batch-table td{padding:5px 4px}
 .batch-table input,.batch-table select{width:74px;min-width:0;padding:7px 5px;font-size:13px}
 .batch-table input[type="number"]{width:66px}
-.batch-table [name="order_no"]{width:142px;min-width:142px}
+.batch-table [name="order_no"]{width:142px;min-width:142px;text-align:right;direction:ltr;font-variant-numeric:tabular-nums}
 .batch-table [name="remark"]{width:96px;min-width:96px}
 .batch-table [name="flag_type"]{width:74px}
 .batch-table output{min-width:58px;font-size:12px}
