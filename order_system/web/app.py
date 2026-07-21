@@ -1302,7 +1302,7 @@ def outsource_history(request: Request, order_no: str = "", process_name: str = 
 
 @app.get("/outsource/{record_id}/edit", response_class=HTMLResponse)
 def edit_outsource_page(request: Request, record_id: int):
-    _, denied = require_page(request, {"admin"})
+    _, denied = require_page(request, {"admin", "outsource"})
     if denied:
         return denied
     record = repo.get_outsource_record(record_id)
@@ -1318,7 +1318,7 @@ def edit_outsource_page(request: Request, record_id: int):
 
 @app.post("/outsource/{record_id}/edit", response_class=HTMLResponse)
 async def edit_outsource(request: Request, record_id: int):
-    user, denied = require_page(request, {"admin"})
+    user, denied = require_page(request, {"admin", "outsource"})
     if denied:
         return denied
     form = await request.form()

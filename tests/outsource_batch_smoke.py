@@ -44,6 +44,7 @@ def order_payload(product: str) -> dict:
 with TestClient(app) as client:
     repo.create_user("admin", "test-password", "admin")
     repo.legacy.add_outsource_factory(DIE_CAST, "batch-factory")
+    repo.legacy.add_outsource_factory(COLORING, "color-factory")
     first_no = repo.create_order(order_payload("batch-one"))[1]
     second_no = repo.create_order(order_payload("batch-two"))[1]
 
@@ -182,16 +183,30 @@ with TestClient(app) as client:
     )
     assert blocked.status_code == 409
 
-    # The outsource role can delete records from the list context menu but cannot edit them.
+    # The outsource role can edit and delete records from the list context menu.
     repo.create_user("outsource", "test-password", "outsource")
     client.post("/login", data={"csrf": token(client.get("/login").text), "username": "outsource", "password": "test-password"})
     outsource_page = client.get("/outsource")
     assert f'/outsource/{coloring_id}/delete' in outsource_page.text
+    assert f'/outsource/{coloring_id}/edit' in outsource_page.text
     assert repo.get_outsource_record(flagged_coloring_id) is not None
-    assert f'/outsource/{coloring_id}/edit' not in outsource_page.text
+    outsource_edit_page = client.get(f"/outsource/{coloring_id}/edit")
+    assert outsource_edit_page.status_code == 200
+    outsource_edited = client.post(
+        f"/outsource/{coloring_id}/edit",
+        data={
+            "csrf": token(outsource_edit_page.text), "process_name": COLORING,
+            "factory_name": "color-factory", "outsource_date": "2026-07-17",
+            "product_quantity": "12", "spare_quantity": "1", "unit_price": "0.5",
+            "color_count": "2", "flag_type": "", "remark": "outsource-updated",
+        },
+        follow_redirects=False,
+    )
+    assert outsource_edited.status_code == 303, outsource_edited.text
+    assert repo.get_outsource_record(coloring_id)["remark"] == "outsource-updated"
     deleted = client.post(
         f"/outsource/{coloring_id}/delete",
-        data={"csrf": token(outsource_page.text)},
+        data={"csrf": token(client.get("/outsource").text)},
         follow_redirects=False,
     )
     assert deleted.status_code == 303 and repo.get_outsource_record(coloring_id) is None

@@ -596,6 +596,11 @@ class Repository:
         return bool(re.fullmatch(r"TWD\d+-\d{9}", str(order_no or "").strip()))
 
     @staticmethod
+    def _order_no_suffix(order_no: str) -> str:
+        clean = str(order_no or "").strip()
+        return clean.split("-", 1)[1] if "-" in clean else ""
+
+    @staticmethod
     def _order_no_taken(conn: sqlite3.Connection, order_no: str) -> bool:
         return bool(conn.execute(
             """SELECT 1 FROM orders WHERE order_no = ?
@@ -606,14 +611,55 @@ class Repository:
         ).fetchone())
 
     @classmethod
+    def _order_no_suffix_taken(
+        cls,
+        conn: sqlite3.Connection,
+        order_suffix: str,
+        *,
+        allowed_order_no: str = "",
+        allowed_user_id: int | None = None,
+        exclude_order_id: int | None = None,
+    ) -> bool:
+        order_suffix = str(order_suffix or "").strip()
+        if not order_suffix:
+            return False
+        order_rows = conn.execute(
+            """SELECT id FROM orders
+               WHERE substr(order_no, instr(order_no, '-') + 1) = ?""",
+            (order_suffix,),
+        ).fetchall()
+        for row in order_rows:
+            if exclude_order_id is not None and int(row["id"]) == int(exclude_order_id):
+                continue
+            return True
+        reservation_rows = conn.execute(
+            """SELECT order_no, reserved_by, used_at, used_order_id FROM order_no_reservations
+               WHERE substr(order_no, instr(order_no, '-') + 1) = ?""",
+            (order_suffix,),
+        ).fetchall()
+        for row in reservation_rows:
+            if exclude_order_id is not None and int(row["used_order_id"] or 0) == int(exclude_order_id):
+                continue
+            if (
+                allowed_order_no
+                and str(row["order_no"] or "") == allowed_order_no
+                and not row["used_at"]
+                and int(row["reserved_by"] or 0) == int(allowed_user_id or 0)
+            ):
+                continue
+            return True
+        return False
+
+    @classmethod
     def _next_order_no(cls, conn: sqlite3.Connection, order_date: str, prefix_no: int) -> str:
         sequence = int(conn.execute(
             "SELECT COUNT(*) + 1 FROM orders WHERE order_date = ?", (order_date,)
         ).fetchone()[0])
         suffix = order_date[2:].replace("-", "")
         while True:
-            order_no = f"TWD{prefix_no}-{suffix}{sequence:03d}"
-            if not cls._order_no_taken(conn, order_no):
+            order_suffix = f"{suffix}{sequence:03d}"
+            order_no = f"TWD{prefix_no}-{order_suffix}"
+            if not cls._order_no_taken(conn, order_no) and not cls._order_no_suffix_taken(conn, order_suffix):
                 return order_no
             sequence += 1
 
@@ -686,6 +732,10 @@ class Repository:
             if requested_order_no and not requested_order_no.startswith(expected_prefix):
                 raise ValueError(f"订单编号必须以 {expected_prefix} 开头")
             order_no = requested_order_no or self._next_order_no(conn, order_date, prefix_no)
+            if requested_order_no and self._is_auto_order_no(order_no) and not str(payload.get("order_type") or "").startswith("\u8865\u6570\u5355"):
+                order_suffix = self._order_no_suffix(order_no)
+                if self._order_no_suffix_taken(conn, order_suffix, allowed_order_no=order_no, allowed_user_id=reservation_user_id):
+                    raise ValueError("\u8ba2\u5355\u7f16\u53f7\u540e\u534a\u6bb5\u5df2\u88ab\u5360\u7528\uff0c\u8bf7\u91cd\u65b0\u751f\u6210\u8ba2\u5355\u7f16\u53f7")
             payload["order_no"] = order_no
             payload["order_prefix_no"] = prefix_no
             payload["customer_code"] = prefix_no
@@ -718,6 +768,11 @@ class Repository:
             payload["order_prefix_no"] = prefix_no
             payload["customer_code"] = prefix_no
             payload["customer_name"] = str(customer["name"])
+            order_no = str(payload.get("order_no") or "").strip()
+            if self._is_auto_order_no(order_no) and not str(payload.get("order_type") or "").startswith("\u8865\u6570\u5355"):
+                order_suffix = self._order_no_suffix(order_no)
+                if self._order_no_suffix_taken(conn, order_suffix, exclude_order_id=order_id):
+                    raise ValueError("\u8ba2\u5355\u7f16\u53f7\u540e\u534a\u6bb5\u5df2\u88ab\u5360\u7528\uff0c\u8bf7\u91cd\u65b0\u751f\u6210\u8ba2\u5355\u7f16\u53f7")
             values = [payload.get(column) for column in ORDER_COLUMNS]
             cursor = conn.execute(
                 f"UPDATE orders SET {assignments} WHERE id = ?",
@@ -732,6 +787,11 @@ class Repository:
         payload["order_prefix_no"] = prefix_no
         payload["customer_code"] = prefix_no
         payload["customer_name"] = str(customer["name"])
+        order_no = str(payload.get("order_no") or "").strip()
+        if self._is_auto_order_no(order_no) and not str(payload.get("order_type") or "").startswith("\u8865\u6570\u5355"):
+            order_suffix = self._order_no_suffix(order_no)
+            if self._order_no_suffix_taken(conn, order_suffix, exclude_order_id=order_id):
+                raise ValueError("\u8ba2\u5355\u7f16\u53f7\u540e\u534a\u6bb5\u5df2\u88ab\u5360\u7528\uff0c\u8bf7\u91cd\u65b0\u751f\u6210\u8ba2\u5355\u7f16\u53f7")
         assignments = ", ".join(f"{column} = ?" for column in ORDER_COLUMNS)
         values = [payload.get(column) for column in ORDER_COLUMNS]
         cursor = conn.execute(

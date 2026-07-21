@@ -660,6 +660,16 @@ class Database:
             ).fetchone()
         return row is not None
 
+    def order_no_suffix_exists(self, order_suffix: str) -> bool:
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                """SELECT 1 FROM orders
+                   WHERE substr(order_no, instr(order_no, '-') + 1) = ?
+                   LIMIT 1""",
+                (order_suffix,),
+            ).fetchone()
+        return row is not None
+
     def get_next_order_no(self, order_date: str, order_prefix_no: int = 1) -> str:
         suffix_prefix = order_date[2:].replace("-", "")
         with sqlite3.connect(self.db_path) as conn:
@@ -672,10 +682,12 @@ class Database:
                 (order_date,),
             ).fetchone()
         sequence = int(row[0]) if row else 1
-        candidate = f"TWD{int(order_prefix_no)}-{suffix_prefix}{sequence:03d}"
-        while self.order_no_exists(candidate):
+        order_suffix = f"{suffix_prefix}{sequence:03d}"
+        candidate = f"TWD{int(order_prefix_no)}-{order_suffix}"
+        while self.order_no_exists(candidate) or self.order_no_suffix_exists(order_suffix):
             sequence += 1
-            candidate = f"TWD{int(order_prefix_no)}-{suffix_prefix}{sequence:03d}"
+            order_suffix = f"{suffix_prefix}{sequence:03d}"
+            candidate = f"TWD{int(order_prefix_no)}-{order_suffix}"
         return candidate
 
     def insert_outsource_record(self, payload: dict[str, Any]) -> None:

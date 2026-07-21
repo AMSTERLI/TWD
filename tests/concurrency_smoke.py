@@ -68,6 +68,30 @@ valid_payload = failed_payload.copy()
 valid_payload.update({"order_type": "新订单", "quantity_unit": "个"})
 assert recycle_repo.create_order(valid_payload)[1] == "TWD1-260716001"
 
+# Automatic order number suffixes are unique across customer prefixes.
+suffix_repo = Repository(db_path.with_name("suffix.db"))
+suffix_repo.initialize()
+reserved_first = suffix_repo.reserve_order_no("2026-07-21", 1, user_id=1)
+reserved_second = suffix_repo.reserve_order_no("2026-07-21", 2, user_id=2)
+assert reserved_first == "TWD1-260721001"
+assert reserved_second == "TWD2-260721002"
+suffix_payload = {column: None for column in __import__("order_system.web.repository", fromlist=["ORDER_COLUMNS"]).ORDER_COLUMNS}
+suffix_payload.update({
+    "order_type": "\u65b0\u8ba2\u5355", "salesman": "suffix", "product_name": "suffix",
+    "order_date": "2026-07-21", "quantity": 1, "quantity_unit": "\u4e2a",
+    "order_prefix_no": 1, "order_no": reserved_first, "_reservation_user_id": 1,
+})
+suffix_id, _ = suffix_repo.create_order(suffix_payload)
+assert suffix_repo.update_order(suffix_id, suffix_repo.get_order(suffix_id))
+duplicate_suffix_payload = suffix_payload.copy()
+duplicate_suffix_payload.update({"order_prefix_no": 2, "customer_code": 2, "order_no": "TWD2-260721001"})
+try:
+    suffix_repo.create_order(duplicate_suffix_payload)
+except ValueError as exc:
+    assert "\u540e\u534a\u6bb5" in str(exc)
+else:
+    raise AssertionError("duplicate order number suffix unexpectedly saved")
+
 print("concurrency smoke ok: automatic numbers unique, manual duplicates allowed, unused number recycled")
 
 
