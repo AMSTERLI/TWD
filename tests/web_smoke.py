@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+from io import BytesIO
 import os
 import re
 import tempfile
@@ -13,6 +15,7 @@ os.environ["TWD_DATA_DIR"] = str(root)
 os.environ["TWD_SESSION_SECRET"] = "test-secret-that-is-long-enough-for-smoke-test"
 
 from fastapi.testclient import TestClient  # noqa: E402
+from pypdf import PdfReader  # noqa: E402
 from order_system.database import loads_json  # noqa: E402
 from order_system.web.app import app, repo  # noqa: E402
 
@@ -21,6 +24,9 @@ def csrf(html: str) -> str:
     match = re.search(r'name="csrf" value="([^"]+)"', html)
     assert match
     return match.group(1)
+
+
+PNG_BYTES = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=")
 
 
 with TestClient(app) as client:
@@ -59,8 +65,9 @@ with TestClient(app) as client:
             "quantity": "100", "spare_quantity": "15", "quantity_unit": "个", "order_prefix_no": "1",
             "order_no": "TWD1-260715001",
             "bi_no": "PO-001", "production_no": "SC-001", "global_note": "红字备注",
+            "component_text": ["component note"], "component_existing_image": [""],
         },
-        files={"product_images": ("sample.png", b"not-a-real-image", "image/png")},
+        files=[("product_images", ("sample.png", PNG_BYTES, "image/png")), ("component_image", ("component.png", PNG_BYTES, "image/png"))],
         follow_redirects=False,
     )
     assert response.status_code == 303, response.text
@@ -69,9 +76,16 @@ with TestClient(app) as client:
     assert detail.status_code == 200 and "TWD1-260715001" in detail.text
     assert "100+15" in detail.text
     assert "程炬" in detail.text
-    image_names = loads_json(repo.get_order(1)["image_paths_json"])
+    stored_order = repo.get_order(1)
+    image_names = loads_json(stored_order["image_paths_json"])
     assert len(image_names) == 1
     assert client.get(f"/images/{image_names[0]}").status_code == 200
+    component_parts = loads_json(stored_order["component_parts_json"])
+    assert component_parts and component_parts[0]["text"] == "component note"
+    assert client.get(f"/images/{component_parts[0]['image']}").status_code == 200
+    component_pdf = client.get("/orders/1/pdf")
+    assert component_pdf.status_code == 200
+    assert len(PdfReader(BytesIO(component_pdf.content)).pages) >= 2
     duplicate_page = client.get("/orders/new")
     duplicate = client.post(
         "/orders/new",

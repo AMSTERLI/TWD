@@ -15,6 +15,8 @@
   <thead><tr><th>工艺</th><th>加工厂</th><th>产品/备品</th><th>加工单价</th><th>金额</th><th>外发日期</th><th>付款状态</th><th>备注</th></tr></thead>
   <tbody>{% for row in outsource_records %}<tr><td>{{ row.process_name or '-' }}</td><td>{{ row.factory_name or '-' }}</td><td>{{ row.product_quantity or 0 }} / {{ row.spare_quantity or 0 }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td><td>{{ '¥ %.2f'|format(row.amount) if row.amount is not none else '-' }}</td><td>{{ row.outsource_date or '-' }}</td><td><span class="badge {{ 'ok' if row.paid_status else 'warn' }}">{{ '已付款' if row.paid_status else '未付款' }}</span></td><td>{{ row.remark or '-' }}</td></tr>{% else %}<tr><td colspan="8" class="muted">暂无外发记录</td></tr>{% endfor %}</tbody>
 </table></div></section>
+
+{% if order.component_parts_json %}<section class="panel"><h2>&#32452;&#21512;&#20214;</h2><div class="component-detail-grid">{% for part in order.component_parts_json %}<article class="component-detail">{% if part.image %}<img src="/images/{{ part.image }}" alt="&#32452;&#21512;&#20214;&#22270;&#29255;">{% endif %}<p>{{ part.text or '-' }}</p></article>{% endfor %}</div></section>{% endif %}
 <section class="pdf-preview"><iframe title="订单 PDF" src="/orders/{{ order.id }}/pdf"></iframe></section>
 {% endblock %}
 

@@ -75,6 +75,7 @@ def _build_overlay(record: dict) -> bytes:
     _draw_process_table(pdf, record)
     _draw_images(pdf, record)
     _draw_footer(pdf, record)
+    _draw_component_pages(pdf, record)
 
     pdf.save()
     return buffer.getvalue()
@@ -88,6 +89,8 @@ def _merge_overlay(template_path: Path, overlay_pdf: bytes, output_path: Path) -
 
     writer = PdfWriter()
     writer.add_page(template_page)
+    for page in overlay_reader.pages[1:]:
+        writer.add_page(page)
     with output_path.open("wb") as file_obj:
         writer.write(file_obj)
 
@@ -194,6 +197,52 @@ def _draw_images(pdf: canvas.Canvas, record: dict) -> None:
     slots = _image_slots(len(image_paths))
     for image_path, slot in zip(image_paths[:3], slots):
         _draw_image_in_slot(pdf, image_path, *slot)
+
+
+
+def _draw_component_pages(pdf: canvas.Canvas, record: dict) -> None:
+    parts = _loads_json(record.get("component_parts_json"))
+    if not isinstance(parts, list):
+        return
+    clean_parts = [part for part in parts if isinstance(part, dict) and (str(part.get("text") or "").strip() or str(part.get("image") or "").strip())]
+    if not clean_parts:
+        return
+    data_root = Path(os.environ.get("TWD_DATA_DIR", Path(__file__).resolve().parent.parent))
+    for page_index in range(0, len(clean_parts), 3):
+        pdf.showPage()
+        page_parts = clean_parts[page_index:page_index + 3]
+        pdf.setFont(FONT_NAME, 16)
+        pdf.setFillColorRGB(*BLACK)
+        pdf.drawString(36, PAGE_HEIGHT - 42, f"\u7ec4\u5408\u4ef6 - {record.get('order_no') or ''}")
+        for slot_index, part in enumerate(page_parts):
+            top = 72 + slot_index * 225
+            _draw_component_part(pdf, part, data_root, slot_index + 1, top)
+
+
+def _draw_component_part(pdf: canvas.Canvas, part: dict, data_root: Path, number: int, top: float) -> None:
+    left = 36
+    width = PAGE_WIDTH - 72
+    height = 195
+    pdf.setStrokeColorRGB(0.75, 0.80, 0.82)
+    pdf.roundRect(left, PAGE_HEIGHT - top - height, width, height, 7, stroke=1, fill=0)
+    pdf.setFont(FONT_NAME, 12)
+    pdf.setFillColorRGB(*BLACK)
+    pdf.drawString(left + 12, PAGE_HEIGHT - top - 22, f"\u7ec4\u5408\u4ef6 {number}")
+
+    image_name = Path(str(part.get("image") or "")).name
+    image_path = data_root / "images" / image_name if image_name else None
+    image_left = left + 12
+    image_top = top + 34
+    image_width = 175
+    image_height = 145
+    if image_path and image_path.exists():
+        _draw_image_in_slot(pdf, image_path, image_left, image_top, image_width, image_height)
+    else:
+        pdf.setStrokeColorRGB(0.86, 0.89, 0.91)
+        pdf.rect(image_left, PAGE_HEIGHT - image_top - image_height, image_width, image_height, stroke=1, fill=0)
+
+    text = str(part.get("text") or "").strip()
+    _draw_multiline_text(pdf, text, left + 205, top + 38, width - 225, 138, 12, 16, color=BLACK)
 
 
 def _draw_footer(pdf: canvas.Canvas, record: dict) -> None:

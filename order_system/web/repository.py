@@ -28,7 +28,7 @@ ORDER_COLUMNS = [
     "coloring_note_red", "resin_json", "resin_note", "resin_note_red",
     "packaging_json", "packaging_rule", "packaging_note", "packaging_note_red",
     "back_mode", "back_mode_note", "back_mode_note_red", "global_note",
-    "global_note_red", "image_paths_json",
+    "global_note_red", "image_paths_json", "component_parts_json",
 ]
 
 
@@ -688,7 +688,7 @@ class Repository:
                 "quantity_unit": "个", "spare_quantity": 0, "paid_status": 0, "shipped_status": 0, "invoice_status": 0, "order_prefix_no": prefix_no,
                 "size_as_sample": 0, "materials_json": "[]", "plating_json": "[]",
                 "accessories_json": "[]", "polishing_json": "[]", "coloring_json": "[]",
-                "resin_json": "[]", "packaging_json": "[]", "price_tiers_json": "[]", "image_paths_json": "[]",
+                "resin_json": "[]", "packaging_json": "[]", "price_tiers_json": "[]", "image_paths_json": "[]", "component_parts_json": "[]",
                 "material_note_red": 1, "plating_note_red": 1, "accessories_note_red": 1,
                 "polishing_note_red": 1, "coloring_note_red": 1, "resin_note_red": 1,
                 "packaging_note_red": 1, "back_mode_note_red": 1, "global_note_red": 1,

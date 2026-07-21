@@ -198,46 +198,40 @@ def excel_response(sheet_name: str, headers: list[str], rows: list[list[Any]], p
     )
 
 
+async def save_image_upload(upload: UploadFile, *, preview: bool = False) -> str:
+    if not upload.filename:
+        return ""
+    suffix = Path(upload.filename).suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+        raise ValueError("\u4ea7\u54c1\u56fe\u7247\u4ec5\u652f\u6301 JPG\u3001PNG \u6216 WEBP")
+    prefix = "preview-" if preview else ""
+    target = IMAGES_DIR / f"{prefix}{uuid4().hex}{suffix}"
+    size = 0
+    with target.open("wb") as output:
+        while chunk := await upload.read(1024 * 1024):
+            size += len(chunk)
+            if size > MAX_IMAGE_BYTES:
+                output.close()
+                target.unlink(missing_ok=True)
+                raise ValueError("\u5355\u5f20\u56fe\u7247\u4e0d\u80fd\u8d85\u8fc7 5 MB")
+            output.write(chunk)
+    return target.name
+
+
 async def save_images(files: list[UploadFile]) -> list[str]:
     paths: list[str] = []
     for upload in files[:6]:
-        if not upload.filename:
-            continue
-        suffix = Path(upload.filename).suffix.lower()
-        if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
-            raise ValueError("产品图片仅支持 JPG、PNG 或 WEBP")
-        target = IMAGES_DIR / f"{uuid4().hex}{suffix}"
-        size = 0
-        with target.open("wb") as output:
-            while chunk := await upload.read(1024 * 1024):
-                size += len(chunk)
-                if size > MAX_IMAGE_BYTES:
-                    output.close()
-                    target.unlink(missing_ok=True)
-                    raise ValueError("单张图片不能超过 5 MB")
-                output.write(chunk)
-        paths.append(target.name)
+        name = await save_image_upload(upload, preview=False)
+        if name:
+            paths.append(name)
     return paths
 
 async def save_preview_images(files: list[UploadFile]) -> list[str]:
     paths: list[str] = []
     for upload in files[:6]:
-        if not upload.filename:
-            continue
-        suffix = Path(upload.filename).suffix.lower()
-        if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
-            raise ValueError("产品图片仅支持 JPG、PNG 或 WEBP")
-        target = IMAGES_DIR / f"preview-{uuid4().hex}{suffix}"
-        size = 0
-        with target.open("wb") as output:
-            while chunk := await upload.read(1024 * 1024):
-                size += len(chunk)
-                if size > MAX_IMAGE_BYTES:
-                    output.close()
-                    target.unlink(missing_ok=True)
-                    raise ValueError("单张图片不能超过 5 MB")
-                output.write(chunk)
-        paths.append(target.name)
+        name = await save_image_upload(upload, preview=True)
+        if name:
+            paths.append(name)
     return paths
 
 
@@ -253,12 +247,15 @@ def image_is_visible_to_user(image_name: str, user: dict[str, Any]) -> bool:
         return False
     with repo.connect() as conn:
         rows = conn.execute(
-            "SELECT salesman, image_paths_json FROM orders WHERE image_paths_json LIKE ?",
-            (f"%{image_name}%",),
+            """SELECT salesman, image_paths_json, component_parts_json
+               FROM orders
+               WHERE image_paths_json LIKE ? OR component_parts_json LIKE ?""",
+            (f"%{image_name}%", f"%{image_name}%"),
         ).fetchall()
     for row in rows:
         image_names = loads_json(row["image_paths_json"] or "[]")
-        if image_name not in image_names:
+        component_images = [str(item.get("image") or "") for item in loads_json(row["component_parts_json"] or "[]") if isinstance(item, dict)]
+        if image_name not in image_names and image_name not in component_images:
             continue
         if user.get("role") == "admin" or str(row["salesman"] or "") == user_display_name(user):
             return True
@@ -279,9 +276,29 @@ def merge_edit_images(form: Any, existing: dict[str, Any], uploaded_images: list
     removed = [name for name in existing_images if name not in kept]
     return merged, removed
 
+
+
+async def parse_component_parts(form: Any, *, save_uploaded_images: bool = True) -> list[dict[str, str]]:
+    texts = [str(item or "").strip() for item in form.getlist("component_text")]
+    existing_images = [safe_image_name(item) for item in form.getlist("component_existing_image")]
+    uploads = [item for item in form.getlist("component_image") if isinstance(item, UploadFile)]
+    row_count = max(len(texts), len(existing_images), len(uploads))
+    parts: list[dict[str, str]] = []
+    for index in range(row_count):
+        text_value = texts[index] if index < len(texts) else ""
+        existing_image = existing_images[index] if index < len(existing_images) else ""
+        upload = uploads[index] if index < len(uploads) else None
+        image_name = existing_image
+        if upload and upload.filename:
+            image_name = await save_image_upload(upload, preview=not save_uploaded_images)
+        if text_value or image_name:
+            parts.append({"text": text_value, "image": image_name})
+    return parts
+
 async def order_payload(form: Any, *, save_uploaded_images: bool = True) -> dict[str, Any]:
     images = [item for item in form.getlist("product_images") if isinstance(item, UploadFile)]
     image_paths = await save_images(images) if save_uploaded_images else await save_preview_images(images)
+    component_parts = await parse_component_parts(form, save_uploaded_images=save_uploaded_images)
     customer_code = as_int(form.get("order_prefix_no"))
     return {
         "order_type": str(form.get("order_type") or "新订单"),
@@ -338,12 +355,13 @@ async def order_payload(form: Any, *, save_uploaded_images: bool = True) -> dict
         "global_note": str(form.get("global_note") or "").strip(),
         "global_note_red": 1,
         "image_paths_json": dumps_json(image_paths),
+        "component_parts_json": dumps_json(component_parts),
     }
 
 
 JSON_CHANGE_FIELDS = {
     "materials_json", "plating_json", "accessories_json", "polishing_json",
-    "coloring_json", "resin_json", "packaging_json", "image_paths_json", "price_tiers_json",
+    "coloring_json", "resin_json", "packaging_json", "image_paths_json", "component_parts_json", "price_tiers_json",
 }
 ORDER_CHANGE_LABELS = {
     "order_type": "订单类型",
@@ -662,6 +680,7 @@ async def preview_order(request: Request):
         payload = await order_payload(form, save_uploaded_images=False)
         payload["salesman"] = user_display_name(user)
         preview_images = loads_json(payload.get("image_paths_json") or "[]")
+        preview_images.extend([item.get("image") for item in loads_json(payload.get("component_parts_json") or "[]") if isinstance(item, dict)])
         if not payload["product_name"] or payload["quantity"] <= 0 or payload["spare_quantity"] < 0 or not str(form.get("spare_quantity") or "").strip():
             raise ValueError("产品名称、有效数量和备品数量为必填项")
         content = await run_in_threadpool(render_order_pdf, payload)
@@ -719,7 +738,7 @@ def _editable_order(order_id: int) -> dict[str, Any] | None:
     if not record:
         return None
     for key in ("materials_json", "plating_json", "accessories_json", "polishing_json",
-                "coloring_json", "resin_json", "packaging_json", "image_paths_json"):
+                "coloring_json", "resin_json", "packaging_json", "image_paths_json", "component_parts_json"):
         record[key] = loads_json(record.get(key) or "[]")
     record["price_tiers"] = price_tiers_from_json(record.get("price_tiers_json"))
     material_bases, material_crafts = split_materials(record["materials_json"])
@@ -781,10 +800,13 @@ async def edit_order(request: Request, order_id: int):
         uploaded_images = loads_json(payload.get("image_paths_json") or "[]")
         merged_images, removed_images = merge_edit_images(form, existing, uploaded_images)
         payload["image_paths_json"] = dumps_json(merged_images)
+        existing_component_images = {str(item.get("image") or "") for item in loads_json(existing.get("component_parts_json") or "[]") if isinstance(item, dict)}
+        proposed_component_images = {str(item.get("image") or "") for item in loads_json(payload.get("component_parts_json") or "[]") if isinstance(item, dict)}
+        removed_component_images = [name for name in existing_component_images - proposed_component_images if safe_image_name(name)]
         if user["role"] == "admin":
             if not await run_in_threadpool(repo.update_order, order_id, payload):
                 return Response(status_code=404)
-            for image_name in removed_images:
+            for image_name in removed_images + removed_component_images:
                 (IMAGES_DIR / image_name).unlink(missing_ok=True)
             await run_in_threadpool(repo.audit, user, "order.update", str(order_id), client_ip(request))
             return RedirectResponse(f"/orders/{order_id}", status_code=303)
@@ -919,7 +941,7 @@ def order_detail(request: Request, order_id: int, created: int = 0):
             request, "error.html", page_context(request, status=403, message="forbidden"), status_code=403
         )
     for key in ("materials_json", "plating_json", "accessories_json", "polishing_json",
-                "coloring_json", "resin_json", "packaging_json", "image_paths_json"):
+                "coloring_json", "resin_json", "packaging_json", "image_paths_json", "component_parts_json"):
         record[key] = loads_json(record.get(key) or "[]")
     outsource_records = repo.order_outsource_records(order_id)
     return templates.TemplateResponse(

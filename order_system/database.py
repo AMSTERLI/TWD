@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS orders (
     global_note TEXT,
     global_note_red INTEGER NOT NULL DEFAULT 0,
     image_paths_json TEXT NOT NULL,
+    component_parts_json TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -165,6 +166,7 @@ class Database:
             self._ensure_column(conn, "orders", "customer_name", "TEXT")
             self._ensure_column(conn, "orders", "coloring_text", "TEXT")
             self._ensure_column(conn, "orders", "diameter_mm", "TEXT")
+            self._ensure_column(conn, "orders", "component_parts_json", "TEXT NOT NULL DEFAULT '[]'")
             self._ensure_column(conn, "outsource_records", "product_quantity", "REAL NOT NULL DEFAULT 0")
             self._ensure_column(conn, "outsource_records", "spare_quantity", "REAL NOT NULL DEFAULT 0")
             self._ensure_column(conn, "outsource_records", "processing_fee", "REAL NOT NULL DEFAULT 0")

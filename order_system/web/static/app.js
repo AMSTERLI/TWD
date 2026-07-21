@@ -51,6 +51,9 @@ function clearOrderFormForAi(form) {
     status.textContent = "";
     status.className = "paste-image-status";
   });
+  form.querySelectorAll("[data-component-rows]").forEach(rows => {
+    rows.innerHTML = "";
+  });
   form.querySelector("[data-customer-name]")?.dispatchEvent(new Event("input", {bubbles: true}));
   form.querySelector("[data-order-date]")?.dispatchEvent(new Event("change", {bubbles: true}));
 }
@@ -124,10 +127,14 @@ function refreshImagePreview(fileInput) {
   });
 }
 
-document.querySelectorAll("[data-paste-image-file]").forEach(input => {
+function bindImagePreviewInput(input) {
+  if (!input || input.dataset.previewBound === "1") return;
+  input.dataset.previewBound = "1";
   input.addEventListener("change", () => refreshImagePreview(input));
   refreshImagePreview(input);
-});
+}
+
+document.querySelectorAll("[data-paste-image-file]").forEach(bindImagePreviewInput);
 
 document.querySelectorAll("[data-remove-existing-image]").forEach(button => {
   button.addEventListener("click", () => {
@@ -137,6 +144,27 @@ document.querySelectorAll("[data-remove-existing-image]").forEach(button => {
     if (thumb) thumb.hidden = true;
   });
 });
+
+document.querySelectorAll("[data-component-parts]").forEach(section => {
+  const rows = section.querySelector("[data-component-rows]");
+  const template = section.querySelector("[data-component-row-template]");
+  const addButton = section.querySelector("[data-add-component-part]");
+  function bindRow(row) {
+    row.querySelectorAll("[data-paste-image-file]").forEach(bindImagePreviewInput);
+  }
+  function addRow() {
+    rows.appendChild(template.content.cloneNode(true));
+    bindRow(rows.lastElementChild);
+  }
+  rows.querySelectorAll(".component-row").forEach(bindRow);
+  addButton?.addEventListener("click", addRow);
+  section.addEventListener("click", event => {
+    const button = event.target.closest("[data-remove-component-part]");
+    if (!button) return;
+    button.closest(".component-row")?.remove();
+  });
+});
+
 
 const pastedImageInputs = document.querySelectorAll("[data-paste-image-target]");
 if (pastedImageInputs.length) {

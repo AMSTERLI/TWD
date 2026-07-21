@@ -17,6 +17,8 @@ def render_order_pdf(record: dict) -> bytes:
     page.merge_page(overlay_reader.pages[0])
     writer = PdfWriter()
     writer.add_page(page)
+    for extra_page in overlay_reader.pages[1:]:
+        writer.add_page(extra_page)
     output = BytesIO()
     writer.write(output)
     return output.getvalue()
