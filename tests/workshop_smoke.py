@@ -96,6 +96,8 @@ with TestClient(app) as client:
     assert detail.status_code == 200
     assert "workflow-line" in detail.text
     assert "current" in detail.text
+    assert "\u523b\u6a21" in detail.text
+    assert "\u51b2\u538b" not in detail.text
     assert "10.5000" in detail.text
 
 print(f"workshop smoke ok: {root}")

@@ -1068,30 +1068,25 @@ def workshop_unlocked(request: Request, department_key: str) -> bool:
 
 
 def build_order_workflow(workshop_records: list[dict[str, Any]], outsource_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for index, record in enumerate(workshop_records):
+        name = str(record.get("department_name") or "").strip()
+        if name:
+            events.append({"name": name, "at": record.get("reported_at") or "", "source": "workshop", "sequence": index})
+    for index, record in enumerate(outsource_records):
+        name = str(record.get("process_name") or "").strip()
+        if name:
+            events.append({"name": name, "at": record.get("outsource_date") or record.get("created_at") or "", "source": "outsource", "sequence": index})
+
     steps: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for record in workshop_records:
-        name = str(record.get("department_name") or "")
-        if not name or name in seen:
+    for event in sorted(events, key=lambda item: (str(item.get("at") or ""), int(item.get("sequence") or 0))):
+        if event["name"] in seen:
             continue
-        seen.add(name)
-        steps.append({"name": name, "done": True, "at": record.get("reported_at"), "source": "workshop"})
-    for record in sorted(outsource_records, key=lambda item: (str(item.get("outsource_date") or ""), int(item.get("id") or 0))):
-        name = str(record.get("process_name") or "")
-        if not name or name in seen:
-            continue
-        seen.add(name)
-        steps.append({"name": name, "done": True, "at": record.get("outsource_date"), "source": "outsource"})
-    defaults = ["\u523b\u6a21", "\u51b2\u538b", "\u629b\u5149", "\u7535\u9540", "\u4e0a\u8272", "\u5305\u88c5"]
-    for name in defaults:
-        if name not in seen:
-            steps.append({"name": name, "done": False, "at": "", "source": "planned"})
-    last_done = None
-    for index, step in enumerate(steps):
-        if step.get("done"):
-            last_done = index
-    if last_done is not None:
-        steps[last_done]["current"] = True
+        seen.add(event["name"])
+        steps.append({"name": event["name"], "done": True, "at": event["at"], "source": event["source"]})
+    if steps:
+        steps[-1]["current"] = True
     return steps
 
 
