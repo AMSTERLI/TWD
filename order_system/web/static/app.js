@@ -269,6 +269,7 @@ if (outsourceBatch) {
   }));
   const ordersDataElement = outsourceBatch.querySelector("[data-outsource-orders-json]");
   const ordersByNo = new Map();
+  const duplicateScanTimers = new WeakMap();
   if (ordersDataElement) {
     try {
       JSON.parse(ordersDataElement.textContent || "[]").forEach(order => {
@@ -441,6 +442,38 @@ if (outsourceBatch) {
     }
   }
 
+  function checkBatchDuplicate(row) {
+    const orderNo = row.querySelector("[name=order_no]")?.value.trim();
+    const process = processSelect.value;
+    const flagType = row.querySelector("[name=flag_type]")?.value || "";
+    if (!orderNo || !process || flagType === "remake" || flagType === "replenishment") return false;
+    const duplicate = [...rows.querySelectorAll("tr")].find(item => {
+      if (item === row) return false;
+      const itemOrderNo = item.querySelector("[name=order_no]")?.value.trim();
+      const itemFlagType = item.querySelector("[name=flag_type]")?.value || "";
+      return itemOrderNo === orderNo && itemFlagType !== "remake" && itemFlagType !== "replenishment";
+    });
+    const key = `${orderNo}|${process}`;
+    if (!duplicate || row.dataset.lastBatchDuplicateAlert === key) return Boolean(duplicate);
+    row.dataset.lastBatchDuplicateAlert = key;
+    window.alert(`${orderNo}\u8ba2\u5355\u5df2\u5728\u672c\u6b21\u5916\u53d1\u6279\u91cf\u5f55\u5165\u4e2d\u51fa\u73b0\u8fc7\u3002`);
+    return true;
+  }
+
+  function checkScannedOutsource(row) {
+    if (!row) return;
+    checkBatchDuplicate(row);
+    checkExistingOutsource(row);
+  }
+
+  function scheduleOutsourceDuplicateCheck(row) {
+    if (!row) return;
+    clearTimeout(duplicateScanTimers.get(row));
+    duplicateScanTimers.set(row, setTimeout(() => {
+      checkScannedOutsource(row);
+    }, 250));
+  }
+
   outsourceBatch.addEventListener("input", event => {
     const row = event.target.closest("tr");
     if (!row) return;
@@ -452,15 +485,16 @@ if (outsourceBatch) {
     if (event.target.matches("[name=order_no]")) {
       showOrderNoEnd(event.target);
       fillOrderRow(row);
+      scheduleOutsourceDuplicateCheck(row);
     } else recalculateRow(row);
   });
   outsourceBatch.addEventListener("change", event => {
-    if (!event.target.matches("[name=order_no]")) return;
+    if (!event.target.matches("[name=order_no], [name=flag_type]")) return;
     const row = event.target.closest("tr");
     if (row) {
-      showOrderNoEnd(event.target);
+      if (event.target.matches("[name=order_no]")) showOrderNoEnd(event.target);
       fillOrderRow(row);
-      checkExistingOutsource(row);
+      checkScannedOutsource(row);
     }
   });
   outsourceBatch.addEventListener("click", event => {
@@ -488,7 +522,7 @@ if (outsourceBatch) {
     const row = event.target.closest("tr");
     showOrderNoEnd(event.target);
     fillOrderRow(row);
-    checkExistingOutsource(row);
+    checkScannedOutsource(row);
     const next = row.nextElementSibling;
     if (next) {
       const orderInput = next.querySelector("[data-scan-order]");
