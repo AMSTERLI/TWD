@@ -292,11 +292,16 @@ const orderDateInput = document.querySelector("[data-order-date]");
 const orderPrefixInput = document.querySelector("[data-order-prefix]");
 const customerNameInput = document.querySelector("[data-customer-name]");
 const refreshOrderNumberButton = document.querySelector("[data-refresh-order-number]");
+const manualOrderNumberInput = document.querySelector("[data-manual-order-number]");
 if (orderNumberInput && orderDateInput && orderPrefixInput) {
   const customerOptions = customerNameInput ? [...document.querySelectorAll("#customer-list option")] : [];
   let previewRequest = 0;
 
   async function refreshOrderNumber() {
+    if (manualOrderNumberInput?.checked) {
+      orderNumberInput.setCustomValidity("");
+      return;
+    }
     const requestId = ++previewRequest;
     if (!orderPrefixInput.value) {
       orderNumberInput.value = "";
@@ -335,6 +340,11 @@ if (orderNumberInput && orderDateInput && orderPrefixInput) {
   } else {
     orderDateInput.addEventListener("change", () => orderNumberInput.setCustomValidity(""));
   }
+  manualOrderNumberInput?.addEventListener("change", () => {
+    orderNumberInput.setCustomValidity("");
+    refreshOrderNumberButton.disabled = manualOrderNumberInput.checked;
+  });
+  if (manualOrderNumberInput?.checked && refreshOrderNumberButton) refreshOrderNumberButton.disabled = true;
   refreshOrderNumberButton?.addEventListener("click", refreshOrderNumber);
 }
 

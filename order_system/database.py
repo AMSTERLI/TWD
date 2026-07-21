@@ -671,23 +671,31 @@ class Database:
         return row is not None
 
     def get_next_order_no(self, order_date: str, order_prefix_no: int = 1) -> str:
-        suffix_prefix = order_date[2:].replace("-", "")
+        prefix_no = int(order_prefix_no)
+        month_start = f"{order_date[:7]}-01"
+        if order_date[5:7] == "12":
+            month_end = f"{int(order_date[:4]) + 1:04d}-01-01"
+        else:
+            month_end = f"{order_date[:5]}{int(order_date[5:7]) + 1:02d}-01"
+        max_sequence = 0
         with sqlite3.connect(self.db_path) as conn:
-            row = conn.execute(
-                """
-                SELECT COUNT(*) + 1
-                FROM orders
-                WHERE order_date = ?
-                """,
-                (order_date,),
-            ).fetchone()
-        sequence = int(row[0]) if row else 1
-        order_suffix = f"{suffix_prefix}{sequence:03d}"
-        candidate = f"TWD{int(order_prefix_no)}-{order_suffix}"
-        while self.order_no_exists(candidate) or self.order_no_suffix_exists(order_suffix):
+            rows = conn.execute(
+                """SELECT order_no FROM orders
+                   WHERE order_prefix_no = ? AND order_date >= ? AND order_date < ?
+                     AND order_no LIKE ?""",
+                (prefix_no, month_start, month_end, f"TWD{prefix_no}-______%"),
+            ).fetchall()
+        for row in rows:
+            clean = str(row[0] or "")
+            suffix = clean.split("-", 1)[1] if "-" in clean else ""
+            if len(suffix) == 9 and suffix.isdigit() and suffix[:4] == order_date[2:4] + order_date[5:7]:
+                max_sequence = max(max_sequence, int(suffix[-3:]))
+        sequence = max_sequence + 1
+        date_part = order_date[2:].replace("-", "")
+        candidate = f"TWD{prefix_no}-{date_part}{sequence:03d}"
+        while self.order_no_exists(candidate):
             sequence += 1
-            order_suffix = f"{suffix_prefix}{sequence:03d}"
-            candidate = f"TWD{int(order_prefix_no)}-{order_suffix}"
+            candidate = f"TWD{prefix_no}-{date_part}{sequence:03d}"
         return candidate
 
     def insert_outsource_record(self, payload: dict[str, Any]) -> None:

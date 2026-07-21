@@ -13,7 +13,7 @@
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <section class="form-section"><h2>基本信息</h2><div class="form-grid cols-4">
     <label>订单类型<select name="order_type">{% for item in catalogs.order_type %}<option>{{ item }}</option>{% endfor %}</select></label>
-    <label>业务员<input name="salesman" value="{{ default_salesman or '' }}" required readonly></label>
+    <label>业务员<input name="salesman" value="{{ default_salesman or '' }}" required{% if user.role != 'admin' %} readonly{% endif %}></label>
     <label>下单日期<input type="date" name="order_date" value="{{ today }}" required data-order-date></label>
     <label>交货日期<input type="date" name="delivery_date"></label>
     <label class="span-2">产品名称<input name="product_name" required></label>
@@ -23,7 +23,7 @@
     <label>单价<input type="number" min="0" step="0.0001" name="unit_price"></label>
     <label>附加费<input type="number" min="0" step="0.01" name="extra_fee"></label>
     <label class="span-2">客户名称<input name="customer_selection" value="{{ customer_selection }}" list="customer-list" autocomplete="off" placeholder="输入客户名并从列表选择" required data-customer-name><input type="hidden" name="order_prefix_no" data-order-prefix><datalist id="customer-list">{% for customer in customers %}<option value="{{ customer.name }}（编码 {{ customer.code }}）" data-code="{{ customer.code }}"></option>{% endfor %}</datalist></label>
-    <label>订单编号<input name="order_no" value="{{ order_no }}" maxlength="100" required data-order-number></label>
+    <label>订单编号<input name="order_no" value="{{ order_no }}" maxlength="100" required data-order-number></label><label class="check single"><input type="checkbox" name="manual_order_no" value="1" data-manual-order-number> 手动填写</label>
     <label>PO号<input name="bi_no"></label>
     <label>生产制号<input name="production_no"></label>
   </div></section>

@@ -11,7 +11,7 @@
 <label>下单日期<input type="date" name="order_date" value="{{ order.order_date or '' }}" required data-order-date></label>
 <label>交货日期<input type="date" name="delivery_date" value="{{ order.delivery_date or '' }}"></label>
 <label>客户名称<input value="{{ order.customer_name or '未匹配客户' }}（编码 {{ order.customer_code or order.order_prefix_no }}）" readonly><input type="hidden" name="order_prefix_no" value="{{ order.customer_code or order.order_prefix_no }}" data-order-prefix></label>
-<label>订单编号<input name="order_no" value="{{ order.order_no }}" maxlength="100" required data-order-number></label><button type="button" class="button" data-refresh-order-number>&#37325;&#26032;&#29983;&#25104;&#35746;&#21333;&#21495;</button>
+<label>订单编号<input name="order_no" value="{{ order.order_no }}" maxlength="100" required data-order-number></label><label class="check single"><input type="checkbox" name="manual_order_no" value="1" data-manual-order-number> 手动填写</label><button type="button" class="button" data-refresh-order-number>&#37325;&#26032;&#29983;&#25104;&#35746;&#21333;&#21495;</button>
 <label class="span-2">产品名称<input name="product_name" value="{{ order.product_name or '' }}" required></label>
 <label>数量<input type="number" min="1" name="quantity" value="{{ order.quantity or 0 }}" required></label>
 <label>备品数量<input type="number" min="0" name="spare_quantity" value="{{ order.spare_quantity if order.spare_quantity is not none else 0 }}" required></label>

@@ -624,41 +624,28 @@ class Repository:
         return clean.split("-", 1)[1] if "-" in clean else ""
 
     @staticmethod
-    def _order_no_taken(conn: sqlite3.Connection, order_no: str) -> bool:
-        return bool(conn.execute(
-            """SELECT 1 FROM orders WHERE order_no = ?
-               UNION ALL
-               SELECT 1 FROM order_no_reservations WHERE order_no = ?
-               LIMIT 1""",
-            (order_no, order_no),
-        ).fetchone())
-
-    @classmethod
-    def _order_no_suffix_taken(
-        cls,
+    def _order_no_taken(
         conn: sqlite3.Connection,
-        order_suffix: str,
+        order_no: str,
         *,
+        exclude_order_id: int | None = None,
         allowed_order_no: str = "",
         allowed_user_id: int | None = None,
-        exclude_order_id: int | None = None,
     ) -> bool:
-        order_suffix = str(order_suffix or "").strip()
-        if not order_suffix:
+        order_no = str(order_no or "").strip()
+        if not order_no:
             return False
         order_rows = conn.execute(
-            """SELECT id FROM orders
-               WHERE substr(order_no, instr(order_no, '-') + 1) = ?""",
-            (order_suffix,),
+            "SELECT id FROM orders WHERE order_no = ?",
+            (order_no,),
         ).fetchall()
         for row in order_rows:
             if exclude_order_id is not None and int(row["id"]) == int(exclude_order_id):
                 continue
             return True
         reservation_rows = conn.execute(
-            """SELECT order_no, reserved_by, used_at, used_order_id FROM order_no_reservations
-               WHERE substr(order_no, instr(order_no, '-') + 1) = ?""",
-            (order_suffix,),
+            "SELECT order_no, reserved_by, used_at, used_order_id FROM order_no_reservations WHERE order_no = ?",
+            (order_no,),
         ).fetchall()
         for row in reservation_rows:
             if exclude_order_id is not None and int(row["used_order_id"] or 0) == int(exclude_order_id):
@@ -675,14 +662,29 @@ class Repository:
 
     @classmethod
     def _next_order_no(cls, conn: sqlite3.Connection, order_date: str, prefix_no: int) -> str:
-        sequence = int(conn.execute(
-            "SELECT COUNT(*) + 1 FROM orders WHERE order_date = ?", (order_date,)
-        ).fetchone()[0])
-        suffix = order_date[2:].replace("-", "")
+        month_start = f"{order_date[:7]}-01"
+        if order_date[5:7] == "12":
+            month_end = f"{int(order_date[:4]) + 1:04d}-01-01"
+        else:
+            month_end = f"{order_date[:5]}{int(order_date[5:7]) + 1:02d}-01"
+        max_sequence = 0
+        pattern = f"TWD{prefix_no}-______%"
+        for value in conn.execute(
+            """SELECT order_no FROM orders
+               WHERE order_prefix_no = ? AND order_date >= ? AND order_date < ? AND order_no LIKE ?
+               UNION ALL
+               SELECT order_no FROM order_no_reservations
+               WHERE order_prefix_no = ? AND order_date >= ? AND order_date < ? AND order_no LIKE ?""",
+            (prefix_no, month_start, month_end, pattern, prefix_no, month_start, month_end, pattern),
+        ).fetchall():
+            suffix = cls._order_no_suffix(str(value[0] or ""))
+            if len(suffix) == 9 and suffix.isdigit() and suffix[:4] == order_date[2:4] + order_date[5:7]:
+                max_sequence = max(max_sequence, int(suffix[-3:]))
+        sequence = max_sequence + 1
+        date_part = order_date[2:].replace("-", "")
         while True:
-            order_suffix = f"{suffix}{sequence:03d}"
-            order_no = f"TWD{prefix_no}-{order_suffix}"
-            if not cls._order_no_taken(conn, order_no) and not cls._order_no_suffix_taken(conn, order_suffix):
+            order_no = f"TWD{prefix_no}-{date_part}{sequence:03d}"
+            if not cls._order_no_taken(conn, order_no):
                 return order_no
             sequence += 1
 
@@ -744,6 +746,7 @@ class Repository:
     def create_order(self, payload: dict[str, Any]) -> tuple[int, str]:
         payload = dict(payload)
         reservation_user_id = payload.pop("_reservation_user_id", None)
+        manual_order_no = bool(payload.pop("_manual_order_no", False))
         order_date = str(payload.get("order_date") or "").strip()
         if not order_date:
             raise ValueError("下单日期不能为空")
@@ -754,13 +757,11 @@ class Repository:
         with self.connect(write=True) as conn:
             customer = self._customer_for_code(conn, prefix_no)
             expected_prefix = f"TWD{prefix_no}-"
-            if requested_order_no and not requested_order_no.startswith(expected_prefix):
-                raise ValueError(f"订单编号必须以 {expected_prefix} 开头")
+            if requested_order_no and not manual_order_no and not requested_order_no.startswith(expected_prefix):
+                raise ValueError(f"Order number must start with {expected_prefix}")
             order_no = requested_order_no or self._next_order_no(conn, order_date, prefix_no)
-            if requested_order_no and self._is_auto_order_no(order_no) and not str(payload.get("order_type") or "").startswith("\u8865\u6570\u5355"):
-                order_suffix = self._order_no_suffix(order_no)
-                if self._order_no_suffix_taken(conn, order_suffix, allowed_order_no=order_no, allowed_user_id=reservation_user_id):
-                    raise ValueError("\u8ba2\u5355\u7f16\u53f7\u540e\u534a\u6bb5\u5df2\u88ab\u5360\u7528\uff0c\u8bf7\u91cd\u65b0\u751f\u6210\u8ba2\u5355\u7f16\u53f7")
+            if not manual_order_no and self._order_no_taken(conn, order_no, allowed_order_no=order_no, allowed_user_id=reservation_user_id):
+                raise ValueError("订单编号已被占用，请重新生成订单编号或勾选手动填写")
             payload["order_no"] = order_no
             payload["order_prefix_no"] = prefix_no
             payload["customer_code"] = prefix_no
@@ -782,10 +783,13 @@ class Repository:
                 values,
             )
             order_id = int(cursor.lastrowid)
-            self._consume_order_no_reservation(conn, order_no, reservation_user_id, order_id)
+            if not manual_order_no:
+                self._consume_order_no_reservation(conn, order_no, reservation_user_id, order_id)
             return order_id, order_no
 
     def update_order(self, order_id: int, payload: dict[str, Any], reservation_user_id: int | None = None) -> bool:
+        payload = dict(payload)
+        manual_order_no = bool(payload.pop("_manual_order_no", False))
         assignments = ", ".join(f"{column} = ?" for column in ORDER_COLUMNS)
         with self.connect(write=True) as conn:
             prefix_no = int(payload.get("customer_code") or payload.get("order_prefix_no") or 0)
@@ -794,38 +798,35 @@ class Repository:
             payload["customer_code"] = prefix_no
             payload["customer_name"] = str(customer["name"])
             order_no = str(payload.get("order_no") or "").strip()
-            if self._is_auto_order_no(order_no) and not str(payload.get("order_type") or "").startswith("\u8865\u6570\u5355"):
-                order_suffix = self._order_no_suffix(order_no)
-                if self._order_no_suffix_taken(conn, order_suffix, exclude_order_id=order_id, allowed_order_no=order_no, allowed_user_id=reservation_user_id):
-                    raise ValueError("\u8ba2\u5355\u7f16\u53f7\u540e\u534a\u6bb5\u5df2\u88ab\u5360\u7528\uff0c\u8bf7\u91cd\u65b0\u751f\u6210\u8ba2\u5355\u7f16\u53f7")
+            if not manual_order_no and self._order_no_taken(conn, order_no, exclude_order_id=order_id, allowed_order_no=order_no, allowed_user_id=reservation_user_id):
+                raise ValueError("订单编号已被占用，请重新生成订单编号或勾选手动填写")
             values = [payload.get(column) for column in ORDER_COLUMNS]
             cursor = conn.execute(
                 f"UPDATE orders SET {assignments} WHERE id = ?",
                 (*values, order_id),
             )
-            if cursor.rowcount == 1:
+            if cursor.rowcount == 1 and not manual_order_no:
                 self._consume_order_no_reservation(conn, order_no, reservation_user_id, order_id)
             return cursor.rowcount == 1
 
     def _update_order_with_payload(self, conn: sqlite3.Connection, order_id: int, payload: dict[str, Any], reservation_user_id: int | None = None) -> bool:
+        payload = dict(payload)
+        manual_order_no = bool(payload.pop("_manual_order_no", False))
         prefix_no = int(payload.get("customer_code") or payload.get("order_prefix_no") or 0)
         customer = self._customer_for_code(conn, prefix_no)
-        payload = dict(payload)
         payload["order_prefix_no"] = prefix_no
         payload["customer_code"] = prefix_no
         payload["customer_name"] = str(customer["name"])
         order_no = str(payload.get("order_no") or "").strip()
-        if self._is_auto_order_no(order_no) and not str(payload.get("order_type") or "").startswith("\u8865\u6570\u5355"):
-            order_suffix = self._order_no_suffix(order_no)
-            if self._order_no_suffix_taken(conn, order_suffix, exclude_order_id=order_id, allowed_order_no=order_no, allowed_user_id=reservation_user_id):
-                raise ValueError("\u8ba2\u5355\u7f16\u53f7\u540e\u534a\u6bb5\u5df2\u88ab\u5360\u7528\uff0c\u8bf7\u91cd\u65b0\u751f\u6210\u8ba2\u5355\u7f16\u53f7")
+        if not manual_order_no and self._order_no_taken(conn, order_no, exclude_order_id=order_id, allowed_order_no=order_no, allowed_user_id=reservation_user_id):
+            raise ValueError("订单编号已被占用，请重新生成订单编号或勾选手动填写")
         assignments = ", ".join(f"{column} = ?" for column in ORDER_COLUMNS)
         values = [payload.get(column) for column in ORDER_COLUMNS]
         cursor = conn.execute(
             f"UPDATE orders SET {assignments} WHERE id = ?",
             (*values, order_id),
         )
-        if cursor.rowcount == 1:
+        if cursor.rowcount == 1 and not manual_order_no:
             self._consume_order_no_reservation(conn, order_no, reservation_user_id, order_id)
         return cursor.rowcount == 1
 

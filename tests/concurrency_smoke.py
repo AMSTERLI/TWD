@@ -68,13 +68,13 @@ valid_payload = failed_payload.copy()
 valid_payload.update({"order_type": "新订单", "quantity_unit": "个"})
 assert recycle_repo.create_order(valid_payload)[1] == "TWD1-260716001"
 
-# Automatic order number suffixes are unique across customer prefixes.
+# Automatic order numbers are continuous per customer prefix per month; suffixes may repeat across prefixes.
 suffix_repo = Repository(db_path.with_name("suffix.db"))
 suffix_repo.initialize()
 reserved_first = suffix_repo.reserve_order_no("2026-07-21", 1, user_id=1)
 reserved_second = suffix_repo.reserve_order_no("2026-07-21", 2, user_id=2)
 assert reserved_first == "TWD1-260721001"
-assert reserved_second == "TWD2-260721002"
+assert reserved_second == "TWD2-260721001"
 suffix_payload = {column: None for column in __import__("order_system.web.repository", fromlist=["ORDER_COLUMNS"]).ORDER_COLUMNS}
 suffix_payload.update({
     "order_type": "\u65b0\u8ba2\u5355", "salesman": "suffix", "product_name": "suffix",
@@ -83,15 +83,20 @@ suffix_payload.update({
 })
 suffix_id, _ = suffix_repo.create_order(suffix_payload)
 assert suffix_repo.update_order(suffix_id, suffix_repo.get_order(suffix_id))
-duplicate_suffix_payload = suffix_payload.copy()
-duplicate_suffix_payload.update({"order_prefix_no": 2, "customer_code": 2, "order_no": "TWD2-260721001"})
+assert suffix_repo.reserve_order_no("2026-07-22", 1, user_id=1) == "TWD1-260722002"
+assert suffix_repo.reserve_order_no("2026-08-01", 1, user_id=1) == "TWD1-260801001"
+duplicate_exact_payload = suffix_payload.copy()
+duplicate_exact_payload.pop("_reservation_user_id", None)
 try:
-    suffix_repo.create_order(duplicate_suffix_payload)
+    suffix_repo.create_order(duplicate_exact_payload)
 except ValueError as exc:
-    assert "\u540e\u534a\u6bb5" in str(exc)
+    assert "订单编号已被占用" in str(exc)
 else:
-    raise AssertionError("duplicate order number suffix unexpectedly saved")
+    raise AssertionError("duplicate automatic order number unexpectedly saved")
+duplicate_exact_payload["_manual_order_no"] = True
+manual_id, manual_no = suffix_repo.create_order(duplicate_exact_payload)
+assert manual_no == reserved_first and manual_id != suffix_id
 
-print("concurrency smoke ok: automatic numbers unique, manual duplicates allowed, unused number recycled")
+print("concurrency smoke ok: monthly prefix sequences, duplicate suffixes allowed, manual duplicates allowed")
 
 

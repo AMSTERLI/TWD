@@ -314,6 +314,7 @@ async def order_payload(form: Any, *, save_uploaded_images: bool = True) -> dict
         "order_type": str(form.get("order_type") or "新订单"),
         "salesman": str(form.get("salesman") or "").strip(),
         "order_no": str(form.get("order_no") or "").strip(),
+        "_manual_order_no": form.get("manual_order_no") == "1",
         "product_name": str(form.get("product_name") or "").strip(),
         "order_date": str(form.get("order_date") or "").strip(),
         "delivery_date": str(form.get("delivery_date") or "").strip(),
@@ -692,7 +693,8 @@ async def preview_order(request: Request):
     preview_images: list[str] = []
     try:
         payload = await order_payload(form, save_uploaded_images=False)
-        payload["salesman"] = user_display_name(user)
+        if user["role"] != "admin":
+            payload["salesman"] = user_display_name(user)
         preview_images = loads_json(payload.get("image_paths_json") or "[]")
         preview_images.extend([item.get("image") for item in loads_json(payload.get("component_parts_json") or "[]") if isinstance(item, dict)])
         if not payload["product_name"] or payload["quantity"] <= 0 or payload["spare_quantity"] < 0 or not str(form.get("spare_quantity") or "").strip():
@@ -723,7 +725,8 @@ async def create_order(request: Request):
         )
     try:
         payload = await order_payload(form)
-        payload["salesman"] = user_display_name(user)
+        if user["role"] != "admin":
+            payload["salesman"] = user_display_name(user)
         payload["_reservation_user_id"] = int(user.get("id") or 0)
         if not payload["product_name"] or payload["quantity"] <= 0 or payload["spare_quantity"] < 0 or not str(form.get("spare_quantity") or "").strip():
             raise ValueError("产品名称、有效数量和备品数量为必填项")
