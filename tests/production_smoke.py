@@ -116,6 +116,7 @@ with TestClient(app) as client:
     assert new_order["order_no"] == original["order_no"]
     assert new_order["order_type"] == "\u8865\u6570\u5355\uff08\u9ec4\u519b\u56fd\uff09"
     assert new_order["quantity"] == 25 and new_order["spare_quantity"] == 0
+    assert new_order["global_note"] == "\u8865\u6570\u539f\u56e0\uff1a\u5ba2\u6237\u8981\u6c42\u8865\u53d1"
     assert new_order["customer_name"] == original["customer_name"]
     assert new_order["width_mm"] == original["width_mm"]
     assert new_order["paid_status"] == 0 and new_order["shipped_status"] == 0 and new_order["invoice_status"] == 0

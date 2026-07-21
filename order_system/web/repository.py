@@ -457,6 +457,12 @@ class Repository:
         payload["order_type"] = f"补数单（{request_row['requester_name']}）"
         payload["quantity"] = quantity
         payload["spare_quantity"] = 0
+        reason = str(request_row["reason"] or "").strip()
+        if reason:
+            reason_line = f"\u8865\u6570\u539f\u56e0\uff1a{reason}"
+            existing_note = str(payload.get("global_note") or "").strip()
+            payload["global_note"] = f"{existing_note}\n{reason_line}" if existing_note else reason_line
+            payload["global_note_red"] = 1
         payload["paid_status"] = 0
         payload["shipped_status"] = 0
         payload["invoice_status"] = 0
