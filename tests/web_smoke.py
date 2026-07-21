@@ -45,8 +45,9 @@ with TestClient(app) as client:
     assert 'data-paste-image-target="#product-images"' in form_page.text
     assert 'data-customer-name' in form_page.text and "程炬（编码 1）" in form_page.text
     customers = repo.list_customers()
-    assert len(customers) == 62
+    assert len(customers) == 66
     assert {row["code"] for row in customers if row["name"] == "优品"} == {15}
+    assert {(row["code"], row["name"]) for row in customers if row["code"] in {66, 67, 68, 69}} == {(66, "宜创"), (67, "睿华"), (68, "旭日"), (69, "铭威")}
     assert client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=13").status_code == 400
     reserved = client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=1")
     assert reserved.status_code == 200 and reserved.json()["order_no"] == "TWD1-260715001"
