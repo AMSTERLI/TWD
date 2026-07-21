@@ -1067,6 +1067,9 @@ def workshop_department_password(name: str) -> str:
 
 
 def workshop_unlocked(request: Request, department_key: str) -> bool:
+    user = current_user(request)
+    if user and user.get("role") == "admin":
+        return True
     return request.session.get(f"workshop:{department_key}:unlocked") is True
 
 

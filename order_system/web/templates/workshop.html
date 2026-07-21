@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block title %}&#36710;&#38388; ? TWD &#35746;&#21333;&#31995;&#32479;{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>&#36710;&#38388;</h1><p>&#36873;&#25321;&#37096;&#38376;&#21518;&#36755;&#20837;&#37096;&#38376;&#23494;&#30721;&#36827;&#20837;&#25195;&#30721;&#25253;&#21040;&#12290;</p></div></div>
+<div class="page-head"><div><h1>&#36710;&#38388;</h1><p>{% if user.role == 'admin' %}&#31649;&#29702;&#21592;&#21487;&#30452;&#25509;&#36827;&#20837;&#21508;&#36710;&#38388;&#37096;&#38376;&#12290;{% else %}&#36873;&#25321;&#37096;&#38376;&#21518;&#36755;&#20837;&#37096;&#38376;&#23494;&#30721;&#36827;&#20837;&#25195;&#30721;&#25253;&#21040;&#12290;{% endif %}</p></div></div>
 {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
 <section class="panel"><div class="workshop-departments">{% for item in departments %}
-  <form class="workshop-department" method="post" action="/workshop/{{ item.key }}/unlock"><input type="hidden" name="csrf" value="{{ csrf }}"><h2>{{ item.name }}</h2><label>&#37096;&#38376;&#23494;&#30721;<input type="password" name="password" required autocomplete="current-password"></label><button class="button primary">&#36827;&#20837;{{ item.name }}</button></form>
+  {% if user.role == 'admin' %}<div class="workshop-department"><h2>{{ item.name }}</h2><a class="button primary" href="/workshop/{{ item.key }}">&#36827;&#20837;{{ item.name }}</a></div>{% else %}<form class="workshop-department" method="post" action="/workshop/{{ item.key }}/unlock"><input type="hidden" name="csrf" value="{{ csrf }}"><h2>{{ item.name }}</h2><label>&#37096;&#38376;&#23494;&#30721;<input type="password" name="password" required autocomplete="current-password"></label><button class="button primary">&#36827;&#20837;{{ item.name }}</button></form>{% endif %}
 {% else %}<p class="muted padded">&#26242;&#26080;&#36710;&#38388;&#37096;&#38376;</p>{% endfor %}</div></section>
 {% endblock %}

@@ -55,6 +55,19 @@ with TestClient(app) as client:
     repo.create_user("workshop", "workshop-pass-123", "workshop", display_name="\u8f66\u95f4")
     order_id, order_no = repo.create_order(payload("TWD1-260721101"))
 
+    admin_login_page = client.get("/login")
+    admin_login = client.post(
+        "/login",
+        data={"csrf": csrf(admin_login_page.text), "username": "admin", "password": "admin-pass-123"},
+        follow_redirects=False,
+    )
+    assert admin_login.status_code == 303
+    admin_home = client.get("/workshop")
+    assert admin_home.status_code == 200 and "/workshop/mold/unlock" not in admin_home.text
+    admin_mold = client.get("/workshop/mold")
+    assert admin_mold.status_code == 200 and "data-workshop-scan" in admin_mold.text
+    client.post("/logout", data={"csrf": csrf(admin_mold.text)})
+
     login_page = client.get("/login")
     login = client.post(
         "/login",
