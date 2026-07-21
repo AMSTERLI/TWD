@@ -808,6 +808,8 @@ class OrderFormTab(QWidget):
         size_layout.addWidget(self.height_mm)
         size_layout.addWidget(QLabel("厚度"))
         size_layout.addWidget(self.thickness_mm)
+        size_layout.addWidget(QLabel("直径 mm"))
+        size_layout.addWidget(self.diameter_mm)
         size_layout.addWidget(self.size_as_sample)
         form.addRow("尺寸信息 (mm)", size_row)
 
