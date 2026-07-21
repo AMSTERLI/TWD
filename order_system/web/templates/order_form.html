@@ -4,8 +4,8 @@
 <div class="page-head"><div><h1>业务下单</h1><p>填写后自动生成订单编号并保存</p></div></div>
 {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
 <section class="ai-import" data-ai-import data-csrf="{{ csrf }}">
-  <div><h2>AI 客单识别</h2><p>上传 DOCX、Excel、CSV、HTML、PDF 或图片客单，DeepSeek 将提取内容并自动填表；提交前必须人工核对。</p></div>
-  <div class="upload-row"><input type="file" id="customer-file" accept=".docx,.xlsx,.xlsm,.xls,.csv,.tsv,.html,.htm,.pdf,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"><button type="button" class="button" data-ai-button>识别并填入</button></div>
+  <div><h2>AI 客单识别</h2><p>上传 DOCX、Excel、CSV、HTML 或 PDF，DeepSeek 将提取内容并自动填表；提交前必须人工核对。</p></div>
+  <div class="upload-row"><input type="file" id="customer-file" accept=".docx,.xlsx,.xlsm,.xls,.csv,.tsv,.html,.htm,.pdf"><button type="button" class="button" data-ai-button>识别并填入</button></div>
   <label>补充提示词（可选）<textarea id="ai-supplemental-prompt" rows="2" maxlength="2000" placeholder="选择性对客单进行解释、补充和修正。"></textarea></label>
   <div class="import-status" data-ai-status></div>
 </section>
