@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -127,7 +128,18 @@ class Repository:
                     proposed_payload_json TEXT,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
-                );                CREATE TABLE IF NOT EXISTS audit_log (
+                );
+                CREATE TABLE IF NOT EXISTS order_no_reservations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_no TEXT NOT NULL UNIQUE,
+                    order_date TEXT NOT NULL,
+                    order_prefix_no INTEGER NOT NULL,
+                    reserved_by INTEGER,
+                    used_order_id INTEGER,
+                    used_at TEXT,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS audit_log (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER,
                     username TEXT,
@@ -145,7 +157,10 @@ class Repository:
                 CREATE INDEX IF NOT EXISTS idx_order_edit_requests_status
                     ON order_edit_requests(status, created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_order_edit_requests_order_user
-                    ON order_edit_requests(order_id, requester_id, status, consumed_at);                """
+                    ON order_edit_requests(order_id, requester_id, status, consumed_at);
+                CREATE INDEX IF NOT EXISTS idx_order_no_reservations_lookup
+                    ON order_no_reservations(order_date, order_prefix_no, order_no);
+                """
             )
             existing_user_columns = {row[1] for row in conn.execute("PRAGMA table_info(web_users)").fetchall()}
             if "display_name" not in existing_user_columns:
@@ -571,19 +586,48 @@ class Repository:
         return self.legacy.get_order(order_id)
 
     @staticmethod
-    def _next_order_no(conn: sqlite3.Connection, order_date: str, prefix_no: int) -> str:
+    def _is_auto_order_no(order_no: str) -> bool:
+        return bool(re.fullmatch(r"TWD\d+-\d{9}", str(order_no or "").strip()))
+
+    @staticmethod
+    def _order_no_taken(conn: sqlite3.Connection, order_no: str) -> bool:
+        return bool(conn.execute(
+            """SELECT 1 FROM orders WHERE order_no = ?
+               UNION ALL
+               SELECT 1 FROM order_no_reservations WHERE order_no = ?
+               LIMIT 1""",
+            (order_no, order_no),
+        ).fetchone())
+
+    @classmethod
+    def _next_order_no(cls, conn: sqlite3.Connection, order_date: str, prefix_no: int) -> str:
         sequence = int(conn.execute(
             "SELECT COUNT(*) + 1 FROM orders WHERE order_date = ?", (order_date,)
         ).fetchone()[0])
         suffix = order_date[2:].replace("-", "")
         while True:
             order_no = f"TWD{prefix_no}-{suffix}{sequence:03d}"
-            exists = conn.execute(
-                "SELECT 1 FROM orders WHERE order_no = ? LIMIT 1", (order_no,)
-            ).fetchone()
-            if not exists:
+            if not cls._order_no_taken(conn, order_no):
                 return order_no
             sequence += 1
+
+    def reserve_order_no(self, order_date: str, order_prefix_no: int = 1, user_id: int | None = None) -> str:
+        order_date = str(order_date or "").strip()
+        prefix_no = int(order_prefix_no or 0)
+        with self.connect(write=True) as conn:
+            self._customer_for_code(conn, prefix_no)
+            while True:
+                order_no = self._next_order_no(conn, order_date, prefix_no)
+                try:
+                    conn.execute(
+                        """INSERT INTO order_no_reservations
+                           (order_no, order_date, order_prefix_no, reserved_by)
+                           VALUES (?, ?, ?, ?)""",
+                        (order_no, order_date, prefix_no, int(user_id or 0) or None),
+                    )
+                    return order_no
+                except sqlite3.IntegrityError:
+                    continue
 
     def preview_order_no(self, order_date: str, order_prefix_no: int = 1) -> str:
         order_date = str(order_date or "").strip()
@@ -592,7 +636,37 @@ class Repository:
             self._customer_for_code(conn, prefix_no)
             return self._next_order_no(conn, order_date, prefix_no)
 
+    @staticmethod
+    def _consume_order_no_reservation(
+        conn: sqlite3.Connection,
+        order_no: str,
+        user_id: int | None,
+        order_id: int,
+    ) -> None:
+        reservation = conn.execute(
+            """SELECT id, reserved_by, used_at
+               FROM order_no_reservations
+               WHERE order_no = ?""",
+            (order_no,),
+        ).fetchone()
+        if not reservation:
+            return
+        if reservation["used_at"]:
+            raise ValueError("订单编号已被占用，请重新生成")
+        reserved_by = int(reservation["reserved_by"] or 0)
+        current_user = int(user_id or 0)
+        if reserved_by and current_user and reserved_by != current_user:
+            raise ValueError("订单编号已被其他用户占用，请重新生成")
+        conn.execute(
+            """UPDATE order_no_reservations
+               SET used_order_id = ?, used_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (order_id, int(reservation["id"])),
+        )
+
     def create_order(self, payload: dict[str, Any]) -> tuple[int, str]:
+        payload = dict(payload)
+        reservation_user_id = payload.pop("_reservation_user_id", None)
         order_date = str(payload.get("order_date") or "").strip()
         if not order_date:
             raise ValueError("下单日期不能为空")
@@ -626,7 +700,9 @@ class Repository:
                 f"INSERT INTO orders ({', '.join(ORDER_COLUMNS)}) VALUES ({placeholders})",
                 values,
             )
-            return int(cursor.lastrowid), order_no
+            order_id = int(cursor.lastrowid)
+            self._consume_order_no_reservation(conn, order_no, reservation_user_id, order_id)
+            return order_id, order_no
 
     def update_order(self, order_id: int, payload: dict[str, Any]) -> bool:
         assignments = ", ".join(f"{column} = ?" for column in ORDER_COLUMNS)

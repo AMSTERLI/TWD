@@ -635,7 +635,7 @@ def new_order(request: Request):
 
 @app.get("/api/next-order-no")
 def next_order_no(request: Request, order_date: str = "", order_prefix_no: int = 1):
-    _, denied = require_page(request, {"sales"})
+    user, denied = require_page(request, {"sales"})
     if denied:
         return JSONResponse({"error": "未登录或无权限"}, status_code=401)
     normalized_date = order_date.strip() or date.today().isoformat()
@@ -644,7 +644,7 @@ def next_order_no(request: Request, order_date: str = "", order_prefix_no: int =
     except ValueError:
         return JSONResponse({"error": "下单日期格式无效"}, status_code=400)
     try:
-        return {"order_no": repo.preview_order_no(normalized_date, order_prefix_no)}
+        return {"order_no": repo.reserve_order_no(normalized_date, order_prefix_no, int(user.get("id") or 0))}
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
 
@@ -691,6 +691,7 @@ async def create_order(request: Request):
     try:
         payload = await order_payload(form)
         payload["salesman"] = user_display_name(user)
+        payload["_reservation_user_id"] = int(user.get("id") or 0)
         if not payload["product_name"] or payload["quantity"] <= 0 or payload["spare_quantity"] < 0 or not str(form.get("spare_quantity") or "").strip():
             raise ValueError("产品名称、有效数量和备品数量为必填项")
         order_id, order_no = await run_in_threadpool(repo.create_order, payload)

@@ -37,6 +37,8 @@ with TestClient(app) as client:
     assert form_page.status_code == 200
     preview = client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=2")
     assert preview.status_code == 200 and preview.json()["order_no"] == "TWD2-260715001"
+    preview_again = client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=2")
+    assert preview_again.status_code == 200 and preview_again.json()["order_no"] == "TWD2-260715002"
     assert 'name="order_no"' in form_page.text
     assert 'readonly data-order-number' not in form_page.text
     assert 'name="spare_quantity"' in form_page.text
@@ -46,6 +48,8 @@ with TestClient(app) as client:
     assert len(customers) == 62
     assert {row["code"] for row in customers if row["name"] == "优品"} == {15}
     assert client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=13").status_code == 400
+    reserved = client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=1")
+    assert reserved.status_code == 200 and reserved.json()["order_no"] == "TWD1-260715001"
     response = client.post(
         "/orders/new",
         data={
@@ -78,8 +82,8 @@ with TestClient(app) as client:
         },
         follow_redirects=False,
     )
-    assert duplicate.status_code == 303
-    assert "TWD1-260715001" in client.get(duplicate.headers["location"]).text
+    assert duplicate.status_code == 422
+    assert "TWD1-260715001" in client.get(detail_url).text
     manual_page = client.get("/orders/new")
     manual = client.post(
         "/orders/new",
