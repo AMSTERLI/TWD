@@ -7,6 +7,7 @@ import os
 import re
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -325,6 +326,11 @@ def analyze_order_document(
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
+            # Each import is a stateless request with a fresh transport id. Do not
+            # add this id to the prompt; keeping it out avoids extra model tokens.
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+            "X-Request-ID": f"twd-order-import-{uuid.uuid4().hex}",
         },
         method="POST",
     )
