@@ -818,7 +818,7 @@ async def edit_order(request: Request, order_id: int):
         proposed_component_images = {str(item.get("image") or "") for item in loads_json(payload.get("component_parts_json") or "[]") if isinstance(item, dict)}
         removed_component_images = [name for name in existing_component_images - proposed_component_images if safe_image_name(name)]
         if user["role"] == "admin":
-            if not await run_in_threadpool(repo.update_order, order_id, payload):
+            if not await run_in_threadpool(repo.update_order, order_id, payload, int(user.get("id") or 0) or None):
                 return Response(status_code=404)
             for image_name in removed_images + removed_component_images:
                 (IMAGES_DIR / image_name).unlink(missing_ok=True)

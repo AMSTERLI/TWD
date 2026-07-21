@@ -291,8 +291,9 @@ const orderNumberInput = document.querySelector("[data-order-number]");
 const orderDateInput = document.querySelector("[data-order-date]");
 const orderPrefixInput = document.querySelector("[data-order-prefix]");
 const customerNameInput = document.querySelector("[data-customer-name]");
-if (orderNumberInput && orderDateInput && orderPrefixInput && customerNameInput) {
-  const customerOptions = [...document.querySelectorAll("#customer-list option")];
+const refreshOrderNumberButton = document.querySelector("[data-refresh-order-number]");
+if (orderNumberInput && orderDateInput && orderPrefixInput) {
+  const customerOptions = customerNameInput ? [...document.querySelectorAll("#customer-list option")] : [];
   let previewRequest = 0;
 
   async function refreshOrderNumber() {
@@ -326,10 +327,15 @@ if (orderNumberInput && orderDateInput && orderPrefixInput && customerNameInput)
     refreshOrderNumber();
   }
 
-  customerNameInput.addEventListener("input", matchCustomer);
-  customerNameInput.addEventListener("change", matchCustomer);
-  orderDateInput.addEventListener("change", refreshOrderNumber);
-  if (customerNameInput.value) matchCustomer();
+  if (customerNameInput) {
+    customerNameInput.addEventListener("input", matchCustomer);
+    customerNameInput.addEventListener("change", matchCustomer);
+    orderDateInput.addEventListener("change", refreshOrderNumber);
+    if (customerNameInput.value) matchCustomer();
+  } else {
+    orderDateInput.addEventListener("change", () => orderNumberInput.setCustomValidity(""));
+  }
+  refreshOrderNumberButton?.addEventListener("click", refreshOrderNumber);
 }
 
 const outsourceBatch = document.querySelector("[data-outsource-batch]");

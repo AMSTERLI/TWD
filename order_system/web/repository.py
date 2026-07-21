@@ -522,7 +522,7 @@ class Repository:
                 created_order_id, created_order_no = self._create_replenishment_order(conn, row)
             elif approved and request_type == "edit" and row["proposed_payload_json"]:
                 payload = json.loads(str(row["proposed_payload_json"]))
-                if not self._update_order_with_payload(conn, int(row["order_id"]), payload):
+                if not self._update_order_with_payload(conn, int(row["order_id"]), payload, int(row["requester_id"] or 0) or None):
                     raise ValueError("订单不存在")
             conn.execute(
                 """UPDATE order_edit_requests
@@ -719,7 +719,7 @@ class Repository:
         order_id: int,
     ) -> None:
         reservation = conn.execute(
-            """SELECT id, reserved_by, used_at
+            """SELECT id, reserved_by, used_at, used_order_id
                FROM order_no_reservations
                WHERE order_no = ?""",
             (order_no,),
@@ -727,6 +727,8 @@ class Repository:
         if not reservation:
             return
         if reservation["used_at"]:
+            if int(reservation["used_order_id"] or 0) == int(order_id):
+                return
             raise ValueError("订单编号已被占用，请重新生成")
         reserved_by = int(reservation["reserved_by"] or 0)
         current_user = int(user_id or 0)
@@ -783,7 +785,7 @@ class Repository:
             self._consume_order_no_reservation(conn, order_no, reservation_user_id, order_id)
             return order_id, order_no
 
-    def update_order(self, order_id: int, payload: dict[str, Any]) -> bool:
+    def update_order(self, order_id: int, payload: dict[str, Any], reservation_user_id: int | None = None) -> bool:
         assignments = ", ".join(f"{column} = ?" for column in ORDER_COLUMNS)
         with self.connect(write=True) as conn:
             prefix_no = int(payload.get("customer_code") or payload.get("order_prefix_no") or 0)
@@ -794,16 +796,18 @@ class Repository:
             order_no = str(payload.get("order_no") or "").strip()
             if self._is_auto_order_no(order_no) and not str(payload.get("order_type") or "").startswith("\u8865\u6570\u5355"):
                 order_suffix = self._order_no_suffix(order_no)
-                if self._order_no_suffix_taken(conn, order_suffix, exclude_order_id=order_id):
+                if self._order_no_suffix_taken(conn, order_suffix, exclude_order_id=order_id, allowed_order_no=order_no, allowed_user_id=reservation_user_id):
                     raise ValueError("\u8ba2\u5355\u7f16\u53f7\u540e\u534a\u6bb5\u5df2\u88ab\u5360\u7528\uff0c\u8bf7\u91cd\u65b0\u751f\u6210\u8ba2\u5355\u7f16\u53f7")
             values = [payload.get(column) for column in ORDER_COLUMNS]
             cursor = conn.execute(
                 f"UPDATE orders SET {assignments} WHERE id = ?",
                 (*values, order_id),
             )
+            if cursor.rowcount == 1:
+                self._consume_order_no_reservation(conn, order_no, reservation_user_id, order_id)
             return cursor.rowcount == 1
 
-    def _update_order_with_payload(self, conn: sqlite3.Connection, order_id: int, payload: dict[str, Any]) -> bool:
+    def _update_order_with_payload(self, conn: sqlite3.Connection, order_id: int, payload: dict[str, Any], reservation_user_id: int | None = None) -> bool:
         prefix_no = int(payload.get("customer_code") or payload.get("order_prefix_no") or 0)
         customer = self._customer_for_code(conn, prefix_no)
         payload = dict(payload)
@@ -813,7 +817,7 @@ class Repository:
         order_no = str(payload.get("order_no") or "").strip()
         if self._is_auto_order_no(order_no) and not str(payload.get("order_type") or "").startswith("\u8865\u6570\u5355"):
             order_suffix = self._order_no_suffix(order_no)
-            if self._order_no_suffix_taken(conn, order_suffix, exclude_order_id=order_id):
+            if self._order_no_suffix_taken(conn, order_suffix, exclude_order_id=order_id, allowed_order_no=order_no, allowed_user_id=reservation_user_id):
                 raise ValueError("\u8ba2\u5355\u7f16\u53f7\u540e\u534a\u6bb5\u5df2\u88ab\u5360\u7528\uff0c\u8bf7\u91cd\u65b0\u751f\u6210\u8ba2\u5355\u7f16\u53f7")
         assignments = ", ".join(f"{column} = ?" for column in ORDER_COLUMNS)
         values = [payload.get(column) for column in ORDER_COLUMNS]
@@ -821,6 +825,8 @@ class Repository:
             f"UPDATE orders SET {assignments} WHERE id = ?",
             (*values, order_id),
         )
+        if cursor.rowcount == 1:
+            self._consume_order_no_reservation(conn, order_no, reservation_user_id, order_id)
         return cursor.rowcount == 1
 
     def delete_order(self, order_id: int) -> str:
