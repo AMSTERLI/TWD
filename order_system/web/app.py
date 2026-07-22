@@ -1023,8 +1023,8 @@ async def import_order(request: Request):
     if not isinstance(upload, UploadFile) or not upload.filename:
         return JSONResponse({"error": "请选择客单文件"}, status_code=400)
     suffix = Path(upload.filename).suffix.lower()
-    if suffix not in {".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf"}:
-        return JSONResponse({"error": "仅支持 DOCX、Excel、CSV、TSV、HTML 和 PDF"}, status_code=415)
+    if suffix not in {".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf", ".png", ".jpg", ".jpeg"}:
+        return JSONResponse({"error": "仅支持 DOCX、Excel、CSV、TSV、HTML、PDF、PNG 或 JPG"}, status_code=415)
     target = TMP_DIR / f"{uuid4().hex}{suffix}"
     size = 0
     try:
@@ -1034,7 +1034,7 @@ async def import_order(request: Request):
                 if size > MAX_UPLOAD_BYTES:
                     raise OrderImportError("客单文件过大")
                 output.write(chunk)
-        api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+        api_key = os.environ.get("QWEN_API_KEY") or os.environ.get("DASHSCOPE_API_KEY", "")
         async with ai_slots:
             data = await run_in_threadpool(
                 analyze_order_document,

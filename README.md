@@ -24,7 +24,7 @@ TWD Order System 是一个面向订单录入、工单生成、财务收付款、
 - Database: SQLite
 - PDF: reportlab, pypdf
 - Office import: python-docx, openpyxl, xlrd
-- AI import: DeepSeek Chat Completions API
+- AI import: Qwen OpenAI-compatible Chat Completions API
 - Traditional Chinese conversion: opencc-python-reimplemented
 
 ## 目录结构
@@ -77,7 +77,7 @@ pip install -r requirements-server.txt
 
 ### 2. 配置环境变量
 
-复制 `.env.example`，按需设置 DeepSeek API：
+复制 `.env.example`，按需设置 Qwen API：
 
 ```powershell
 Copy-Item .env.example .env
@@ -85,9 +85,9 @@ Copy-Item .env.example .env
 
 常用变量：
 
-- `DEEPSEEK_API_KEY`: AI 客单识别 API Key。
-- `DEEPSEEK_BASE_URL`: 默认 `https://api.deepseek.com`。
-- `DEEPSEEK_MODEL`: 默认 `deepseek-v4-flash`。
+- `QWEN_API_KEY`: AI 客单识别 API Key。
+- `QWEN_BASE_URL`: 默认 `https://dashscope.aliyuncs.com/compatible-mode/v1`。
+- `QWEN_MODEL`: 默认 `qwen3.7-plus`。
 - `TWD_DATA_DIR`: 数据目录；不设置时使用项目内默认目录。
 - `TWD_SESSION_SECRET`: Web session 密钥，生产环境必须设置。
 

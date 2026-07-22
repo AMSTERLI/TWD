@@ -520,7 +520,7 @@ class OrderFormTab(QWidget):
         group = QGroupBox("客单智能导入")
         layout = QVBoxLayout(group)
         description = QLabel(
-            "上传 Word 或表格客单，由 DeepSeek V4 Flash 识别后展示摘要，确认后自动回填。"
+            "上传 Word、表格、PDF 或图片客单，由 Qwen 识别后展示摘要，确认后自动回填。"
             "原始文件不会保存到系统中。"
         )
         description.setWordWrap(True)
@@ -528,10 +528,10 @@ class OrderFormTab(QWidget):
 
         key_row = QHBoxLayout()
         key_row.addWidget(QLabel("API Key"))
-        self.deepseek_api_key = QLineEdit(os.environ.get("DEEPSEEK_API_KEY", ""))
-        self.deepseek_api_key.setEchoMode(QLineEdit.Password)
-        self.deepseek_api_key.setPlaceholderText("仅用于本次运行；也可设置 DEEPSEEK_API_KEY")
-        key_row.addWidget(self.deepseek_api_key, 1)
+        self.qwen_api_key = QLineEdit(os.environ.get("QWEN_API_KEY") or os.environ.get("DASHSCOPE_API_KEY", ""))
+        self.qwen_api_key.setEchoMode(QLineEdit.Password)
+        self.qwen_api_key.setPlaceholderText("仅用于本次运行；也可设置 QWEN_API_KEY")
+        key_row.addWidget(self.qwen_api_key, 1)
         layout.addLayout(key_row)
 
         prompt_row = QHBoxLayout()
@@ -584,10 +584,10 @@ class OrderFormTab(QWidget):
         )
         if not file_path:
             return
-        api_key = self.deepseek_api_key.text().strip()
+        api_key = self.qwen_api_key.text().strip()
         if not api_key:
-            QMessageBox.warning(self, "缺少 API Key", "请先填写 DeepSeek API Key。")
-            self.deepseek_api_key.setFocus()
+            QMessageBox.warning(self, "缺少 API Key", "请先填写 Qwen API Key。")
+            self.qwen_api_key.setFocus()
             return
 
         self.import_order_button.setEnabled(False)
