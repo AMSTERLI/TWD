@@ -685,7 +685,7 @@ def new_order(request: Request):
 
 
 @app.get("/api/next-order-no")
-def next_order_no(request: Request, order_date: str = "", order_prefix_no: int = 1):
+def next_order_no(request: Request, order_date: str = "", order_prefix_no: int = 1, force: int = 0):
     user, denied = require_page(request, {"sales"})
     if denied:
         return JSONResponse({"error": "未登录或无权限"}, status_code=401)
@@ -695,7 +695,12 @@ def next_order_no(request: Request, order_date: str = "", order_prefix_no: int =
     except ValueError:
         return JSONResponse({"error": "下单日期格式无效"}, status_code=400)
     try:
-        return {"order_no": repo.reserve_order_no(normalized_date, order_prefix_no, int(user.get("id") or 0))}
+        return {"order_no": repo.reserve_order_no(
+            normalized_date,
+            order_prefix_no,
+            int(user.get("id") or 0),
+            force_new=bool(force),
+        )}
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
 

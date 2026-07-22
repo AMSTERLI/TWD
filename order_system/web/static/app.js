@@ -415,27 +415,39 @@ const manualOrderNumberInput = document.querySelector("[data-manual-order-number
 if (orderNumberInput && orderDateInput && orderPrefixInput) {
   const customerOptions = customerNameInput ? [...document.querySelectorAll("#customer-list option")] : [];
   let previewRequest = 0;
+  let lastAutoKey = "";
+  let autoTimer = null;
 
-  async function refreshOrderNumber() {
+  function currentOrderKey() {
+    return `${orderDateInput.value || ""}|${orderPrefixInput.value || ""}`;
+  }
+
+  async function refreshOrderNumber(options = {}) {
+    const force = Boolean(options.force);
     if (manualOrderNumberInput?.checked) {
       orderNumberInput.setCustomValidity("");
       return;
     }
-    const requestId = ++previewRequest;
+    const key = currentOrderKey();
     if (!orderPrefixInput.value) {
       orderNumberInput.value = "";
+      lastAutoKey = "";
       return;
     }
+    if (!force && orderNumberInput.value.trim() && lastAutoKey === key) return;
+    const requestId = ++previewRequest;
     const query = new URLSearchParams({
       order_date: orderDateInput.value,
       order_prefix_no: orderPrefixInput.value,
     });
+    if (force) query.set("force", "1");
     try {
       const response = await fetch(`/api/next-order-no?${query}`);
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "无法生成订单编号");
       if (requestId === previewRequest) {
         orderNumberInput.value = result.order_no;
+        lastAutoKey = key;
         orderNumberInput.setCustomValidity("");
       }
     } catch (error) {
@@ -443,18 +455,29 @@ if (orderNumberInput && orderDateInput && orderPrefixInput) {
     }
   }
 
+  function scheduleAutoOrderNumber() {
+    clearTimeout(autoTimer);
+    autoTimer = setTimeout(() => refreshOrderNumber(), 120);
+  }
+
   function matchCustomer() {
     const selected = customerOptions.find(option => option.value === customerNameInput.value.trim());
-    orderPrefixInput.value = selected?.dataset.code || "";
+    const nextPrefix = selected?.dataset.code || "";
+    const previousKey = currentOrderKey();
+    orderPrefixInput.value = nextPrefix;
     customerNameInput.setCustomValidity(selected ? "" : "请从客户名称列表中选择匹配客户");
     orderNumberInput.setCustomValidity("");
-    refreshOrderNumber();
+    if (currentOrderKey() !== previousKey) orderNumberInput.value = "";
+    scheduleAutoOrderNumber();
   }
 
   if (customerNameInput) {
     customerNameInput.addEventListener("input", matchCustomer);
     customerNameInput.addEventListener("change", matchCustomer);
-    orderDateInput.addEventListener("change", refreshOrderNumber);
+    orderDateInput.addEventListener("change", () => {
+      orderNumberInput.value = "";
+      scheduleAutoOrderNumber();
+    });
     if (customerNameInput.value) matchCustomer();
   } else {
     orderDateInput.addEventListener("change", () => orderNumberInput.setCustomValidity(""));
@@ -464,7 +487,7 @@ if (orderNumberInput && orderDateInput && orderPrefixInput) {
     refreshOrderNumberButton.disabled = manualOrderNumberInput.checked;
   });
   if (manualOrderNumberInput?.checked && refreshOrderNumberButton) refreshOrderNumberButton.disabled = true;
-  refreshOrderNumberButton?.addEventListener("click", refreshOrderNumber);
+  refreshOrderNumberButton?.addEventListener("click", () => refreshOrderNumber({force: true}));
 }
 
 const outsourceBatch = document.querySelector("[data-outsource-batch]");

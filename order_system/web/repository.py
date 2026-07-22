@@ -768,11 +768,34 @@ class Repository:
                 return order_no
             sequence += 1
 
-    def reserve_order_no(self, order_date: str, order_prefix_no: int = 1, user_id: int | None = None) -> str:
+    def reserve_order_no(
+        self,
+        order_date: str,
+        order_prefix_no: int = 1,
+        user_id: int | None = None,
+        *,
+        force_new: bool = False,
+    ) -> str:
         order_date = str(order_date or "").strip()
         prefix_no = int(order_prefix_no or 0)
+        normalized_user_id = int(user_id or 0) or None
         with self.connect(write=True) as conn:
             self._customer_for_code(conn, prefix_no)
+            if not force_new and normalized_user_id:
+                existing = conn.execute(
+                    """SELECT order_no FROM order_no_reservations
+                       WHERE order_date = ? AND order_prefix_no = ? AND reserved_by = ?
+                         AND used_at IS NULL AND used_order_id IS NULL
+                       ORDER BY id DESC LIMIT 1""",
+                    (order_date, prefix_no, normalized_user_id),
+                ).fetchone()
+                if existing and not self._order_no_taken(
+                    conn,
+                    str(existing["order_no"]),
+                    allowed_order_no=str(existing["order_no"]),
+                    allowed_user_id=normalized_user_id,
+                ):
+                    return str(existing["order_no"])
             while True:
                 order_no = self._next_order_no(conn, order_date, prefix_no)
                 try:
@@ -780,7 +803,7 @@ class Repository:
                         """INSERT INTO order_no_reservations
                            (order_no, order_date, order_prefix_no, reserved_by)
                            VALUES (?, ?, ?, ?)""",
-                        (order_no, order_date, prefix_no, int(user_id or 0) or None),
+                        (order_no, order_date, prefix_no, normalized_user_id),
                     )
                     return order_no
                 except sqlite3.IntegrityError:

@@ -44,7 +44,9 @@ with TestClient(app) as client:
     preview = client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=2")
     assert preview.status_code == 200 and preview.json()["order_no"] == "TWD2-260715001"
     preview_again = client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=2")
-    assert preview_again.status_code == 200 and preview_again.json()["order_no"] == "TWD2-260715002"
+    assert preview_again.status_code == 200 and preview_again.json()["order_no"] == "TWD2-260715001"
+    forced_preview = client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=2&force=1")
+    assert forced_preview.status_code == 200 and forced_preview.json()["order_no"] == "TWD2-260715002"
     assert 'name="order_no"' in form_page.text
     assert 'readonly data-order-number' not in form_page.text
     assert 'name="spare_quantity"' in form_page.text

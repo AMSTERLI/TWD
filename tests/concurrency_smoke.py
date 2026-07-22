@@ -83,7 +83,10 @@ suffix_payload.update({
 })
 suffix_id, _ = suffix_repo.create_order(suffix_payload)
 assert suffix_repo.update_order(suffix_id, suffix_repo.get_order(suffix_id))
-assert suffix_repo.reserve_order_no("2026-07-22", 1, user_id=1) == "TWD1-260722002"
+reused_no = suffix_repo.reserve_order_no("2026-07-22", 1, user_id=1)
+assert reused_no == "TWD1-260722002"
+assert suffix_repo.reserve_order_no("2026-07-22", 1, user_id=1) == reused_no
+assert suffix_repo.reserve_order_no("2026-07-22", 1, user_id=1, force_new=True) == "TWD1-260722003"
 assert suffix_repo.reserve_order_no("2026-08-01", 1, user_id=1) == "TWD1-260801001"
 duplicate_exact_payload = suffix_payload.copy()
 duplicate_exact_payload.pop("_reservation_user_id", None)
