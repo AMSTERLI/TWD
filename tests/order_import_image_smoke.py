@@ -83,6 +83,7 @@ assert body["model"] == "qwen3.7-plus"
 content = body["messages"][1]["content"]
 assert isinstance(content, list)
 assert content[0]["type"] == "text"
+assert "勾画" in content[0]["text"] and "高亮" in content[0]["text"] and "制作工艺" in content[0]["text"]
 assert content[1]["type"] == "image_url"
 assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
 assert result["product_name"] == "钥匙扣"
