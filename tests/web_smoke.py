@@ -50,6 +50,10 @@ with TestClient(app) as client:
     assert 'name="order_no"' in form_page.text
     assert 'readonly data-order-number' not in form_page.text
     assert 'name="spare_quantity"' in form_page.text
+    assert 'data-ai-file hidden' in form_page.text
+    assert 'data-ai-file-button' in form_page.text
+    assert 'data-ai-paste-image' in form_page.text
+    assert 'data-ai-file-name' in form_page.text
     assert 'data-paste-image-target="#product-images"' in form_page.text
     assert 'data-customer-name' in form_page.text and "程炬（编码 1）" in form_page.text
     customers = repo.list_customers()

@@ -25,7 +25,7 @@ MAX_SUPPLEMENTAL_PROMPT_CHARS = 2_000
 MAX_DOC_VISUAL_PAGES = 6
 DOC_CONVERSION_TIMEOUT_SECONDS = 60
 SUPPORTED_DOCUMENT_SUFFIXES = {".doc", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf"}
-SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
+SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 
 
 class OrderImportError(RuntimeError):
@@ -59,7 +59,7 @@ def extract_document_text(file_path: str | Path) -> str:
             text = _extract_pdf(path)
         else:
             raise OrderImportError(
-                "暂不支持此格式。请选择 .doc、.docx、.xlsx、.xlsm、.xls、.csv、.tsv、.html、.htm、.pdf、.png、.jpg 或 .jpeg 文件。"
+                "暂不支持此格式。请选择 .doc、.docx、.xlsx、.xlsm、.xls、.csv、.tsv、.html、.htm、.pdf、.png、.jpg、.jpeg 或 .webp 文件。"
             )
     except OrderImportError:
         raise
@@ -346,9 +346,9 @@ def _extract_pdf(path: Path) -> str:
 
 def _image_data_url(path: Path) -> str:
     suffix = path.suffix.lower()
-    mime_type = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}.get(suffix)
+    mime_type = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}.get(suffix)
     if not mime_type:
-        raise OrderImportError("图片客单仅支持 PNG、JPG 或 JPEG 格式。")
+        raise OrderImportError("图片客单仅支持 PNG、JPG、JPEG 或 WEBP 格式。")
     if not path.is_file():
         raise OrderImportError("所选客单图片不存在。")
     if path.stat().st_size > MAX_FILE_BYTES:

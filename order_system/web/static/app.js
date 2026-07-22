@@ -7,18 +7,37 @@ document.addEventListener("click", (event) => {
 const importBox = document.querySelector("[data-ai-import]");
 if (importBox) {
   const button = importBox.querySelector("[data-ai-button]");
+  const fileButton = importBox.querySelector("[data-ai-file-button]");
+  const pasteButton = importBox.querySelector("[data-ai-paste-image]");
   const status = importBox.querySelector("[data-ai-status]");
-  const fileInput = document.querySelector("#customer-file");
+  const fileInput = importBox.querySelector("[data-ai-file]");
+  const fileName = importBox.querySelector("[data-ai-file-name]");
   const supplementalPrompt = document.querySelector("#ai-supplemental-prompt");
-  button.addEventListener("click", async () => {
+
+  function setImportStatus(message, isError = false, isSuccess = false) {
+    status.textContent = message;
+    status.className = isError ? "import-status error-text" : isSuccess ? "import-status success-text" : "import-status";
+  }
+
+  function refreshImportFileName() {
+    fileName.textContent = fileInput.files.length ? fileInput.files[0].name : "未选择文件";
+  }
+
+  function setCustomerFile(file) {
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    fileInput.files = transfer.files;
+    fileInput.dispatchEvent(new Event("change", {bubbles: true}));
+  }
+
+  async function runAiImport() {
     if (!fileInput.files.length) {
-      status.textContent = "请先选择客单文件";
-      status.className = "import-status error-text";
+      setImportStatus("请先选择客单文件", true);
       return;
     }
     button.disabled = true;
-    status.textContent = "正在读取和识别，请稍候…";
-    status.className = "import-status";
+    if (pasteButton) pasteButton.disabled = true;
+    setImportStatus("正在读取和识别，请稍候…");
     const body = new FormData();
     body.append("file", fileInput.files[0]);
     body.append("supplemental_prompt", supplementalPrompt?.value.trim() || "");
@@ -30,15 +49,64 @@ if (importBox) {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "识别失败");
       fillOrderForm(result.data);
-      status.textContent = "识别完成，已自动填入。请核对后保存。";
-      status.className = "import-status success-text";
+      setImportStatus("识别完成，已自动填入。请核对后保存。", false, true);
     } catch (error) {
-      status.textContent = error.message;
-      status.className = "import-status error-text";
+      setImportStatus(error.message, true);
     } finally {
       button.disabled = false;
+      if (pasteButton) pasteButton.disabled = false;
     }
+  }
+
+  async function importClipboardImage(files) {
+    const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+    const extensionByType = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"};
+    const imageFile = files.find(file => allowedTypes.has(file.type));
+    if (!imageFile) {
+      setImportStatus("请粘贴图片", true);
+      return;
+    }
+    const ext = extensionByType[imageFile.type];
+    const name = imageFile.name && imageFile.name !== "image.png" ? imageFile.name : `pasted-order-${Date.now()}.${ext}`;
+    setCustomerFile(new File([imageFile], name, {type: imageFile.type, lastModified: imageFile.lastModified || Date.now()}));
+    await runAiImport();
+  }
+
+  async function readClipboardImages() {
+    if (!navigator.clipboard?.read) {
+      setImportStatus("浏览器不允许读取剪贴板，请在此区域按 Ctrl+V 粘贴图片", true);
+      return;
+    }
+    pasteButton.disabled = true;
+    try {
+      const items = await navigator.clipboard.read();
+      const files = [];
+      for (const item of items) {
+        const imageType = item.types.find(type => type.startsWith("image/"));
+        if (imageType) files.push(await item.getType(imageType));
+      }
+      await importClipboardImage(files);
+    } catch (error) {
+      setImportStatus("浏览器不允许读取剪贴板，请在此区域按 Ctrl+V 粘贴图片", true);
+    } finally {
+      pasteButton.disabled = false;
+    }
+  }
+
+  fileButton?.addEventListener("click", () => fileInput.click());
+  fileInput?.addEventListener("change", refreshImportFileName);
+  button.addEventListener("click", runAiImport);
+  pasteButton?.addEventListener("click", readClipboardImages);
+  importBox.addEventListener("paste", event => {
+    const files = [...(event.clipboardData?.files || [])].filter(file => file.type.startsWith("image/"));
+    if (!files.length) {
+      setImportStatus("请粘贴图片", true);
+      return;
+    }
+    event.preventDefault();
+    importClipboardImage(files);
   });
+  refreshImportFileName();
 }
 
 function clearOrderFormForAi(form) {

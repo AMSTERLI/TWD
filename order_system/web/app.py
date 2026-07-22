@@ -1051,8 +1051,8 @@ async def import_order(request: Request):
     if not isinstance(upload, UploadFile) or not upload.filename:
         return JSONResponse({"error": "请选择客单文件"}, status_code=400)
     suffix = Path(upload.filename).suffix.lower()
-    if suffix not in {".doc", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf", ".png", ".jpg", ".jpeg"}:
-        return JSONResponse({"error": "仅支持 DOC、DOCX、Excel、CSV、TSV、HTML、PDF、PNG 或 JPG"}, status_code=415)
+    if suffix not in {".doc", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf", ".png", ".jpg", ".jpeg", ".webp"}:
+        return JSONResponse({"error": "仅支持 DOC、DOCX、Excel、CSV、TSV、HTML、PDF、PNG、JPG 或 WEBP"}, status_code=415)
     target = TMP_DIR / f"{uuid4().hex}{suffix}"
     size = 0
     try:
