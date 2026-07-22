@@ -145,8 +145,8 @@ with TestClient(app) as client:
     assert "operator_name" not in list_page.text and "&#25805;&#20316;&#20154;" not in list_page.text
     assert "&#20986;&#36135;&#29366;&#24577;" in list_page.text
     assert 'data-delete-url="/workshop/mold/records/' in list_page.text
-    assert 'data-request-edit-url="/workshop/mold/records/' in list_page.text
-    assert 'data-request-edit-mode="prompt"' in list_page.text
+    assert 'data-request-edit-url="/workshop/mold/records/' not in list_page.text
+    assert 'data-request-edit-mode="prompt"' not in list_page.text
     assert 'data-workshop-quantity-url="/workshop/mold/records/' in list_page.text
     assert 'data-workshop-quantity="2"' in list_page.text
     assert 'data-select-all' in list_page.text and 'data-requires-selection' in list_page.text
@@ -167,14 +167,6 @@ with TestClient(app) as client:
     assert repo.order_workshop_records(order_id)[0]["quantity"] == 2
     workshop_messages = client.get("/messages")
     assert workshop_messages.status_code == 200 and "刻模数量修改" in workshop_messages.text and "数量从2修改为5" in workshop_messages.text
-    edit_request = client.post(
-        f"/workshop/mold/records/{records[0]['id']}/edit-request",
-        data={"csrf": csrf(client.get("/workshop/mold").text), "reason": "PDF上备注需要改"},
-        follow_redirects=False,
-    )
-    assert edit_request.status_code == 303 and edit_request.headers["location"] == "/workshop/mold?requested=1"
-    edit_request_page = client.get("/messages")
-    assert edit_request_page.status_code == 200 and "刻模申请修改订单：PDF上备注需要改" in edit_request_page.text
     ship = client.post(
         "/workshop/mold/ship",
         data={"csrf": csrf(list_page.text), "order_no": [order_no], "unit_price": [""]},
@@ -249,7 +241,6 @@ with TestClient(app) as client:
 
     admin_messages = client.get("/messages")
     assert admin_messages.status_code == 200 and "刻模数量修改" in admin_messages.text
-    assert "刻模申请修改订单：PDF上备注需要改" in admin_messages.text
     review = client.post(
         "/messages/1/review",
         data={"csrf": csrf(admin_messages.text), "decision": "approve", "review_note": "同意"},

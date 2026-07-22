@@ -1272,44 +1272,6 @@ async def workshop_record_quantity_request(request: Request, department_key: str
     return RedirectResponse("/messages", status_code=303)
 
 
-@app.post("/workshop/{department_key}/records/{record_id}/edit-request")
-async def workshop_record_edit_request(request: Request, department_key: str, record_id: int):
-    user, denied = require_page(request, {"workshop"})
-    if denied:
-        return denied
-    department = workshop_department(department_key)
-    if not department:
-        return Response(status_code=404)
-    if not workshop_unlocked(request, department_key):
-        return RedirectResponse("/workshop", status_code=303)
-    form = await request.form()
-    if not valid_form_csrf(request, str(form.get("csrf") or "")):
-        return Response(status_code=400)
-    try:
-        request_id = await run_in_threadpool(
-            repo.create_workshop_order_edit_request,
-            record_id,
-            department_key,
-            user,
-            str(form.get("reason") or "").strip(),
-        )
-        await run_in_threadpool(
-            repo.audit,
-            user,
-            "workshop.edit_request",
-            f"{department_key}:{record_id}:{request_id}",
-            client_ip(request),
-        )
-    except ValueError as exc:
-        return templates.TemplateResponse(
-            request,
-            "error.html",
-            page_context(request, status=400, message=str(exc)),
-            status_code=400,
-        )
-    return RedirectResponse(f"/workshop/{department_key}?requested=1", status_code=303)
-
-
 @app.post("/workshop/{department_key}/export")
 async def workshop_department_export(request: Request, department_key: str):
     user, denied = require_page(request, {"workshop"})

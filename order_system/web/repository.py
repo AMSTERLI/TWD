@@ -536,46 +536,6 @@ class Repository:
             )
             return int(cursor.lastrowid)
 
-    def create_workshop_order_edit_request(
-        self,
-        record_id: int,
-        department_key: str,
-        user: dict[str, Any],
-        reason: str,
-    ) -> int:
-        reason = str(reason or "").strip()
-        department_key = str(department_key or "").strip()
-        if not reason:
-            raise ValueError("请填写修改原因")
-        if len(reason) > 1000:
-            raise ValueError("修改原因不能超过 1000 个字")
-        with self.connect(write=True) as conn:
-            record = conn.execute(
-                """SELECT w.id, w.order_id, w.order_no, w.department_key, w.department_name
-                   FROM workshop_records w
-                   WHERE w.id = ? AND (? = '' OR w.department_key = ?)""",
-                (int(record_id), department_key, department_key),
-            ).fetchone()
-            if not record:
-                raise ValueError("车间报到记录不存在")
-            if self._pending_edit_request_exists(conn, int(record["order_id"]), int(user.get("id") or 0)):
-                raise ValueError("这张订单已有待审批的修改申请")
-            summary = f"{record['department_name']}申请修改订单：{reason}"
-            cursor = conn.execute(
-                """INSERT INTO order_edit_requests
-                   (order_id, order_no, requester_id, requester_name, reason, request_type, workshop_record_id)
-                   VALUES (?, ?, ?, ?, ?, 'edit', ?)""",
-                (
-                    int(record["order_id"]),
-                    str(record["order_no"]),
-                    int(user.get("id") or 0),
-                    str(user.get("display_name") or user.get("username") or ""),
-                    summary[:1000],
-                    int(record_id),
-                ),
-            )
-            return int(cursor.lastrowid)
-
     def _create_replenishment_order(self, conn: sqlite3.Connection, request_row: sqlite3.Row) -> tuple[int, str]:
         source = conn.execute("SELECT * FROM orders WHERE id = ?", (int(request_row["order_id"]),)).fetchone()
         if not source:
