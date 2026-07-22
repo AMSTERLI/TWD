@@ -60,6 +60,11 @@ WORKSHOP_DEPARTMENTS = {
         "password_env": "TWD_WORKSHOP_MOLD_PASSWORD",
         "default_password": "kemu888",
     },
+    "cutter": {
+        "name": "\u8f66\u5200",
+        "password_env": "TWD_WORKSHOP_CUTTER_PASSWORD",
+        "default_password": "chedao888",
+    },
 }
 
 
