@@ -80,12 +80,17 @@ finally:
 
 body = captured["body"]
 assert body["model"] == "qwen3.7-plus"
+system_prompt = body["messages"][0]["content"]
+assert "系统字段规则和允许值 > 业务员补充说明" in system_prompt
+assert "待报价、未报价和空白均为null" in system_prompt
+assert "三面等价于正面+侧面+背面" in system_prompt
+assert "一般/厚/薄最多选择一个" in system_prompt
 content = body["messages"][1]["content"]
 assert isinstance(content, list)
 assert content[0]["type"] == "text"
 assert "勾画" in content[0]["text"] and "高亮" in content[0]["text"] and "制作工艺" in content[0]["text"]
 assert "颜色块" in content[0]["text"] and "空白的方框" in content[0]["text"]
-assert "锌合金铸造烤漆" in content[0]["text"] and "锌合金  烤漆" in content[0]["text"]
+assert "不得默认选择第一项" in content[0]["text"] and "不加" in content[0]["text"]
 assert content[1]["type"] == "image_url"
 assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
 assert result["product_name"] == "钥匙扣"

@@ -42,7 +42,10 @@ if (importBox) {
 }
 
 function clearOrderFormForAi(form) {
+  const customerInput = form.querySelector("[data-customer-name]");
+  const selectedCustomer = customerInput?.value || "";
   form.reset();
+  if (customerInput && selectedCustomer) customerInput.value = selectedCustomer;
   form.querySelectorAll('input[type="file"]').forEach(input => {
     input.value = "";
     input.dispatchEvent(new Event("change", {bubbles: true}));
@@ -54,7 +57,7 @@ function clearOrderFormForAi(form) {
   form.querySelectorAll("[data-component-rows]").forEach(rows => {
     rows.innerHTML = "";
   });
-  form.querySelector("[data-customer-name]")?.dispatchEvent(new Event("input", {bubbles: true}));
+  customerInput?.dispatchEvent(new Event("input", {bubbles: true}));
   form.querySelector("[data-order-date]")?.dispatchEvent(new Event("change", {bubbles: true}));
 }
 
