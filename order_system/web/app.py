@@ -5,8 +5,9 @@ import json
 import os
 import shutil
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 from typing import Any
 from uuid import uuid4
 
@@ -35,6 +36,23 @@ from .settings import (
 
 repo = Repository(DB_PATH)
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+BEIJING_TZ = ZoneInfo("Asia/Shanghai")
+
+
+def beijing_time(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return raw
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(BEIJING_TZ).strftime("%Y-%m-%d %H:%M:%S")
+
+
+templates.env.filters["beijing_time"] = beijing_time
 ai_slots = asyncio.Semaphore(max(1, int(os.environ.get("TWD_AI_CONCURRENCY", "2"))))
 WORKSHOP_DEPARTMENTS = {
     "mold": {
