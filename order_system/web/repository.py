@@ -117,6 +117,7 @@ class Repository:
                     reason TEXT NOT NULL,
                     request_type TEXT NOT NULL DEFAULT 'edit',
                     supplement_quantity INTEGER,
+                    workshop_record_id INTEGER,
                     status TEXT NOT NULL DEFAULT 'pending',
                     reviewer_id INTEGER,
                     reviewer_name TEXT,
@@ -145,6 +146,7 @@ class Repository:
                     order_no TEXT NOT NULL,
                     department_key TEXT NOT NULL,
                     department_name TEXT NOT NULL,
+                    quantity INTEGER NOT NULL DEFAULT 1,
                     unit_price REAL NOT NULL DEFAULT 0,
                     shipped_status INTEGER NOT NULL DEFAULT 0,
                     operator_id INTEGER,
@@ -188,6 +190,8 @@ class Repository:
                 conn.execute("ALTER TABLE order_edit_requests ADD COLUMN request_type TEXT NOT NULL DEFAULT 'edit'")
             if "supplement_quantity" not in existing_request_columns:
                 conn.execute("ALTER TABLE order_edit_requests ADD COLUMN supplement_quantity INTEGER")
+            if "workshop_record_id" not in existing_request_columns:
+                conn.execute("ALTER TABLE order_edit_requests ADD COLUMN workshop_record_id INTEGER")
             if "created_order_id" not in existing_request_columns:
                 conn.execute("ALTER TABLE order_edit_requests ADD COLUMN created_order_id INTEGER")
             if "created_order_no" not in existing_request_columns:
@@ -197,6 +201,8 @@ class Repository:
             existing_workshop_columns = {row[1] for row in conn.execute("PRAGMA table_info(workshop_records)").fetchall()}
             if "shipped_status" not in existing_workshop_columns:
                 conn.execute("ALTER TABLE workshop_records ADD COLUMN shipped_status INTEGER NOT NULL DEFAULT 0")
+            if "quantity" not in existing_workshop_columns:
+                conn.execute("ALTER TABLE workshop_records ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1")
             conn.execute(
                 "UPDATE web_users SET display_name = username "
                 "WHERE display_name IS NULL OR TRIM(display_name) = ''"
@@ -471,6 +477,65 @@ class Repository:
             )
             return int(cursor.lastrowid)
 
+    def create_workshop_quantity_request(
+        self,
+        record_id: int,
+        department_key: str,
+        user: dict[str, Any],
+        quantity: int,
+        reason: str,
+    ) -> int:
+        quantity = int(quantity or 0)
+        reason = str(reason or "").strip()
+        department_key = str(department_key or "").strip()
+        if quantity <= 0:
+            raise ValueError("数量必须大于 0")
+        if not reason:
+            raise ValueError("请填写修改原因")
+        if len(reason) > 1000:
+            raise ValueError("修改原因不能超过 1000 个字")
+        with self.connect(write=True) as conn:
+            record = conn.execute(
+                """SELECT w.id, w.order_id, w.order_no, w.department_key, w.department_name, w.quantity
+                   FROM workshop_records w
+                   WHERE w.id = ? AND (? = '' OR w.department_key = ?)""",
+                (int(record_id), department_key, department_key),
+            ).fetchone()
+            if not record:
+                raise ValueError("车间报到记录不存在")
+            if int(record["quantity"] or 1) == quantity:
+                raise ValueError("数量没有变化")
+            existing = conn.execute(
+                """SELECT id FROM order_edit_requests
+                   WHERE workshop_record_id = ? AND requester_id = ? AND status = 'pending'
+                     AND request_type = 'workshop_quantity'
+                   LIMIT 1""",
+                (int(record_id), int(user.get("id") or 0)),
+            ).fetchone()
+            if existing:
+                raise ValueError("这条刻模记录已有待审批的数量修改申请")
+            summary = (
+                f"{record['department_name']}数量从{int(record['quantity'] or 1)}修改为{quantity}；"
+                f"原因：{reason}"
+            )
+            cursor = conn.execute(
+                """INSERT INTO order_edit_requests
+                   (order_id, order_no, requester_id, requester_name, reason, request_type,
+                    supplement_quantity, workshop_record_id, proposed_payload_json)
+                   VALUES (?, ?, ?, ?, ?, 'workshop_quantity', ?, ?, ?)""",
+                (
+                    int(record["order_id"]),
+                    str(record["order_no"]),
+                    int(user.get("id") or 0),
+                    str(user.get("display_name") or user.get("username") or ""),
+                    summary[:1000],
+                    quantity,
+                    int(record_id),
+                    json.dumps({"quantity": quantity}, ensure_ascii=False, separators=(",", ":")),
+                ),
+            )
+            return int(cursor.lastrowid)
+
     def _create_replenishment_order(self, conn: sqlite3.Connection, request_row: sqlite3.Row) -> tuple[int, str]:
         source = conn.execute("SELECT * FROM orders WHERE id = ?", (int(request_row["order_id"]),)).fetchone()
         if not source:
@@ -528,6 +593,17 @@ class Repository:
                 payload = json.loads(str(row["proposed_payload_json"]))
                 if not self._update_order_with_payload(conn, int(row["order_id"]), payload, int(row["requester_id"] or 0) or None):
                     raise ValueError("订单不存在")
+            elif approved and request_type == "workshop_quantity":
+                payload = json.loads(str(row["proposed_payload_json"] or "{}"))
+                quantity = int(payload.get("quantity") or row["supplement_quantity"] or 0)
+                if quantity <= 0:
+                    raise ValueError("数量必须大于 0")
+                cursor = conn.execute(
+                    "UPDATE workshop_records SET quantity = ? WHERE id = ? AND order_id = ?",
+                    (quantity, int(row["workshop_record_id"] or 0), int(row["order_id"])),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError("车间报到记录不存在")
             conn.execute(
                 """UPDATE order_edit_requests
                    SET status = ?, reviewer_id = ?, reviewer_name = ?, review_note = ?,
@@ -1012,7 +1088,7 @@ class Repository:
             return None
         with self.connect() as conn:
             row = conn.execute(
-                """SELECT id, order_id, order_no, department_key, department_name, unit_price,
+                """SELECT id, order_id, order_no, department_key, department_name, quantity, unit_price,
                           shipped_status, reported_at
                    FROM workshop_records
                    WHERE department_key = ? AND order_no = ?
@@ -1055,9 +1131,15 @@ class Repository:
                 unit_price = float(row.get("unit_price") or 0)
             except (TypeError, ValueError):
                 raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u5355\u4ef7\u65e0\u6548")
+            try:
+                quantity = int(float(row.get("quantity") or 1))
+            except (TypeError, ValueError):
+                raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u6570\u91cf\u65e0\u6548")
             if unit_price < 0:
                 raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u5355\u4ef7\u4e0d\u80fd\u5c0f\u4e8e 0")
-            clean_rows.append({"order_no": order_no, "unit_price": unit_price})
+            if quantity <= 0:
+                raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u6570\u91cf\u5fc5\u987b\u5927\u4e8e 0")
+            clean_rows.append({"order_no": order_no, "unit_price": unit_price, "quantity": quantity})
         if not clean_rows:
             raise ValueError("\u8bf7\u81f3\u5c11\u626b\u63cf\u4e00\u4e2a\u8ba2\u5355")
         created_ids: list[int] = []
@@ -1073,11 +1155,11 @@ class Repository:
                     raise ValueError(f"\u8ba2\u5355 {row['order_no']} \u4e0d\u5b58\u5728")
                 cursor = conn.execute(
                     """INSERT INTO workshop_records
-                       (order_id, order_no, department_key, department_name, unit_price, operator_id, operator_name)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                       (order_id, order_no, department_key, department_name, quantity, unit_price, operator_id, operator_name)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         int(order["id"]), str(order["order_no"]), department_key, department_name,
-                        row["unit_price"], operator_id, operator_name,
+                        row["quantity"], row["unit_price"], operator_id, operator_name,
                     ),
                 )
                 created_ids.append(int(cursor.lastrowid))

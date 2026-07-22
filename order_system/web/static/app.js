@@ -287,6 +287,8 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       row.dataset.existingWorkshopOrderNo = orderNo;
       const priceInput = row.querySelector('[name="unit_price"]');
       if (priceInput) priceInput.value = cleanNumber(record.unit_price);
+      const quantityInput = row.querySelector('[name="quantity"]');
+      if (quantityInput) quantityInput.value = String(record.quantity || 1);
       return orderNo;
     } catch (error) {
       console.warn("Failed to load workshop history", error);
@@ -346,7 +348,11 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     if (!button) return;
     const row = button.closest("tr");
     if (rows.children.length <= 1) {
-      row.querySelectorAll("input").forEach(input => input.value = input.name === "unit_price" ? "0" : "");
+      row.querySelectorAll("input").forEach(input => {
+        if (input.name === "unit_price") input.value = "0";
+        else if (input.name === "quantity") input.value = "1";
+        else input.value = "";
+      });
       row.dataset.existingWorkshopRecord = "0";
       row.dataset.existingWorkshopOrderNo = "";
       row.dataset.historyKey = "";
@@ -894,7 +900,7 @@ if (contextRows.length) {
   const menu = document.createElement("div");
   menu.className = "admin-context-menu";
   menu.hidden = true;
-  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-stash>暂存</button><button type="button" data-context-replenish>申请补数</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-delete>删除</button>';
+  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-workshop-quantity>申请改数量</button><button type="button" data-context-stash>暂存</button><button type="button" data-context-replenish>申请补数</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-delete>删除</button>';
   document.body.appendChild(menu);
   let activeRow = null;
 
@@ -906,6 +912,7 @@ if (contextRows.length) {
   function refreshContextButtons() {
     menu.querySelector("[data-context-edit]").hidden = !activeRow?.dataset.editUrl;
     menu.querySelector("[data-context-request]").hidden = !activeRow?.dataset.requestEditUrl;
+    menu.querySelector("[data-context-workshop-quantity]").hidden = !activeRow?.dataset.workshopQuantityUrl;
     menu.querySelector("[data-context-stash]").hidden = !activeRow?.dataset.stashId;
     menu.querySelector("[data-context-replenish]").hidden = !activeRow?.dataset.replenishmentUrl;
     const shipButton = menu.querySelector("[data-context-ship]");
@@ -930,6 +937,40 @@ if (contextRows.length) {
   });
   menu.querySelector("[data-context-request]").addEventListener("click", () => {
     if (activeRow?.dataset.requestEditUrl) window.location.href = activeRow.dataset.requestEditUrl;
+  });
+  menu.querySelector("[data-context-workshop-quantity]").addEventListener("click", () => {
+    if (!activeRow?.dataset.workshopQuantityUrl) return;
+    const currentQuantity = activeRow.dataset.workshopQuantity || "1";
+    const rawQuantity = window.prompt(`请输入${activeRow.dataset.recordLabel || "该记录"}的新数量`, currentQuantity);
+    if (rawQuantity === null) return;
+    const quantity = rawQuantity.trim();
+    if (!/^[1-9]\d*$/.test(quantity)) {
+      window.alert("数量必须是大于 0 的整数");
+      return;
+    }
+    const rawReason = window.prompt(`请输入${activeRow.dataset.recordLabel || "该记录"}的修改原因`);
+    if (!rawReason || !rawReason.trim()) {
+      window.alert("请填写修改原因");
+      return;
+    }
+    const form = document.createElement("form");
+    form.method = "post";
+    form.action = activeRow.dataset.workshopQuantityUrl;
+    const csrf = document.createElement("input");
+    csrf.type = "hidden";
+    csrf.name = "csrf";
+    csrf.value = activeRow.dataset.csrf || "";
+    const quantityInput = document.createElement("input");
+    quantityInput.type = "hidden";
+    quantityInput.name = "quantity";
+    quantityInput.value = quantity;
+    const reasonInput = document.createElement("input");
+    reasonInput.type = "hidden";
+    reasonInput.name = "reason";
+    reasonInput.value = rawReason.trim();
+    form.append(csrf, quantityInput, reasonInput);
+    document.body.appendChild(form);
+    form.submit();
   });
   menu.querySelector("[data-context-stash]").addEventListener("click", () => {
     if (!activeRow?.dataset.stashId) return;

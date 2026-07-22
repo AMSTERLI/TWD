@@ -619,7 +619,7 @@ def production_orders(request: Request, q: str = "", page: int = 1):
 
 @app.get("/messages", response_class=HTMLResponse)
 def messages(request: Request, status: str = ""):
-    user, denied = require_page(request, {"admin", "sales", "finance", "production"})
+    user, denied = require_page(request, {"admin", "sales", "finance", "production", "workshop"})
     if denied:
         return denied
     default_status = "pending" if user["role"] == "admin" and status == "" else status
@@ -1210,6 +1210,45 @@ async def workshop_record_delete(request: Request, department_key: str, record_i
     return RedirectResponse(f"/workshop/{department_key}", status_code=303)
 
 
+@app.post("/workshop/{department_key}/records/{record_id}/quantity-request")
+async def workshop_record_quantity_request(request: Request, department_key: str, record_id: int):
+    user, denied = require_page(request, {"workshop"})
+    if denied:
+        return denied
+    department = workshop_department(department_key)
+    if not department:
+        return Response(status_code=404)
+    if not workshop_unlocked(request, department_key):
+        return RedirectResponse("/workshop", status_code=303)
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    try:
+        request_id = await run_in_threadpool(
+            repo.create_workshop_quantity_request,
+            record_id,
+            department_key,
+            user,
+            as_int(form.get("quantity"), 1),
+            str(form.get("reason") or "").strip(),
+        )
+        await run_in_threadpool(
+            repo.audit,
+            user,
+            "workshop.quantity_request",
+            f"{department_key}:{record_id}:{request_id}",
+            client_ip(request),
+        )
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "error.html",
+            page_context(request, status=400, message=str(exc)),
+            status_code=400,
+        )
+    return RedirectResponse("/messages", status_code=303)
+
+
 @app.post("/workshop/{department_key}/ship", response_class=HTMLResponse)
 async def workshop_department_ship(request: Request, department_key: str):
     user, denied = require_page(request, {"workshop"})
@@ -1259,8 +1298,10 @@ async def workshop_department_submit(request: Request, department_key: str):
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
     rows = [
-        {"order_no": order_no, "unit_price": unit_price}
-        for order_no, unit_price in zip(form.getlist("order_no"), form.getlist("unit_price"))
+        {"order_no": order_no, "unit_price": unit_price, "quantity": quantity}
+        for order_no, unit_price, quantity in zip(
+            form.getlist("order_no"), form.getlist("unit_price"), form.getlist("quantity")
+        )
     ]
     try:
         created_ids = await run_in_threadpool(
