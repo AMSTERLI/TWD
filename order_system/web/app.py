@@ -1611,6 +1611,15 @@ def outsource_history(request: Request, order_no: str = "", process_name: str = 
     return JSONResponse({"record": record})
 
 
+@app.get("/outsource/order-lookup")
+async def outsource_order_lookup(request: Request, order_no: str = ""):
+    _, denied = require_page(request, {"outsource"})
+    if denied:
+        return JSONResponse({"error": "\u672a\u767b\u5f55\u6216\u65e0\u6743\u9650"}, status_code=401)
+    order = await run_in_threadpool(repo.lookup_order, order_no)
+    return JSONResponse({"order": order})
+
+
 @app.get("/outsource/{record_id}/edit", response_class=HTMLResponse)
 def edit_outsource_page(request: Request, record_id: int):
     _, denied = require_page(request, {"admin", "outsource"})

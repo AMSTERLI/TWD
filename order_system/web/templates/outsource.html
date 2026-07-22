@@ -33,7 +33,7 @@
 {% if created %}<div class="alert success">已批量保存 {{ created }} 条外发记录。</div>{% endif %}
 {% if received %}<div class="alert success">已收货 {{ received }} 条外发记录。</div>{% endif %}
 <details class="panel create-panel" open><summary>＋ 批量新增外发记录</summary>
-<form method="post" action="/outsource" class="padded" data-outsource-batch>
+<form method="post" action="/outsource" class="padded" data-outsource-batch data-order-lookup-url="/outsource/order-lookup">
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <div class="form-grid cols-4 batch-shared">
     <label>工序<select name="process_name" required data-process-select><option value="">请选择</option>{% for item in processes %}<option>{{ item.process_name }}</option>{% endfor %}</select></label>
@@ -42,7 +42,6 @@
     <div class="scan-tip"><strong>扫码录入</strong><span>扫描订单号后按回车，自动增加下一行</span></div>
   </div>
   <datalist id="order-number-list">{% for item in orders %}<option value="{{ item.order_no }}">{{ item.product_name }}</option>{% endfor %}</datalist>
-  <script type="application/json" data-outsource-orders-json>{{ orders|tojson }}</script>
   <div class="table-wrap batch-table"><table>
     <thead><tr><th>订单号</th><th>产品数量</th><th>备品数量</th><th>加工单价</th><th data-process-only="冲压" hidden>加工费</th><th data-process-only="冲压" hidden>长 mm</th><th data-process-only="冲压" hidden>宽 mm</th><th data-process-only="冲压" hidden>厚 mm</th><th data-process-only="冲压" hidden>密度</th><th data-process-only="冲压" hidden>重量</th><th data-process-only="冲压" hidden>材料单价</th><th data-process-only="上色" hidden>颜色数量</th><th data-process-only="印刷/UV" hidden>版费</th><th>类型</th><th>备注</th><th>金额</th><th></th></tr></thead>
     <tbody data-outsource-rows>{{ batch_row() }}</tbody>

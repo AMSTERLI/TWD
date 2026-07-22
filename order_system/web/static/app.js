@@ -505,18 +505,9 @@ if (outsourceBatch) {
     value: option.value,
     label: option.textContent,
   }));
-  const ordersDataElement = outsourceBatch.querySelector("[data-outsource-orders-json]");
-  const ordersByNo = new Map();
+  const orderLookupUrl = outsourceBatch.dataset.orderLookupUrl || "";
+  const orderLookupTimers = new WeakMap();
   const duplicateScanTimers = new WeakMap();
-  if (ordersDataElement) {
-    try {
-      JSON.parse(ordersDataElement.textContent || "[]").forEach(order => {
-        ordersByNo.set(String(order.order_no || "").trim(), order);
-      });
-    } catch (error) {
-      console.warn("Failed to parse order autofill data", error);
-    }
-  }
 
   const numberValue = (row, name) => Number(row.querySelector(`[name="${name}"]`)?.value || 0);
   const cleanNumber = (value, digits = 6) => Number(value.toFixed(digits)).toString();
@@ -631,25 +622,42 @@ if (outsourceBatch) {
     updateProcessUI();
     rows.querySelectorAll("tr").forEach(checkExistingOutsource);
   });
-  function fillOrderRow(row) {
+  async function fillOrderRow(row) {
     const input = row.querySelector("[name=order_no]");
     showOrderNoEnd(input);
     const orderNo = input?.value.trim();
-    const order = ordersByNo.get(orderNo);
-    if (!order) return;
-    const businessQuantity = Number(order.quantity || 0);
-    const businessSpare = Number(order.spare_quantity || 0);
-    const productQuantity = row.querySelector("[name=product_quantity]");
-    const outsourceSpare = row.querySelector("[name=spare_quantity]");
-    if (productQuantity) productQuantity.value = cleanNumber(businessQuantity + businessSpare);
-    if (outsourceSpare && !outsourceSpare.value) outsourceSpare.value = "0";
-    const lengthInput = row.querySelector("[name=length_mm]");
-    const widthInput = row.querySelector("[name=width_mm]");
-    const thicknessInput = row.querySelector("[name=thickness_mm]");
-    if (lengthInput && order.width_mm) lengthInput.value = cleanNumber(Number(order.width_mm));
-    if (widthInput && order.height_mm) widthInput.value = cleanNumber(Number(order.height_mm));
-    if (thicknessInput && order.thickness_mm) thicknessInput.value = cleanNumber(Number(order.thickness_mm));
-    recalculateRow(row);
+    if (!orderLookupUrl || !orderNo) return;
+    if (row.dataset.lastOrderLookup === orderNo && row.dataset.lastOrderFound === "1") return;
+    row.dataset.lastOrderLookup = orderNo;
+    try {
+      const response = await fetch(`${orderLookupUrl}?order_no=${encodeURIComponent(orderNo)}`);
+      if (!response.ok) return;
+      const result = await response.json();
+      const order = result.order;
+      row.dataset.lastOrderFound = order ? "1" : "0";
+      if (!order) return;
+      const businessQuantity = Number(order.quantity || 0);
+      const businessSpare = Number(order.spare_quantity || 0);
+      const productQuantity = row.querySelector("[name=product_quantity]");
+      const outsourceSpare = row.querySelector("[name=spare_quantity]");
+      if (productQuantity) productQuantity.value = cleanNumber(businessQuantity + businessSpare);
+      if (outsourceSpare && !outsourceSpare.value) outsourceSpare.value = "0";
+      const lengthInput = row.querySelector("[name=length_mm]");
+      const widthInput = row.querySelector("[name=width_mm]");
+      const thicknessInput = row.querySelector("[name=thickness_mm]");
+      if (lengthInput && order.width_mm) lengthInput.value = cleanNumber(Number(order.width_mm));
+      if (widthInput && order.height_mm) widthInput.value = cleanNumber(Number(order.height_mm));
+      if (thicknessInput && order.thickness_mm) thicknessInput.value = cleanNumber(Number(order.thickness_mm));
+      recalculateRow(row);
+    } catch (error) {
+      row.dataset.lastOrderFound = "0";
+      console.warn("Failed to look up order", error);
+    }
+  }
+
+  function scheduleFillOrderRow(row) {
+    clearTimeout(orderLookupTimers.get(row));
+    orderLookupTimers.set(row, setTimeout(() => fillOrderRow(row), 180));
   }
 
 
@@ -722,7 +730,7 @@ if (outsourceBatch) {
     }
     if (event.target.matches("[name=order_no]")) {
       showOrderNoEnd(event.target);
-      fillOrderRow(row);
+      scheduleFillOrderRow(row);
       scheduleOutsourceDuplicateCheck(row);
     } else recalculateRow(row);
   });
@@ -730,8 +738,10 @@ if (outsourceBatch) {
     if (!event.target.matches("[name=order_no], [name=flag_type]")) return;
     const row = event.target.closest("tr");
     if (row) {
-      if (event.target.matches("[name=order_no]")) showOrderNoEnd(event.target);
-      fillOrderRow(row);
+      if (event.target.matches("[name=order_no]")) {
+        showOrderNoEnd(event.target);
+        fillOrderRow(row);
+      }
       checkScannedOutsource(row);
     }
   });
@@ -995,6 +1005,47 @@ document.querySelectorAll("[data-finance-stash]").forEach(stash => {
   render();
 });
 
+function submitReplenishmentRequest(dataset) {
+  if (!dataset?.replenishmentUrl) return;
+  const rawQuantity = window.prompt(`\u8bf7\u8f93\u5165${dataset.recordLabel || "\u8be5\u8ba2\u5355"}\u7684\u8865\u6570\u6570\u91cf`);
+  if (rawQuantity === null) return;
+  const quantity = rawQuantity.trim();
+  if (!/^[1-9]\d*$/.test(quantity)) {
+    window.alert("\u8865\u6570\u6570\u91cf\u5fc5\u987b\u662f\u5927\u4e8e 0 \u7684\u6574\u6570");
+    return;
+  }
+  const rawReason = window.prompt(`\u8bf7\u8f93\u5165${dataset.recordLabel || "\u8be5\u8ba2\u5355"}\u7684\u8865\u6570\u539f\u56e0`);
+  if (!rawReason || !rawReason.trim()) {
+    window.alert("\u8bf7\u586b\u5199\u8865\u6570\u539f\u56e0");
+    return;
+  }
+  const form = document.createElement("form");
+  form.method = "post";
+  form.action = dataset.replenishmentUrl;
+  const csrf = document.createElement("input");
+  csrf.type = "hidden";
+  csrf.name = "csrf";
+  csrf.value = dataset.csrf || "";
+  const quantityInput = document.createElement("input");
+  quantityInput.type = "hidden";
+  quantityInput.name = "quantity";
+  quantityInput.value = quantity;
+  const reasonInput = document.createElement("input");
+  reasonInput.type = "hidden";
+  reasonInput.name = "reason";
+  reasonInput.value = rawReason.trim();
+  form.append(csrf, quantityInput, reasonInput);
+  document.body.appendChild(form);
+  form.submit();
+}
+
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-inline-replenish]");
+  if (!button) return;
+  event.preventDefault();
+  submitReplenishmentRequest(button.dataset);
+});
+
 const contextRows = document.querySelectorAll("[data-context-row], [data-admin-context]");
 if (contextRows.length) {
   const menu = document.createElement("div");
@@ -1080,37 +1131,7 @@ if (contextRows.length) {
     closeContextMenu();
   });
   menu.querySelector("[data-context-replenish]").addEventListener("click", () => {
-    if (!activeRow?.dataset.replenishmentUrl) return;
-    const rawQuantity = window.prompt(`请输入${activeRow.dataset.recordLabel || "该订单"}的补数数量`);
-    if (rawQuantity === null) return;
-    const quantity = rawQuantity.trim();
-    if (!/^[1-9]\d*$/.test(quantity)) {
-      window.alert("补数数量必须是大于 0 的整数");
-      return;
-    }
-    const rawReason = window.prompt(`请输入${activeRow.dataset.recordLabel || "该订单"}的补数原因`);
-    if (!rawReason || !rawReason.trim()) {
-      window.alert("请填写补数原因");
-      return;
-    }
-    const form = document.createElement("form");
-    form.method = "post";
-    form.action = activeRow.dataset.replenishmentUrl;
-    const csrf = document.createElement("input");
-    csrf.type = "hidden";
-    csrf.name = "csrf";
-    csrf.value = activeRow.dataset.csrf || "";
-    const quantityInput = document.createElement("input");
-    quantityInput.type = "hidden";
-    quantityInput.name = "quantity";
-    quantityInput.value = quantity;
-    const reasonInput = document.createElement("input");
-    reasonInput.type = "hidden";
-    reasonInput.name = "reason";
-    reasonInput.value = rawReason.trim();
-    form.append(csrf, quantityInput, reasonInput);
-    document.body.appendChild(form);
-    form.submit();
+    submitReplenishmentRequest(activeRow?.dataset);
   });
   menu.querySelector("[data-context-ship]").addEventListener("click", () => {
     if (!activeRow?.dataset.shipUrl) return;

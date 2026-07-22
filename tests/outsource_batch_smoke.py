@@ -56,7 +56,13 @@ with TestClient(app) as client:
     assert page.status_code == 200
     assert "data-outsource-batch" in page.text
     assert "data-outsource-receive" in page.text
-    assert "spare_quantity" in page.text and "12.5" in page.text and "8.25" in page.text
+    assert "data-order-lookup-url" in page.text and "data-outsource-orders-json" not in page.text
+    lookup = client.get(f"/outsource/order-lookup?order_no={first_no}")
+    assert lookup.status_code == 200
+    lookup_order = lookup.json()["order"]
+    assert lookup_order["order_no"] == first_no
+    assert lookup_order["quantity"] == 100 and lookup_order["spare_quantity"] == 7
+    assert float(lookup_order["width_mm"]) == 12.5 and float(lookup_order["height_mm"]) == 8.25
     response = client.post(
         "/outsource",
         data={

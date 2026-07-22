@@ -86,6 +86,7 @@ with TestClient(app) as client:
     assert first_no in page.text and second_no in page.text
     assert "\u751f\u7ba1\u8ba2\u5355" in page.text
     assert f'data-replenishment-url="/orders/{first_id}/replenishment-request"' in page.text
+    assert 'data-inline-replenish' in page.text
     assert 'data-edit-url=' not in page.text and 'data-delete-url=' not in page.text
     searched = client.get("/production?q=PO-901")
     assert searched.status_code == 200 and first_no in searched.text and second_no not in searched.text

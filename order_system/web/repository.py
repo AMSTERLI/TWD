@@ -1565,6 +1565,21 @@ class Repository:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def lookup_order(self, order_no: str) -> dict[str, Any] | None:
+        order_no = str(order_no or "").strip()
+        if not order_no:
+            return None
+        with self.connect() as conn:
+            row = conn.execute(
+                """SELECT id, order_no, product_name, quantity, spare_quantity, quantity_unit,
+                          width_mm, diameter_mm, height_mm, thickness_mm
+                   FROM orders
+                   WHERE order_no = ?
+                   ORDER BY id DESC LIMIT 1""",
+                (order_no,),
+            ).fetchone()
+        return dict(row) if row else None
+
     def processes(self) -> list[dict[str, Any]]:
         return self.legacy.list_outsource_processes()
 
