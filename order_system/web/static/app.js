@@ -799,6 +799,80 @@ if (outsourceBatch) {
   firstOrderInput.focus();
   showOrderNoEnd(firstOrderInput);
 }
+
+document.querySelectorAll("[data-outsource-receive]").forEach(form => {
+  const rows = form.querySelector("[data-receive-rows]");
+  const template = form.querySelector("[data-receive-row-template]");
+  const addButton = form.querySelector("[data-add-receive-row]");
+
+  function showEnd(input) {
+    if (!input) return;
+    requestAnimationFrame(() => {
+      input.scrollLeft = input.scrollWidth;
+      if (document.activeElement === input && typeof input.setSelectionRange === "function") {
+        const end = input.value.length;
+        input.setSelectionRange(end, end);
+      }
+    });
+  }
+
+  function addRow(focus = true) {
+    rows.appendChild(template.content.cloneNode(true));
+    const input = rows.lastElementChild.querySelector("[data-receive-order]");
+    if (focus) input.focus();
+    showEnd(input);
+  }
+
+  addButton?.addEventListener("click", () => addRow());
+  form.addEventListener("click", event => {
+    const button = event.target.closest("[data-remove-receive-row]");
+    if (!button) return;
+    if (rows.children.length === 1) {
+      const input = rows.querySelector("[data-receive-order]");
+      input.value = "";
+      input.focus();
+      showEnd(input);
+      return;
+    }
+    button.closest("tr")?.remove();
+  });
+  form.addEventListener("keydown", event => {
+    if (event.key !== "Enter" || !event.target.matches("[data-receive-order]")) return;
+    event.preventDefault();
+    if (!event.target.value.trim()) return;
+    const row = event.target.closest("tr");
+    const next = row.nextElementSibling;
+    if (next) {
+      const input = next.querySelector("[data-receive-order]");
+      input.focus();
+      showEnd(input);
+    } else addRow(true);
+  });
+  form.addEventListener("input", event => {
+    if (event.target.matches("[data-receive-order]")) showEnd(event.target);
+  });
+  form.addEventListener("submit", event => {
+    const activeRows = [...rows.querySelectorAll("tr")].filter(row => row.querySelector("[data-receive-order]")?.value.trim());
+    if (!activeRows.length) {
+      event.preventDefault();
+      alert("请至少扫描或输入一个订单号");
+      return;
+    }
+    const seen = new Set();
+    for (const row of activeRows) {
+      const orderNo = row.querySelector("[data-receive-order]").value.trim();
+      if (seen.has(orderNo)) {
+        event.preventDefault();
+        alert(`${orderNo} 已在本次收货批量录入中出现过。`);
+        return;
+      }
+      seen.add(orderNo);
+    }
+  });
+  const first = rows.querySelector("[data-receive-order]");
+  showEnd(first);
+});
+
 document.querySelectorAll("[data-selection-form]").forEach(form => {
   const selectAll = form.querySelector("[data-select-all]");
   const items = [...form.querySelectorAll("[data-select-item]")];

@@ -1368,6 +1368,44 @@ class Repository:
             )
             return int(cursor.rowcount)
 
+    def receive_outsource_orders(self, order_nos: list[str], received_date: str) -> list[str]:
+        normalized: list[str] = []
+        for order_no in order_nos:
+            value = str(order_no or "").strip()
+            if value and value not in normalized:
+                normalized.append(value)
+        if not normalized:
+            raise ValueError("请至少扫描一个订单")
+        received_date = str(received_date or "").strip()
+        received: list[str] = []
+        with self.connect(write=True) as conn:
+            for order_no in normalized:
+                row = conn.execute(
+                    """SELECT id, order_no FROM outsource_records
+                       WHERE order_no = ? AND COALESCE(received_status, 0) = 0
+                       ORDER BY outsource_date DESC, created_at DESC, id DESC
+                       LIMIT 1""",
+                    (order_no,),
+                ).fetchone()
+                if not row:
+                    existing = conn.execute(
+                        """SELECT id FROM outsource_records
+                           WHERE order_no = ?
+                           ORDER BY outsource_date DESC, created_at DESC, id DESC LIMIT 1""",
+                        (order_no,),
+                    ).fetchone()
+                    if existing:
+                        raise ValueError(f"订单 {order_no} 已收货")
+                    raise ValueError(f"订单 {order_no} 尚无外发记录")
+                conn.execute(
+                    """UPDATE outsource_records
+                       SET received_status = 1, received_at = ?
+                       WHERE id = ?""",
+                    (received_date, int(row["id"])),
+                )
+                received.append(str(row["order_no"]))
+        return received
+
     def finance_factory_names(self) -> list[str]:
         with self.connect() as conn:
             rows = conn.execute(
@@ -1382,12 +1420,13 @@ class Repository:
             "length_mm", "width_mm", "thickness_mm", "density", "weight",
             "material_unit_price", "color_count", "plate_fee", "outsource_date",
             "remark", "amount", "remake_flag", "replenishment_flag", "paid_status",
+            "received_status", "received_at",
         ]
         with self.connect(write=True) as conn:
             cursor = conn.execute(
                 f"INSERT INTO outsource_records ({', '.join(columns)}) VALUES "
                 f"({', '.join('?' for _ in columns)})",
-                [payload.get(col, 0) for col in columns],
+                [None if col == "received_at" else payload.get(col, 0) for col in columns],
             )
             return int(cursor.lastrowid)
 
@@ -1411,6 +1450,7 @@ class Repository:
             "length_mm", "width_mm", "thickness_mm", "density", "weight",
             "material_unit_price", "color_count", "plate_fee", "outsource_date",
             "remark", "amount", "remake_flag", "replenishment_flag", "paid_status",
+            "received_status", "received_at",
         ]
         placeholders = ", ".join("?" for _ in columns)
         inserted: list[int] = []
@@ -1496,6 +1536,8 @@ class Repository:
                     "color_count": color_count,
                     "plate_fee": plate_fee,
                     "amount": amount,
+                    "received_status": int(shared.get("received_status") or 0),
+                    "received_at": shared.get("received_at"),
                 }
                 cursor = conn.execute(
                     f"INSERT INTO outsource_records ({', '.join(columns)}) VALUES ({placeholders})",

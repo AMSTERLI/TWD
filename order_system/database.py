@@ -100,6 +100,8 @@ CREATE TABLE IF NOT EXISTS outsource_records (
     remake_flag INTEGER NOT NULL DEFAULT 0,
     replenishment_flag INTEGER NOT NULL DEFAULT 0,
     paid_status INTEGER NOT NULL DEFAULT 0,
+    received_status INTEGER NOT NULL DEFAULT 0,
+    received_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (order_id) REFERENCES orders(id)
 );
@@ -184,6 +186,8 @@ class Database:
             self._ensure_column(conn, "outsource_records", "remake_flag", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "outsource_records", "replenishment_flag", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "outsource_records", "paid_status", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column(conn, "outsource_records", "received_status", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column(conn, "outsource_records", "received_at", "TEXT")
             conn.execute(
                 """
                 UPDATE outsource_records
@@ -723,9 +727,13 @@ class Database:
             "remake_flag",
             "replenishment_flag",
             "paid_status",
+            "received_status",
+            "received_at",
         ]
         values = [
-            0 if column == "paid_status" and payload.get(column) is None else payload.get(column)
+            0 if column in {"paid_status", "received_status"} and payload.get(column) is None
+            else None if column == "received_at" and payload.get(column) is None
+            else payload.get(column)
             for column in columns
         ]
         placeholders = ", ".join("?" for _ in columns)

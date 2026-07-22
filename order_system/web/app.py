@@ -1581,7 +1581,7 @@ async def finance_paid(request: Request, order_id: int):
     return RedirectResponse("/finance/receivables", status_code=303)
 
 @app.get("/outsource", response_class=HTMLResponse)
-def outsource(request: Request, q: str = "", page: int = 1, created: int = 0):
+def outsource(request: Request, q: str = "", page: int = 1, created: int = 0, received: int = 0):
     _, denied = require_page(request, {"outsource"})
     if denied:
         return denied
@@ -1597,6 +1597,7 @@ def outsource(request: Request, q: str = "", page: int = 1, created: int = 0):
             today=date.today().isoformat(),
             error="",
             created=max(0, created),
+            received=max(0, received),
         ),
     )
 
@@ -1673,6 +1674,46 @@ async def delete_outsource(request: Request, record_id: int):
         return Response(str(exc), status_code=404)
     await run_in_threadpool(repo.audit, user, "outsource.delete", order_no, client_ip(request))
     return RedirectResponse("/outsource", status_code=303)
+
+
+@app.post("/outsource/receive", response_class=HTMLResponse)
+async def receive_outsource(request: Request):
+    user, denied = require_page(request, {"outsource"})
+    if denied:
+        return denied
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    order_nos = [str(item or "").strip() for item in form.getlist("receive_order_no")]
+    received_date = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    try:
+        received_nos = await run_in_threadpool(repo.receive_outsource_orders, order_nos, received_date)
+        await run_in_threadpool(
+            repo.audit,
+            user,
+            "outsource.receive",
+            f"{received_date}:{len(received_nos)}",
+            client_ip(request),
+        )
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "outsource.html",
+            page_context(
+                request,
+                result=repo.outsource_records(),
+                q="",
+                orders=repo.lookup_orders(),
+                processes=repo.processes(),
+                factories=repo.factories(),
+                today=received_date,
+                error=str(exc),
+                created=0,
+                received=0,
+            ),
+            status_code=422,
+        )
+    return RedirectResponse(f"/outsource?received={len(received_nos)}", status_code=303)
 
 
 @app.post("/outsource")

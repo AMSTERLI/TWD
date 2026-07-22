@@ -20,11 +20,18 @@
   <td><button type="button" class="small danger-button" data-remove-outsource-row>删除</button></td>
 </tr>
 {% endmacro %}
+{% macro receive_row() %}
+<tr>
+  <td><input name="receive_order_no" list="order-number-list" autocomplete="off" data-receive-order placeholder="扫描或手动输入"></td>
+  <td><button type="button" class="small danger-button" data-remove-receive-row>删除</button></td>
+</tr>
+{% endmacro %}
 {% block title %}外发管理 · TWD 订单系统{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>外发管理</h1><p>支持扫码枪手工录入订单号，同一加工厂可一次录入多个订单</p></div></div>
+<div class="page-head"><div><h1>外发管理</h1><p>支持扫码或手工录入订单号，同一加工厂可一次录入多个订单。</p></div></div>
 {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
 {% if created %}<div class="alert success">已批量保存 {{ created }} 条外发记录。</div>{% endif %}
+{% if received %}<div class="alert success">已收货 {{ received }} 条外发记录。</div>{% endif %}
 <details class="panel create-panel" open><summary>＋ 批量新增外发记录</summary>
 <form method="post" action="/outsource" class="padded" data-outsource-batch>
   <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -44,8 +51,19 @@
   <p class="muted process-help" data-process-help>请选择工序，系统会显示对应参数并自动计算金额。</p>
   <div class="batch-actions"><button type="button" class="button" data-add-outsource-row>＋ 添加一行</button><button class="button primary">批量保存外发记录</button></div>
 </form></details>
+<details class="panel create-panel"><summary>＋ 批量收货</summary>
+<form method="post" action="/outsource/receive" class="padded" data-outsource-receive>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="scan-tip"><strong>扫码收货</strong><span>扫描外发订单号后按回车，系统会将最新一条未收货外发记录标记为已收货。</span></div>
+  <div class="table-wrap batch-table"><table>
+    <thead><tr><th>订单号</th><th></th></tr></thead>
+    <tbody data-receive-rows>{{ receive_row() }}</tbody>
+  </table></div>
+  <template data-receive-row-template>{{ receive_row() }}</template>
+  <div class="batch-actions"><button type="button" class="button" data-add-receive-row>＋ 添加一行</button><button class="button primary">批量保存收货</button></div>
+</form></details>
 <form class="searchbar"><input name="q" value="{{ q }}" placeholder="搜索订单号、工厂或工序"><button>搜索</button></form>
-<section class="panel table-wrap"><table><thead><tr><th>订单号</th><th>产品</th><th>工序</th><th>工厂</th><th>数量</th><th>加工单价</th><th>工艺参数</th><th>金额</th><th>日期</th><th>付款状态</th></tr></thead><tbody>
-{% for row in result.rows %}<tr{% if user.role == 'admin' %} data-admin-context data-edit-url="/outsource/{{ row.id }}/edit" data-delete-url="/outsource/{{ row.id }}/delete" data-csrf="{{ csrf }}" data-record-label="外发记录 {{ row.order_no }} / {{ row.process_name }}"{% elif user.role == 'outsource' %} data-admin-context data-edit-url="/outsource/{{ row.id }}/edit" data-delete-url="/outsource/{{ row.id }}/delete" data-csrf="{{ csrf }}" data-record-label="外发记录 {{ row.order_no }} / {{ row.process_name }}"{% endif %}><td><a href="/orders/{{ row.order_id }}">{{ row.order_no }}</a></td><td>{{ row.product_name or '-' }}</td><td>{{ row.process_name }}</td><td>{{ row.factory_name }}</td><td>{{ row.quantity }}</td><td>{{ row.unit_price }}</td><td>{% if row.process_name == '冲压' %}加工费 {{ row.processing_fee }}；{{ row.length_mm }}×{{ row.width_mm }}×{{ row.thickness_mm }} mm；密度 {{ row.density }}；重量 {{ row.weight }}；材料单价 {{ '%.6f'|format(row.material_unit_price or 0) }}{% elif row.process_name == '上色' %}{{ row.color_count }} 色{% elif row.process_name == '印刷/UV' %}版费 {{ row.plate_fee }}{% else %}-{% endif %}</td><td>{{ '¥ %.2f'|format(row.amount) if row.amount is not none else '-' }}</td><td>{{ row.outsource_date or '-' }}</td><td><span class="badge {{ 'ok' if row.paid_status else 'warn' }}">{{ '已付' if row.paid_status else '未付' }}</span></td></tr>{% else %}<tr><td colspan="10" class="muted">暂无记录</td></tr>{% endfor %}
+<section class="panel table-wrap"><table><thead><tr><th>订单号</th><th>产品</th><th>工序</th><th>工厂</th><th>数量</th><th>加工单价</th><th>工艺参数</th><th>金额</th><th>日期</th><th>外发状态</th><th>付款状态</th></tr></thead><tbody>
+{% for row in result.rows %}<tr{% if user.role == 'admin' %} data-admin-context data-edit-url="/outsource/{{ row.id }}/edit" data-delete-url="/outsource/{{ row.id }}/delete" data-csrf="{{ csrf }}" data-record-label="外发记录 {{ row.order_no }} / {{ row.process_name }}"{% elif user.role == 'outsource' %} data-admin-context data-edit-url="/outsource/{{ row.id }}/edit" data-delete-url="/outsource/{{ row.id }}/delete" data-csrf="{{ csrf }}" data-record-label="外发记录 {{ row.order_no }} / {{ row.process_name }}"{% endif %}><td><a href="/orders/{{ row.order_id }}">{{ row.order_no }}</a></td><td>{{ row.product_name or '-' }}</td><td>{{ row.process_name }}</td><td>{{ row.factory_name }}</td><td>{{ row.quantity }}</td><td>{{ row.unit_price }}</td><td>{% if row.process_name == '冲压' %}加工费 {{ row.processing_fee }}；{{ row.length_mm }}×{{ row.width_mm }}×{{ row.thickness_mm }} mm；密度 {{ row.density }}；重量 {{ row.weight }}；材料单价 {{ '%.6f'|format(row.material_unit_price or 0) }}{% elif row.process_name == '上色' %}{{ row.color_count }} 色{% elif row.process_name == '印刷/UV' %}版费 {{ row.plate_fee }}{% else %}-{% endif %}</td><td>{{ '¥ %.2f'|format(row.amount) if row.amount is not none else '-' }}</td><td>{{ row.outsource_date or '-' }}</td><td><span class="badge {{ 'ok' if row.received_status else 'warn' }}">{{ '已收货' if row.received_status else '已外发' }}</span>{% if row.received_at %}<div class="muted">{{ row.received_at|beijing_time }}</div>{% endif %}</td><td><span class="badge {{ 'ok' if row.paid_status else 'warn' }}">{{ '已付' if row.paid_status else '未付' }}</span></td></tr>{% else %}<tr><td colspan="11" class="muted">暂无记录</td></tr>{% endfor %}
 </tbody></table></section>{% include "_pager.html" %}
 {% endblock %}

@@ -55,6 +55,7 @@ with TestClient(app) as client:
     page = client.get("/outsource")
     assert page.status_code == 200
     assert "data-outsource-batch" in page.text
+    assert "data-outsource-receive" in page.text
     assert "spare_quantity" in page.text and "12.5" in page.text and "8.25" in page.text
     response = client.post(
         "/outsource",
@@ -73,8 +74,18 @@ with TestClient(app) as client:
     assert len(records) == 2
     assert {row["order_no"] for row in records} == {first_no, second_no}
     assert {row["factory_name"] for row in records} == {"batch-factory"}
+    assert all(row["received_status"] == 0 for row in records)
+    receive = client.post(
+        "/outsource/receive",
+        data={"csrf": token(page.text), "receive_order_no": [first_no]},
+        follow_redirects=False,
+    )
+    assert receive.status_code == 303 and "received=1" in receive.headers["location"]
+    received_record = [row for row in repo.outsource_records()["rows"] if row["order_no"] == first_no][0]
+    assert received_record["received_status"] == 1 and received_record["received_at"]
     refreshed = client.get("/outsource")
     assert "data-admin-context" in refreshed.text
+    assert "已收货" in refreshed.text and "已外发" in refreshed.text
     editable_id = records[0]["id"]
     edit_page = client.get(f"/outsource/{editable_id}/edit")
     assert edit_page.status_code == 200
