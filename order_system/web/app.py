@@ -1161,7 +1161,17 @@ async def workshop_unlock(request: Request, department_key: str):
 
 
 @app.get("/workshop/{department_key}", response_class=HTMLResponse)
-def workshop_department_page(request: Request, department_key: str, q: str = "", page: int = 1, created: int = 0, shipped: int = 0):
+def workshop_department_page(
+    request: Request,
+    department_key: str,
+    q: str = "",
+    page: int = 1,
+    created: int = 0,
+    shipped: int = 0,
+    requested: int = 0,
+    reported_from: str = "",
+    reported_to: str = "",
+):
     _, denied = require_page(request, {"workshop"})
     if denied:
         return denied
@@ -1176,10 +1186,13 @@ def workshop_department_page(request: Request, department_key: str, q: str = "",
         page_context(
             request,
             department=department,
-            result=repo.workshop_records(q, department_key, page),
+            result=repo.workshop_records(q, department_key, page, reported_from=reported_from, reported_to=reported_to),
             q=q,
+            reported_from=reported_from,
+            reported_to=reported_to,
             created=max(0, created),
             shipped=max(0, shipped),
+            requested=max(0, requested),
             error="",
         ),
     )
@@ -1257,6 +1270,82 @@ async def workshop_record_quantity_request(request: Request, department_key: str
             status_code=400,
         )
     return RedirectResponse("/messages", status_code=303)
+
+
+@app.post("/workshop/{department_key}/records/{record_id}/edit-request")
+async def workshop_record_edit_request(request: Request, department_key: str, record_id: int):
+    user, denied = require_page(request, {"workshop"})
+    if denied:
+        return denied
+    department = workshop_department(department_key)
+    if not department:
+        return Response(status_code=404)
+    if not workshop_unlocked(request, department_key):
+        return RedirectResponse("/workshop", status_code=303)
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    try:
+        request_id = await run_in_threadpool(
+            repo.create_workshop_order_edit_request,
+            record_id,
+            department_key,
+            user,
+            str(form.get("reason") or "").strip(),
+        )
+        await run_in_threadpool(
+            repo.audit,
+            user,
+            "workshop.edit_request",
+            f"{department_key}:{record_id}:{request_id}",
+            client_ip(request),
+        )
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "error.html",
+            page_context(request, status=400, message=str(exc)),
+            status_code=400,
+        )
+    return RedirectResponse(f"/workshop/{department_key}?requested=1", status_code=303)
+
+
+@app.post("/workshop/{department_key}/export")
+async def workshop_department_export(request: Request, department_key: str):
+    user, denied = require_page(request, {"workshop"})
+    if denied:
+        return denied
+    department = workshop_department(department_key)
+    if not department:
+        return Response(status_code=404)
+    if not workshop_unlocked(request, department_key):
+        return RedirectResponse("/workshop", status_code=303)
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    rows = await run_in_threadpool(repo.workshop_record_rows, selected_ids(form, "selected_ids"), department_key)
+    if not rows:
+        return Response("请至少选择一条车间记录", status_code=400)
+    data = [[
+        row.get("order_no") or "",
+        row.get("product_name") or "",
+        row.get("customer_name") or "",
+        row.get("department_name") or "",
+        row.get("quantity") or 1,
+        row.get("unit_price") or 0,
+        "已出货" if row.get("shipped_status") else "待出货",
+        beijing_time(row.get("reported_at") or ""),
+    ] for row in rows]
+    await run_in_threadpool(
+        repo.audit, user, "workshop.export", f"{department_key}:{len(rows)}", client_ip(request)
+    )
+    return await run_in_threadpool(
+        excel_response,
+        department["name"],
+        ["订单号", "产品", "客户", "部门", "数量", "单价", "出货状态", "报到时间"],
+        data,
+        f"workshop_{department_key}",
+    )
 
 
 @app.post("/workshop/{department_key}/ship", response_class=HTMLResponse)

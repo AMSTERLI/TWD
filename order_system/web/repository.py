@@ -536,6 +536,46 @@ class Repository:
             )
             return int(cursor.lastrowid)
 
+    def create_workshop_order_edit_request(
+        self,
+        record_id: int,
+        department_key: str,
+        user: dict[str, Any],
+        reason: str,
+    ) -> int:
+        reason = str(reason or "").strip()
+        department_key = str(department_key or "").strip()
+        if not reason:
+            raise ValueError("请填写修改原因")
+        if len(reason) > 1000:
+            raise ValueError("修改原因不能超过 1000 个字")
+        with self.connect(write=True) as conn:
+            record = conn.execute(
+                """SELECT w.id, w.order_id, w.order_no, w.department_key, w.department_name
+                   FROM workshop_records w
+                   WHERE w.id = ? AND (? = '' OR w.department_key = ?)""",
+                (int(record_id), department_key, department_key),
+            ).fetchone()
+            if not record:
+                raise ValueError("车间报到记录不存在")
+            if self._pending_edit_request_exists(conn, int(record["order_id"]), int(user.get("id") or 0)):
+                raise ValueError("这张订单已有待审批的修改申请")
+            summary = f"{record['department_name']}申请修改订单：{reason}"
+            cursor = conn.execute(
+                """INSERT INTO order_edit_requests
+                   (order_id, order_no, requester_id, requester_name, reason, request_type, workshop_record_id)
+                   VALUES (?, ?, ?, ?, ?, 'edit', ?)""",
+                (
+                    int(record["order_id"]),
+                    str(record["order_no"]),
+                    int(user.get("id") or 0),
+                    str(user.get("display_name") or user.get("username") or ""),
+                    summary[:1000],
+                    int(record_id),
+                ),
+            )
+            return int(cursor.lastrowid)
+
     def _create_replenishment_order(self, conn: sqlite3.Connection, request_row: sqlite3.Row) -> tuple[int, str]:
         source = conn.execute("SELECT * FROM orders WHERE id = ?", (int(request_row["order_id"]),)).fetchone()
         if not source:
@@ -1188,14 +1228,34 @@ class Repository:
                 created_ids.append(int(cursor.lastrowid))
         return created_ids
 
-    def workshop_records(self, keyword: str = "", department_key: str = "", page: int = 1, page_size: int = 40) -> dict[str, Any]:
+    def workshop_records(
+        self,
+        keyword: str = "",
+        department_key: str = "",
+        page: int = 1,
+        page_size: int = 40,
+        reported_from: str = "",
+        reported_to: str = "",
+    ) -> dict[str, Any]:
         keyword = keyword.strip()
         department_key = department_key.strip()
+        reported_from = str(reported_from or "").strip()
+        reported_to = str(reported_to or "").strip()
         page = max(page, 1)
         offset = (page - 1) * page_size
-        where = "WHERE (? = '' OR w.order_no LIKE ? OR o.product_name LIKE ? OR w.operator_name LIKE ?) AND (? = '' OR w.department_key = ?)"
+        where = (
+            "WHERE (? = '' OR w.order_no LIKE ? OR o.product_name LIKE ? OR w.operator_name LIKE ?) "
+            "AND (? = '' OR w.department_key = ?) "
+            "AND (? = '' OR date(w.reported_at, '+8 hours') >= ?) "
+            "AND (? = '' OR date(w.reported_at, '+8 hours') <= ?)"
+        )
         like = f"%{keyword}%"
-        args = (keyword, like, like, like, department_key, department_key)
+        args = (
+            keyword, like, like, like,
+            department_key, department_key,
+            reported_from, reported_from,
+            reported_to, reported_to,
+        )
         with self.connect() as conn:
             total = int(conn.execute(f"SELECT COUNT(*) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0])
             rows = conn.execute(
@@ -1208,6 +1268,23 @@ class Repository:
             ).fetchall()
         return {"rows": [dict(row) for row in rows], "total": total, "page": page,
                 "pages": max(1, (total + page_size - 1) // page_size)}
+
+    def workshop_record_rows(self, record_ids: list[int], department_key: str = "") -> list[dict[str, Any]]:
+        ids = self._normalized_ids(record_ids)
+        department_key = str(department_key or "").strip()
+        if not ids:
+            return []
+        placeholders = ", ".join("?" for _ in ids)
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""SELECT w.*, o.product_name, o.customer_name
+                    FROM workshop_records w
+                    LEFT JOIN orders o ON o.id = w.order_id
+                    WHERE w.id IN ({placeholders}) AND (? = '' OR w.department_key = ?)
+                    ORDER BY w.reported_at DESC, w.id DESC""",
+                (*ids, department_key, department_key),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def order_workshop_records(self, order_id: int) -> list[dict[str, Any]]:
         with self.connect() as conn:

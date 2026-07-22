@@ -5,6 +5,7 @@
 {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
 {% if created %}<div class="alert success">&#24050;&#25253;&#21040; {{ created }} &#26465;&#35746;&#21333;&#12290;</div>{% endif %}
 {% if shipped %}<div class="alert success">&#24050;&#20986;&#36135; {{ shipped }} &#26465;&#35746;&#21333;&#12290;</div>{% endif %}
+{% if requested %}<div class="alert success">修改申请已提交，请到消息页查看审批结果。</div>{% endif %}
 <section class="panel create-panel" data-workshop-scan data-workshop-history-url="/workshop/{{ department.key }}/history"><div class="padded">
 <form method="post" class="workshop-scan-form">
 <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -12,8 +13,19 @@
 <template data-workshop-row-template><tr><td><input name="order_no" autocomplete="off" data-workshop-order placeholder="&#25195;&#25551;&#25110;&#25163;&#21160;&#36755;&#20837;"></td><td><input type="number" name="quantity" step="1" min="1" value="1" required></td><td><input type="number" name="unit_price" step="0.0001" min="0" value="0"></td><td><button type="button" class="small danger-button" data-remove-workshop-row>&#21024;&#38500;</button></td></tr></template>
 <div class="batch-actions"><button type="button" class="button" data-add-workshop-row>&#65291; &#28155;&#21152;&#19968;&#34892;</button><button class="button primary">&#20445;&#23384;&#25253;&#21040;</button><button class="button" formaction="/workshop/{{ department.key }}/ship">&#25209;&#37327;&#20986;&#36135;</button></div>
 </form></div></section>
-<form class="searchbar"><input name="q" value="{{ q }}" placeholder="&#25628;&#32034;&#35746;&#21333;&#21495;&#25110;&#20135;&#21697;"><button>&#25628;&#32034;</button></form>
-<section class="panel table-wrap"><table><thead><tr><th>&#35746;&#21333;&#21495;</th><th>&#20135;&#21697;</th><th>&#23458;&#25143;</th><th>&#37096;&#38376;</th><th>&#25968;&#37327;</th><th>&#21333;&#20215;</th><th>&#20986;&#36135;&#29366;&#24577;</th><th>&#25253;&#21040;&#26102;&#38388;</th></tr></thead><tbody>
-{% for row in result.rows %}<tr data-admin-context data-delete-url="/workshop/{{ department.key }}/records/{{ row.id }}/delete" data-workshop-quantity-url="/workshop/{{ department.key }}/records/{{ row.id }}/quantity-request" data-workshop-quantity="{{ row.quantity or 1 }}" data-csrf="{{ csrf }}" data-record-label="车间记录 {{ row.order_no }}"><td><a href="/orders/{{ row.order_id }}">{{ row.order_no }}</a></td><td>{{ row.product_name or '-' }}</td><td>{{ row.customer_name or '-' }}</td><td>{{ row.department_name }}</td><td>{{ row.quantity or 1 }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td><td><span class="badge {{ 'ok' if row.shipped_status else 'warn' }}">{% if row.shipped_status %}&#24050;&#20986;&#36135;{% else %}&#24453;&#20986;&#36135;{% endif %}</span></td><td>{{ row.reported_at|beijing_time }}</td></tr>{% else %}<tr><td colspan="8" class="muted">&#26242;&#26080;&#35760;&#24405;</td></tr>{% endfor %}
-</tbody></table></section>{% include "_pager.html" %}
+<form class="searchbar">
+  <input name="q" value="{{ q }}" placeholder="&#25628;&#32034;&#35746;&#21333;&#21495;&#25110;&#20135;&#21697;">
+  <label>报到开始<input type="date" name="reported_from" value="{{ reported_from }}"></label>
+  <label>报到结束<input type="date" name="reported_to" value="{{ reported_to }}"></label>
+  <button>&#25628;&#32034;</button>
+</form>
+<form method="post" action="/workshop/{{ department.key }}/export" data-selection-form>
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<section class="panel">
+  <div class="batch-actions padded"><span class="muted">已选择 <span data-selected-count>0</span> 条</span><button class="button primary" data-requires-selection disabled>导出选中表格</button></div>
+  <div class="table-wrap"><table><thead><tr><th><input type="checkbox" data-select-all aria-label="全选当前页"></th><th>&#35746;&#21333;&#21495;</th><th>&#20135;&#21697;</th><th>&#23458;&#25143;</th><th>&#37096;&#38376;</th><th>&#25968;&#37327;</th><th>&#21333;&#20215;</th><th>&#20986;&#36135;&#29366;&#24577;</th><th>&#25253;&#21040;&#26102;&#38388;</th></tr></thead><tbody>
+{% for row in result.rows %}<tr data-admin-context data-request-edit-url="/workshop/{{ department.key }}/records/{{ row.id }}/edit-request" data-request-edit-mode="prompt" data-delete-url="/workshop/{{ department.key }}/records/{{ row.id }}/delete" data-workshop-quantity-url="/workshop/{{ department.key }}/records/{{ row.id }}/quantity-request" data-workshop-quantity="{{ row.quantity or 1 }}" data-csrf="{{ csrf }}" data-record-label="车间记录 {{ row.order_no }}"><td><input type="checkbox" name="selected_ids" value="{{ row.id }}" data-select-item aria-label="选择车间记录 {{ row.order_no }}"></td><td><a href="/orders/{{ row.order_id }}">{{ row.order_no }}</a></td><td>{{ row.product_name or '-' }}</td><td>{{ row.customer_name or '-' }}</td><td>{{ row.department_name }}</td><td>{{ row.quantity or 1 }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td><td><span class="badge {{ 'ok' if row.shipped_status else 'warn' }}">{% if row.shipped_status %}&#24050;&#20986;&#36135;{% else %}&#24453;&#20986;&#36135;{% endif %}</span></td><td>{{ row.reported_at|beijing_time }}</td></tr>{% else %}<tr><td colspan="9" class="muted">&#26242;&#26080;&#35760;&#24405;</td></tr>{% endfor %}
+</tbody></table></div>
+</section>
+</form>{% include "_pager.html" %}
 {% endblock %}
