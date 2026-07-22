@@ -246,6 +246,8 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   const addButton = section.querySelector("[data-add-workshop-row]");
   const historyUrl = section.dataset.workshopHistoryUrl || "";
   const historyChecks = new WeakMap();
+  const scanAdvanceTimers = new WeakMap();
+  const scanStartTimes = new WeakMap();
   const cleanNumber = value => Number(Number(value || 0).toFixed(4)).toString();
 
   function focusEnd(input) {
@@ -307,6 +309,37 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     focusEnd(input);
   }
 
+  function focusNextWorkshopRow(row) {
+    if (!row) return;
+    const next = row.nextElementSibling;
+    if (next) {
+      const input = next.querySelector("[data-workshop-order]");
+      input.focus();
+      focusEnd(input);
+    } else addRow(true);
+  }
+
+  function scheduleScanAdvance(input) {
+    const row = input.closest("tr");
+    if (!row) return;
+    const orderNo = input.value.trim();
+    if (!orderNo) {
+      scanStartTimes.delete(input);
+      row.dataset.autoAdvancedFor = "";
+      return;
+    }
+    if (!scanStartTimes.has(input) || orderNo.length <= 1) scanStartTimes.set(input, Date.now());
+    clearTimeout(scanAdvanceTimers.get(input));
+    scanAdvanceTimers.set(input, setTimeout(() => {
+      const current = input.value.trim();
+      const elapsed = Date.now() - (scanStartTimes.get(input) || Date.now());
+      if (current.length < 8 || row.dataset.autoAdvancedFor === current || elapsed > 1200) return;
+      row.dataset.autoAdvancedFor = current;
+      loadWorkshopHistory(row);
+      focusNextWorkshopRow(row);
+    }, 260));
+  }
+
   addButton?.addEventListener("click", () => addRow());
   section.addEventListener("click", event => {
     const button = event.target.closest("[data-remove-workshop-row]");
@@ -317,6 +350,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       row.dataset.existingWorkshopRecord = "0";
       row.dataset.existingWorkshopOrderNo = "";
       row.dataset.historyKey = "";
+      row.dataset.autoAdvancedFor = "";
       row.querySelector("[data-workshop-order]")?.focus();
     } else row.remove();
   });
@@ -326,8 +360,10 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     if (row) {
       row.dataset.historyKey = "";
       row.dataset.existingWorkshopRecord = "0";
+      if (row.dataset.autoAdvancedFor && row.dataset.autoAdvancedFor !== event.target.value.trim()) row.dataset.autoAdvancedFor = "";
       focusEnd(event.target);
       scheduleWorkshopHistory(row);
+      scheduleScanAdvance(event.target);
     }
   });
   section.addEventListener("change", event => {
@@ -340,13 +376,9 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     event.preventDefault();
     if (!event.target.value.trim()) return;
     const row = event.target.closest("tr");
+    row.dataset.autoAdvancedFor = event.target.value.trim();
     loadWorkshopHistory(row);
-    const next = row.nextElementSibling;
-    if (next) {
-      const input = next.querySelector("[data-workshop-order]");
-      input.focus();
-      focusEnd(input);
-    } else addRow(true);
+    focusNextWorkshopRow(row);
   });
   section.querySelector("form")?.addEventListener("submit", async event => {
     const submitter = event.submitter || document.activeElement;

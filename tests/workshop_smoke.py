@@ -154,10 +154,26 @@ with TestClient(app) as client:
 
     detail = client.get(f"/orders/{order_id}")
     assert detail.status_code == 200
-    assert "workflow-line" in detail.text
-    assert "current" in detail.text
-    assert "\u523b\u6a21" in detail.text
-    assert "\u51b2\u538b" not in detail.text
-    assert "10.5000" in detail.text
+    assert "pdf-preview" in detail.text and f"/orders/{order_id}/pdf" in detail.text
+    assert "workflow-line" not in detail.text
+    assert "10.5000" not in detail.text
+    assert "&#36710;&#38388;&#25253;&#21040;&#35760;&#24405;" not in detail.text
+
+    page = client.get("/")
+    client.post("/logout", data={"csrf": csrf(page.text)})
+    login_page = client.get("/login")
+    login = client.post(
+        "/login",
+        data={"csrf": csrf(login_page.text), "username": "admin", "password": "admin-pass-123"},
+        follow_redirects=False,
+    )
+    assert login.status_code == 303
+    admin_detail = client.get(f"/orders/{order_id}")
+    assert admin_detail.status_code == 200
+    assert "workflow-line" in admin_detail.text
+    assert "current" in admin_detail.text
+    assert "刻模" in admin_detail.text
+    assert "冲压" not in admin_detail.text
+    assert "10.5000" in admin_detail.text
 
 print(f"workshop smoke ok: {root}")
