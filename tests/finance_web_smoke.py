@@ -89,7 +89,10 @@ with TestClient(app) as client:
     assert "产品" not in finance_page.text and "旧产品" not in finance_page.text and "新产品" not in finance_page.text
     assert "是否开票" in finance_page.text and "未开票" in finance_page.text
     assert "是否收款" in finance_page.text and "已选未收款合计 ¥" in finance_page.text
+    assert "订单暂存区" in finance_page.text and "data-finance-stash" in finance_page.text
+    assert "data-context-stash" in Path("order_system/web/static/app.js").read_text(encoding="utf-8")
     assert f'data-request-edit-url="/orders/1/edit"' in finance_page.text
+    assert f'data-stash-no="{old_order}"' in finance_page.text and 'data-stash-id="1"' in finance_page.text
     assert "/finance/receivables/pdf" in finance_page.text
     payables_page = client.get("/finance/payables")
     assert payables_page.status_code == 200

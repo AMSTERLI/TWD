@@ -767,12 +767,102 @@ document.querySelectorAll("[data-selection-form]").forEach(form => {
   refreshSelection();
 });
 
+
+document.querySelectorAll("[data-finance-stash]").forEach(stash => {
+  const key = stash.dataset.storageKey || "twd-finance-stash";
+  const list = stash.querySelector("[data-stash-list]");
+  const empty = stash.querySelector("[data-stash-empty]");
+  const clearButton = stash.querySelector("[data-clear-stash]");
+  const pdfButton = stash.querySelector("[data-stash-pdf]");
+  const hiddenInputs = stash.querySelector("[data-stash-hidden-inputs]");
+  const pdfForm = stash.querySelector("[data-stash-pdf-form]");
+  let items = [];
+
+  function load() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) || "[]");
+      items = Array.isArray(parsed)
+        ? parsed.filter(item => item && String(item.id || "").trim() && String(item.no || "").trim())
+        : [];
+    } catch (error) {
+      items = [];
+    }
+  }
+
+  function save() {
+    localStorage.setItem(key, JSON.stringify(items));
+  }
+
+  function render() {
+    list.innerHTML = "";
+    hiddenInputs.innerHTML = "";
+    items.forEach(item => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "finance-stash-chip";
+      chip.dataset.removeStashId = item.id;
+      chip.title = "移出暂存区";
+      chip.textContent = item.no;
+      const remove = document.createElement("span");
+      remove.textContent = "×";
+      chip.appendChild(remove);
+      list.appendChild(chip);
+
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "selected_ids";
+      input.value = item.id;
+      hiddenInputs.appendChild(input);
+    });
+    const hasItems = items.length > 0;
+    empty.hidden = hasItems;
+    pdfButton.disabled = !hasItems;
+    clearButton.disabled = !hasItems;
+  }
+
+  function addItem(id, no) {
+    id = String(id || "").trim();
+    no = String(no || "").trim();
+    if (!id || !no) return;
+    if (!items.some(item => item.id === id)) {
+      items.push({id, no});
+      save();
+      render();
+    }
+  }
+
+  stash.addEventListener("click", event => {
+    const button = event.target.closest("[data-remove-stash-id]");
+    if (!button) return;
+    items = items.filter(item => item.id !== button.dataset.removeStashId);
+    save();
+    render();
+  });
+  clearButton?.addEventListener("click", () => {
+    items = [];
+    save();
+    render();
+  });
+  pdfForm?.addEventListener("submit", event => {
+    if (!items.length) {
+      event.preventDefault();
+      alert("请先暂存至少一张订单");
+    }
+  });
+  document.addEventListener("finance-stash-add", event => {
+    addItem(event.detail?.id, event.detail?.no);
+  });
+
+  load();
+  render();
+});
+
 const contextRows = document.querySelectorAll("[data-context-row], [data-admin-context]");
 if (contextRows.length) {
   const menu = document.createElement("div");
   menu.className = "admin-context-menu";
   menu.hidden = true;
-  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-replenish>申请补数</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-delete>删除</button>';
+  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-stash>暂存</button><button type="button" data-context-replenish>申请补数</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-delete>删除</button>';
   document.body.appendChild(menu);
   let activeRow = null;
 
@@ -784,6 +874,7 @@ if (contextRows.length) {
   function refreshContextButtons() {
     menu.querySelector("[data-context-edit]").hidden = !activeRow?.dataset.editUrl;
     menu.querySelector("[data-context-request]").hidden = !activeRow?.dataset.requestEditUrl;
+    menu.querySelector("[data-context-stash]").hidden = !activeRow?.dataset.stashId;
     menu.querySelector("[data-context-replenish]").hidden = !activeRow?.dataset.replenishmentUrl;
     const shipButton = menu.querySelector("[data-context-ship]");
     shipButton.hidden = !activeRow?.dataset.shipUrl;
@@ -807,6 +898,13 @@ if (contextRows.length) {
   });
   menu.querySelector("[data-context-request]").addEventListener("click", () => {
     if (activeRow?.dataset.requestEditUrl) window.location.href = activeRow.dataset.requestEditUrl;
+  });
+  menu.querySelector("[data-context-stash]").addEventListener("click", () => {
+    if (!activeRow?.dataset.stashId) return;
+    document.dispatchEvent(new CustomEvent("finance-stash-add", {
+      detail: {id: activeRow.dataset.stashId, no: activeRow.dataset.stashNo || activeRow.dataset.recordLabel || ""}
+    }));
+    closeContextMenu();
   });
   menu.querySelector("[data-context-replenish]").addEventListener("click", () => {
     if (!activeRow?.dataset.replenishmentUrl) return;
