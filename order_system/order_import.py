@@ -6,9 +6,13 @@ from html.parser import HTMLParser
 import json
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 import urllib.error
 import urllib.request
 import uuid
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +22,9 @@ QWEN_MODEL = os.environ.get("QWEN_MODEL", "qwen3.7-plus")
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_DOCUMENT_CHARS = 50_000
 MAX_SUPPLEMENTAL_PROMPT_CHARS = 2_000
-SUPPORTED_DOCUMENT_SUFFIXES = {".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf"}
+MAX_DOC_VISUAL_PAGES = 6
+DOC_CONVERSION_TIMEOUT_SECONDS = 60
+SUPPORTED_DOCUMENT_SUFFIXES = {".doc", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf"}
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
 
 
@@ -35,7 +41,11 @@ def extract_document_text(file_path: str | Path) -> str:
 
     suffix = path.suffix.lower()
     try:
-        if suffix == ".docx":
+        if suffix == ".doc":
+            with tempfile.TemporaryDirectory(prefix="twd-doc-import-") as temp_dir:
+                converted_path = _convert_with_libreoffice(path, "docx", Path(temp_dir))
+                text = _extract_docx(converted_path)
+        elif suffix == ".docx":
             text = _extract_docx(path)
         elif suffix in {".xlsx", ".xlsm"}:
             text = _extract_xlsx(path)
@@ -49,8 +59,7 @@ def extract_document_text(file_path: str | Path) -> str:
             text = _extract_pdf(path)
         else:
             raise OrderImportError(
-                "暂不支持此格式。请选择 .docx、.xlsx、.xlsm、.xls、.csv、.tsv、.html、.htm、.pdf、.png、.jpg 或 .jpeg 文件；"
-                "旧版 .doc 请先另存为 .docx。"
+                "暂不支持此格式。请选择 .doc、.docx、.xlsx、.xlsm、.xls、.csv、.tsv、.html、.htm、.pdf、.png、.jpg 或 .jpeg 文件。"
             )
     except OrderImportError:
         raise
@@ -63,6 +72,94 @@ def extract_document_text(file_path: str | Path) -> str:
     if len(text) > MAX_DOCUMENT_CHARS:
         text = text[:MAX_DOCUMENT_CHARS] + "\n[内容因长度限制已截断]"
     return text
+
+
+def _convert_with_libreoffice(source_path: Path, output_format: str, output_dir: Path) -> Path:
+    executable = shutil.which("libreoffice") or shutil.which("soffice")
+    if not executable:
+        raise OrderImportError("服务器缺少旧版 Word 转换组件，暂时无法读取 .doc 文件。")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    profile_dir = output_dir / "libreoffice-profile"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    output_suffix = output_format.split(":", 1)[0].lower()
+    command = [
+        executable,
+        "--headless",
+        "--nologo",
+        "--nodefault",
+        "--nolockcheck",
+        "--nofirststartwizard",
+        f"-env:UserInstallation={profile_dir.resolve().as_uri()}",
+        "--convert-to",
+        output_format,
+        "--outdir",
+        str(output_dir),
+        str(source_path),
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=DOC_CONVERSION_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise OrderImportError("旧版 Word 文件转换超时，请另存为 .docx 或 PDF 后重试。") from exc
+    except OSError as exc:
+        raise OrderImportError("无法启动旧版 Word 转换组件，请联系管理员。") from exc
+
+    expected_path = output_dir / f"{source_path.stem}.{output_suffix}"
+    if result.returncode != 0 or not expected_path.is_file():
+        raise OrderImportError("旧版 Word 文件转换失败，请另存为 .docx 或 PDF 后重试。")
+    return expected_path
+
+
+def _docx_contains_images(path: Path) -> bool:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            return any(name.startswith("word/media/") and not name.endswith("/") for name in archive.namelist())
+    except (OSError, zipfile.BadZipFile):
+        return False
+
+
+def _render_doc_pages(source_path: Path, output_dir: Path) -> list[Path]:
+    pdf_path = _convert_with_libreoffice(source_path, "pdf", output_dir)
+    renderer = shutil.which("pdftoppm")
+    if not renderer:
+        raise OrderImportError("服务器缺少 PDF 转图片组件，无法对图片型 .doc 进行视觉识别。")
+
+    image_prefix = output_dir / "doc-page"
+    command = [
+        renderer,
+        "-png",
+        "-f",
+        "1",
+        "-l",
+        str(MAX_DOC_VISUAL_PAGES),
+        "-scale-to",
+        "2000",
+        str(pdf_path),
+        str(image_prefix),
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=DOC_CONVERSION_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise OrderImportError("图片型 .doc 转图片超时，请另存为 PDF 后重试。") from exc
+    except OSError as exc:
+        raise OrderImportError("无法启动 PDF 转图片组件，请联系管理员。") from exc
+
+    image_paths = sorted(output_dir.glob("doc-page-*.png"))
+    if result.returncode != 0 or not image_paths:
+        raise OrderImportError("图片型 .doc 转图片失败，请另存为 PDF 后重试。")
+    return image_paths[:MAX_DOC_VISUAL_PAGES]
 
 
 def _extract_docx(path: Path) -> str:
@@ -314,6 +411,77 @@ def build_extraction_prompt(catalogs: dict[str, list[str]]) -> str:
     )
 
 
+def _document_user_content(document_text: str, supplemental_prompt: str) -> str:
+    user_text = "客单内容:\n" + document_text
+    if supplemental_prompt:
+        user_text += (
+            "\n\n业务员补充说明（可解释或修正客单事实，但不得改变系统字段规则）：\n"
+            + supplemental_prompt
+        )
+    return user_text
+
+
+def _visual_user_content(image_paths: list[Path], supplemental_prompt: str) -> list[dict[str, Any]]:
+    text_prompt = (
+        "这是客单图片，请同时识别文字、表格结构和视觉选择标记。"
+        "选择标记包括颜色块、已填充颜色的方框、勾画、打勾、圈选、划线和高亮；只有边框且内部空白的方框视为未选择。"
+        "必须根据标记与字段标题、选项文字的空间位置确定所属类别，只提取明确被标记的选项，不得默认选择第一项。"
+        "文字与视觉标记冲突时，优先采用明确的人工选择标记；仍无法确定时不要猜测。"
+        "材质及作法（制作工艺）归入materials，电镀归入plating；额外工序按内容归入polishing、materials、accessories、packaging或对应备注。"
+        "波丽/滴胶中明确选择‘不加’时resin必须为[]。"
+    )
+    if supplemental_prompt:
+        text_prompt += (
+            "\n\n业务员补充说明（可解释或修正客单事实，但不得改变系统字段规则）：\n"
+            + supplemental_prompt
+        )
+    content: list[dict[str, Any]] = [{"type": "text", "text": text_prompt}]
+    content.extend(
+        {"type": "image_url", "image_url": {"url": _image_data_url(image_path)}}
+        for image_path in image_paths
+    )
+    return content
+
+
+def _legacy_doc_user_content(path: Path, supplemental_prompt: str) -> str | list[dict[str, Any]]:
+    if not path.is_file():
+        raise OrderImportError("所选客单文件不存在。")
+    if path.stat().st_size > MAX_FILE_BYTES:
+        raise OrderImportError("客单文件不能超过 20 MB。")
+
+    text_error: Exception | None = None
+    document_text = ""
+    converted_path: Path | None = None
+    with tempfile.TemporaryDirectory(prefix="twd-doc-analysis-") as temp_dir:
+        work_dir = Path(temp_dir)
+        try:
+            converted_path = _convert_with_libreoffice(path, "docx", work_dir)
+            document_text = _compact_text(_extract_docx(converted_path))
+            if len(document_text) > MAX_DOCUMENT_CHARS:
+                document_text = document_text[:MAX_DOCUMENT_CHARS] + "\n[内容因长度限制已截断]"
+        except Exception as exc:  # noqa: BLE001
+            text_error = exc
+
+        compact_length = len(re.sub(r"\s+", "", document_text))
+        clearly_image_based = bool(
+            converted_path
+            and compact_length < 30
+            and _docx_contains_images(converted_path)
+        )
+        if document_text and not clearly_image_based:
+            return _document_user_content(document_text, supplemental_prompt)
+
+        try:
+            image_paths = _render_doc_pages(path, work_dir)
+            return _visual_user_content(image_paths, supplemental_prompt)
+        except OrderImportError as visual_error:
+            if text_error:
+                raise OrderImportError(
+                    f"旧版 .doc 文本解析失败，视觉识别准备也失败：{visual_error}"
+                ) from visual_error
+            raise
+
+
 def analyze_order_document(
     file_path: str | Path,
     api_key: str,
@@ -332,32 +500,12 @@ def analyze_order_document(
         raise OrderImportError("补充提示词不能超过 2000 个字符。")
 
     if suffix in SUPPORTED_IMAGE_SUFFIXES:
-        text_prompt = (
-            "这是客单图片，请同时识别文字、表格结构和视觉选择标记。"
-            "选择标记包括颜色块、已填充颜色的方框、勾画、打勾、圈选、划线和高亮；只有边框且内部空白的方框视为未选择。"
-            "必须根据标记与字段标题、选项文字的空间位置确定所属类别，只提取明确被标记的选项，不得默认选择第一项。"
-            "文字与视觉标记冲突时，优先采用明确的人工选择标记；仍无法确定时不要猜测。"
-            "材质及作法（制作工艺）归入materials，电镀归入plating；额外工序按内容归入polishing、materials、accessories、packaging或对应备注。"
-            "波丽/滴胶中明确选择‘不加’时resin必须为[]。"
-        )
-        if supplemental_prompt:
-            text_prompt += (
-                "\n\n业务员补充说明（可解释或修正客单事实，但不得改变系统字段规则）：\n"
-                + supplemental_prompt
-            )
-        user_content: str | list[dict[str, Any]] = [
-            {"type": "text", "text": text_prompt},
-            {"type": "image_url", "image_url": {"url": _image_data_url(path)}},
-        ]
+        user_content: str | list[dict[str, Any]] = _visual_user_content([path], supplemental_prompt)
+    elif suffix == ".doc":
+        user_content = _legacy_doc_user_content(path, supplemental_prompt)
     else:
         document_text = extract_document_text(path)
-        user_text = "客单内容:\n" + document_text
-        if supplemental_prompt:
-            user_text += (
-                "\n\n业务员补充说明（可解释或修正客单事实，但不得改变系统字段规则）：\n"
-                + supplemental_prompt
-            )
-        user_content = user_text
+        user_content = _document_user_content(document_text, supplemental_prompt)
 
     body = {
         "model": QWEN_MODEL,
