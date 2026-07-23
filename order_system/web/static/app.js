@@ -16,12 +16,19 @@ if (importBox) {
     ".doc", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf", ".png", ".jpg", ".jpeg", ".webp"
   ]);
   const suffixByClipboardType = {
+    "application/msword": "doc",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.ms-excel.sheet.macroenabled.12": "xlsm",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
     "application/pdf": "pdf",
     "image/jpeg": "jpg",
     "image/png": "png",
     "image/webp": "webp",
+    "text/comma-separated-values": "csv",
     "text/csv": "csv",
     "text/html": "html",
+    "text/plain": "txt",
     "text/tab-separated-values": "tsv",
   };
 
@@ -75,7 +82,9 @@ if (importBox) {
       if (allowedOrderImportSuffixes.has(suffix)) return suffix;
     }
     const typeSuffix = suffixByClipboardType[file.type];
-    return typeSuffix ? `.${typeSuffix}` : "";
+    if (typeSuffix && allowedOrderImportSuffixes.has(`.${typeSuffix}`)) return `.${typeSuffix}`;
+    if (file.type === "text/plain" && name.toLowerCase().endsWith(".tsv")) return ".tsv";
+    return "";
   }
 
   function normalizedPastedOrderFile(file) {
@@ -291,7 +300,9 @@ if (pastedImageInputs.length) {
     const fileInput = document.querySelector(target.dataset.pasteImageTarget);
     if (!fileInput) return;
     target.addEventListener("paste", event => {
-      const files = [...(event.clipboardData?.files || [])].filter(file => file.type.startsWith("image/"));
+      const pastedFiles = [...(event.clipboardData?.files || [])];
+      if (pastedFiles.some(file => !file.type.startsWith("image/"))) return;
+      const files = pastedFiles.filter(file => file.type.startsWith("image/"));
       if (!files.length) return;
       event.preventDefault();
       const accepted = [];
