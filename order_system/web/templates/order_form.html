@@ -9,10 +9,12 @@
     <div class="upload-row">
       <input type="file" id="customer-file" accept=".doc,.docx,.xlsx,.xlsm,.xls,.csv,.tsv,.html,.htm,.pdf,.png,.jpg,.jpeg,.webp" data-ai-file hidden>
       <button type="button" class="button" data-ai-file-button>选择文件</button>
+      <span class="file-name-display" data-ai-file-name>未选择文件</span>
+    </div>
+    <label class="ai-supplemental">补充描述<textarea id="ai-supplemental-prompt" rows="2" maxlength="2000" placeholder="选择性对客单进行解释、补充和修正。"></textarea></label>
+    <div class="ai-action-row">
       <button type="button" class="button" data-ai-button>识别并填入</button>
     </div>
-    <span class="file-name-display" data-ai-file-name>未选择文件</span>
-    <label class="ai-supplemental">补充描述<textarea id="ai-supplemental-prompt" rows="2" maxlength="2000" placeholder="选择性对客单进行解释、补充和修正。"></textarea></label>
   </div>
   <div class="import-status" data-ai-status></div>
 </section>
