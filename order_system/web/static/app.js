@@ -8,11 +8,22 @@ const importBox = document.querySelector("[data-ai-import]");
 if (importBox) {
   const button = importBox.querySelector("[data-ai-button]");
   const fileButton = importBox.querySelector("[data-ai-file-button]");
-  const pasteButton = importBox.querySelector("[data-ai-paste-image]");
   const status = importBox.querySelector("[data-ai-status]");
   const fileInput = importBox.querySelector("[data-ai-file]");
   const fileName = importBox.querySelector("[data-ai-file-name]");
   const supplementalPrompt = document.querySelector("#ai-supplemental-prompt");
+  const allowedOrderImportSuffixes = new Set([
+    ".doc", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf", ".png", ".jpg", ".jpeg", ".webp"
+  ]);
+  const suffixByClipboardType = {
+    "application/pdf": "pdf",
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "text/csv": "csv",
+    "text/html": "html",
+    "text/tab-separated-values": "tsv",
+  };
 
   function setImportStatus(message, isError = false, isSuccess = false) {
     status.textContent = message;
@@ -36,7 +47,6 @@ if (importBox) {
       return;
     }
     button.disabled = true;
-    if (pasteButton) pasteButton.disabled = true;
     setImportStatus("正在读取和识别，请稍候…");
     const body = new FormData();
     body.append("file", fileInput.files[0]);
@@ -54,57 +64,60 @@ if (importBox) {
       setImportStatus(error.message, true);
     } finally {
       button.disabled = false;
-      if (pasteButton) pasteButton.disabled = false;
     }
   }
 
-  async function importClipboardImage(files) {
-    const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
-    const extensionByType = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"};
-    const imageFile = files.find(file => allowedTypes.has(file.type));
-    if (!imageFile) {
-      setImportStatus("请粘贴图片", true);
+  function orderImportSuffix(file) {
+    const name = file.name || "";
+    const dotIndex = name.lastIndexOf(".");
+    if (dotIndex >= 0) {
+      const suffix = name.slice(dotIndex).toLowerCase();
+      if (allowedOrderImportSuffixes.has(suffix)) return suffix;
+    }
+    const typeSuffix = suffixByClipboardType[file.type];
+    return typeSuffix ? `.${typeSuffix}` : "";
+  }
+
+  function normalizedPastedOrderFile(file) {
+    const suffix = orderImportSuffix(file);
+    if (!suffix) return null;
+    const fallbackName = `pasted-order-${Date.now()}${suffix}`;
+    return new File([file], file.name || fallbackName, {type: file.type, lastModified: file.lastModified || Date.now()});
+  }
+
+  async function importPastedOrderFile(files) {
+    const file = files.map(normalizedPastedOrderFile).find(Boolean);
+    if (!file) {
+      setImportStatus("请粘贴客单文件", true);
       return;
     }
-    const ext = extensionByType[imageFile.type];
-    const name = imageFile.name && imageFile.name !== "image.png" ? imageFile.name : `pasted-order-${Date.now()}.${ext}`;
-    setCustomerFile(new File([imageFile], name, {type: imageFile.type, lastModified: imageFile.lastModified || Date.now()}));
+    setCustomerFile(file);
     await runAiImport();
   }
 
-  async function readClipboardImages() {
-    if (!navigator.clipboard?.read) {
-      setImportStatus("浏览器不允许读取剪贴板，请在此区域按 Ctrl+V 粘贴图片", true);
-      return;
-    }
-    pasteButton.disabled = true;
-    try {
-      const items = await navigator.clipboard.read();
-      const files = [];
-      for (const item of items) {
-        const imageType = item.types.find(type => type.startsWith("image/"));
-        if (imageType) files.push(await item.getType(imageType));
-      }
-      await importClipboardImage(files);
-    } catch (error) {
-      setImportStatus("浏览器不允许读取剪贴板，请在此区域按 Ctrl+V 粘贴图片", true);
-    } finally {
-      pasteButton.disabled = false;
-    }
+  function pastedFiles(event) {
+    const files = [...(event.clipboardData?.files || [])];
+    const itemFiles = [...(event.clipboardData?.items || [])]
+      .filter(item => item.kind === "file")
+      .map(item => item.getAsFile())
+      .filter(Boolean);
+    itemFiles.forEach(file => {
+      if (!files.some(current => current.name === file.name && current.size === file.size && current.type === file.type)) files.push(file);
+    });
+    return files;
   }
 
   fileButton?.addEventListener("click", () => fileInput.click());
   fileInput?.addEventListener("change", refreshImportFileName);
   button.addEventListener("click", runAiImport);
-  pasteButton?.addEventListener("click", readClipboardImages);
   importBox.addEventListener("paste", event => {
-    const files = [...(event.clipboardData?.files || [])].filter(file => file.type.startsWith("image/"));
+    const files = pastedFiles(event);
     if (!files.length) {
-      setImportStatus("请粘贴图片", true);
+      setImportStatus("请粘贴客单文件", true);
       return;
     }
     event.preventDefault();
-    importClipboardImage(files);
+    importPastedOrderFile(files);
   });
   refreshImportFileName();
 }
