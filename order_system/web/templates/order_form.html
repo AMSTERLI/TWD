@@ -4,7 +4,7 @@
 <div class="page-head"><div><h1>业务下单</h1><p>填写后自动生成订单编号并保存</p></div></div>
 {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
 <section class="ai-import" data-ai-import data-csrf="{{ csrf }}" tabindex="0">
-  <div><h2>AI 客单识别</h2><p>上传 DOC、DOCX、Excel、CSV、HTML、PDF、PNG、JPG 或 WEBP，Qwen 将提取内容并自动填表；提交前必须人工核对。</p></div>
+  <div><h2>AI 客单识别</h2><p>上传 DOC、DOCX、Excel、CSV、HTML、PDF、PNG、JPG 或 WEBP 后自动填表。<br>上传方式：<br>1. 点击右侧选择文件<br>2. 点击本段文字，选中本框直接粘贴<br><br>提交自动填好的表格前，必须人工核对。</p></div>
   <div class="upload-row">
     <input type="file" id="customer-file" accept=".doc,.docx,.xlsx,.xlsm,.xls,.csv,.tsv,.html,.htm,.pdf,.png,.jpg,.jpeg,.webp" data-ai-file hidden>
     <button type="button" class="button" data-ai-file-button>选择文件</button>

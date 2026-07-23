@@ -54,6 +54,8 @@ with TestClient(app) as client:
     assert 'data-ai-file-button' in form_page.text
     assert 'data-ai-paste-image' not in form_page.text
     assert 'data-ai-file-name' in form_page.text
+    assert "点击本段文字，选中本框直接粘贴" in form_page.text
+    assert "提交自动填好的表格前，必须人工核对。" in form_page.text
     assert 'data-paste-image-target="#product-images"' in form_page.text
     assert 'data-customer-name' in form_page.text and "程炬（编码 1）" in form_page.text
     customers = repo.list_customers()

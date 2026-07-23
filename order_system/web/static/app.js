@@ -107,9 +107,24 @@ if (importBox) {
     return files;
   }
 
+  function hasSupportedOrderFile(files) {
+    return files.some(file => normalizedPastedOrderFile(file));
+  }
+
+  function shouldImportPastedOrderFile(event, files) {
+    if (!hasSupportedOrderFile(files)) return false;
+    const target = event.target;
+    const imagePasteTarget = target.closest?.("[data-paste-image-target]");
+    if (imagePasteTarget && files.some(file => file.type.startsWith("image/"))) return false;
+    return true;
+  }
+
   fileButton?.addEventListener("click", () => fileInput.click());
   fileInput?.addEventListener("change", refreshImportFileName);
   button.addEventListener("click", runAiImport);
+  importBox.addEventListener("click", event => {
+    if (!event.target.closest("button,input,textarea,select,a")) importBox.focus();
+  });
   importBox.addEventListener("paste", event => {
     const files = pastedFiles(event);
     if (!files.length) {
@@ -119,6 +134,14 @@ if (importBox) {
     event.preventDefault();
     importPastedOrderFile(files);
   });
+  document.addEventListener("paste", event => {
+    if (event.target.closest?.("[data-ai-import]")) return;
+    const files = pastedFiles(event);
+    if (!files.length || !shouldImportPastedOrderFile(event, files)) return;
+    event.preventDefault();
+    importBox.focus();
+    importPastedOrderFile(files);
+  }, true);
   refreshImportFileName();
 }
 
