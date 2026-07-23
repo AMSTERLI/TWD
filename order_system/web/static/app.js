@@ -153,16 +153,16 @@ if (importBox) {
   });
   importBox.addEventListener("dragenter", event => {
     const files = transferFiles(event.dataTransfer);
-    if (!(files.length ? hasSupportedOrderFile(files) : hasDraggedFile(event.dataTransfer))) return;
+    if (!hasDraggedFile(event.dataTransfer)) return;
     event.preventDefault();
-    importBox.dataset.draggingFile = "1";
+    if (!files.length || hasSupportedOrderFile(files)) importBox.dataset.draggingFile = "1";
   });
   importBox.addEventListener("dragover", event => {
     const files = transferFiles(event.dataTransfer);
-    if (!(files.length ? hasSupportedOrderFile(files) : hasDraggedFile(event.dataTransfer))) return;
+    if (!hasDraggedFile(event.dataTransfer)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
-    importBox.dataset.draggingFile = "1";
+    if (!files.length || hasSupportedOrderFile(files)) importBox.dataset.draggingFile = "1";
   });
   importBox.addEventListener("dragleave", event => {
     if (event.relatedTarget && importBox.contains(event.relatedTarget)) return;
@@ -170,12 +170,13 @@ if (importBox) {
   });
   importBox.addEventListener("drop", event => {
     const files = transferFiles(event.dataTransfer);
-    if (!files.length || !hasSupportedOrderFile(files)) {
-      importBox.dataset.draggingFile = "";
-      return;
-    }
+    if (!hasDraggedFile(event.dataTransfer)) return;
     event.preventDefault();
     importBox.dataset.draggingFile = "";
+    if (!files.length || !hasSupportedOrderFile(files)) {
+      setImportStatus("请拖拽客单文件", true);
+      return;
+    }
     importBox.focus();
     importPastedOrderFile(files);
   });
