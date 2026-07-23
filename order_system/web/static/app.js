@@ -128,6 +128,10 @@ if (importBox) {
     return files.some(file => normalizedPastedOrderFile(file));
   }
 
+  function isInsideImportBox(event) {
+    return event.target.closest?.("[data-ai-import]") === importBox;
+  }
+
   function shouldImportPastedOrderFile(event, files) {
     if (!hasSupportedOrderFile(files)) return false;
     const target = event.target;
@@ -151,35 +155,36 @@ if (importBox) {
     event.preventDefault();
     importPastedOrderFile(files);
   });
-  importBox.addEventListener("dragenter", event => {
+  document.addEventListener("dragenter", event => {
     const files = transferFiles(event.dataTransfer);
     if (!hasDraggedFile(event.dataTransfer)) return;
     event.preventDefault();
-    if (!files.length || hasSupportedOrderFile(files)) importBox.dataset.draggingFile = "1";
-  });
-  importBox.addEventListener("dragover", event => {
+    if (isInsideImportBox(event) && (!files.length || hasSupportedOrderFile(files))) importBox.dataset.draggingFile = "1";
+  }, true);
+  document.addEventListener("dragover", event => {
     const files = transferFiles(event.dataTransfer);
     if (!hasDraggedFile(event.dataTransfer)) return;
     event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-    if (!files.length || hasSupportedOrderFile(files)) importBox.dataset.draggingFile = "1";
-  });
+    event.dataTransfer.dropEffect = isInsideImportBox(event) ? "copy" : "none";
+    if (isInsideImportBox(event) && (!files.length || hasSupportedOrderFile(files))) importBox.dataset.draggingFile = "1";
+  }, true);
   importBox.addEventListener("dragleave", event => {
     if (event.relatedTarget && importBox.contains(event.relatedTarget)) return;
     importBox.dataset.draggingFile = "";
   });
-  importBox.addEventListener("drop", event => {
+  document.addEventListener("drop", event => {
     const files = transferFiles(event.dataTransfer);
     if (!hasDraggedFile(event.dataTransfer)) return;
     event.preventDefault();
     importBox.dataset.draggingFile = "";
+    if (!isInsideImportBox(event)) return;
     if (!files.length || !hasSupportedOrderFile(files)) {
       setImportStatus("请拖拽客单文件", true);
       return;
     }
     importBox.focus();
     importPastedOrderFile(files);
-  });
+  }, true);
   document.addEventListener("paste", event => {
     if (event.target.closest?.("[data-ai-import]")) return;
     const files = pastedFiles(event);
