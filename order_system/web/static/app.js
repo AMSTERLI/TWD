@@ -116,6 +116,14 @@ if (importBox) {
     return files;
   }
 
+  function transferFiles(dataTransfer) {
+    return [...(dataTransfer?.files || [])];
+  }
+
+  function hasDraggedFile(dataTransfer) {
+    return [...(dataTransfer?.types || [])].includes("Files");
+  }
+
   function hasSupportedOrderFile(files) {
     return files.some(file => normalizedPastedOrderFile(file));
   }
@@ -141,6 +149,34 @@ if (importBox) {
       return;
     }
     event.preventDefault();
+    importPastedOrderFile(files);
+  });
+  importBox.addEventListener("dragenter", event => {
+    const files = transferFiles(event.dataTransfer);
+    if (!(files.length ? hasSupportedOrderFile(files) : hasDraggedFile(event.dataTransfer))) return;
+    event.preventDefault();
+    importBox.dataset.draggingFile = "1";
+  });
+  importBox.addEventListener("dragover", event => {
+    const files = transferFiles(event.dataTransfer);
+    if (!(files.length ? hasSupportedOrderFile(files) : hasDraggedFile(event.dataTransfer))) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    importBox.dataset.draggingFile = "1";
+  });
+  importBox.addEventListener("dragleave", event => {
+    if (event.relatedTarget && importBox.contains(event.relatedTarget)) return;
+    importBox.dataset.draggingFile = "";
+  });
+  importBox.addEventListener("drop", event => {
+    const files = transferFiles(event.dataTransfer);
+    if (!files.length || !hasSupportedOrderFile(files)) {
+      importBox.dataset.draggingFile = "";
+      return;
+    }
+    event.preventDefault();
+    importBox.dataset.draggingFile = "";
+    importBox.focus();
     importPastedOrderFile(files);
   });
   document.addEventListener("paste", event => {
