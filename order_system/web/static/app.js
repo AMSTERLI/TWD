@@ -507,12 +507,17 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   }
 
   function currentEmployee() {
-    return section.querySelector("[data-employee-value].active")?.dataset.employeeValue || employeeButtons[0]?.dataset.employeeValue || "";
+    const selected = employeeButtons.filter(button => button.classList.contains("active"));
+    const source = selected.length ? selected : employeeButtons.slice(0, 1);
+    return source.map(button => button.dataset.employeeValue || "").filter(Boolean).join(",");
   }
 
   function applyCurrentEmployee(row, force = false) {
-    const select = row?.querySelector("[data-workshop-employee]");
-    if (select && (force || !select.value)) select.value = currentEmployee();
+    const input = row?.querySelector("[data-workshop-employee]");
+    if (!input || (!force && input.value)) return;
+    input.value = currentEmployee();
+    const label = row?.querySelector("[data-workshop-employee-label]");
+    if (label) label.textContent = input.value.split(",").filter(Boolean).join(" / ");
   }
 
   function addRow(focus = true) {
@@ -587,9 +592,10 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     }
   });
   employeeButtons.forEach(button => button.addEventListener("click", () => {
-    employeeButtons.forEach(item => item.classList.toggle("active", item === button));
+    button.classList.toggle("active");
+    if (!employeeButtons.some(item => item.classList.contains("active"))) button.classList.add("active");
+    rows.querySelectorAll("tr").forEach(row => applyCurrentEmployee(row, true));
     const emptyRows = [...rows.querySelectorAll("tr")].filter(row => !row.querySelector("[data-workshop-order]")?.value.trim());
-    emptyRows.forEach(row => applyCurrentEmployee(row, true));
     const target = emptyRows[0]?.querySelector("[data-workshop-order]") || rows.querySelector("[data-workshop-order]");
     target?.focus();
     focusEnd(target);
@@ -1140,9 +1146,11 @@ document.querySelectorAll("[data-selection-form]").forEach(form => {
   const items = [...form.querySelectorAll("[data-select-item]")];
   const count = form.querySelector("[data-selected-count]");
   const unpaidTotal = form.querySelector("[data-selected-unpaid-total]");
+  const amountTotal = form.querySelector("[data-selected-amount-total]");
   const actions = [...form.querySelectorAll("[data-requires-selection]")];
   const matchingTotal = Number(form.dataset.selectionTotal || items.length);
   const matchingUnpaidTotal = Number(form.dataset.selectionUnpaidTotalAll || 0);
+  const matchingAmountTotal = Number(form.dataset.selectionAmountTotalAll || 0);
 
   function refreshSelection() {
     const selectedItems = items.filter(item => item.checked);
@@ -1154,6 +1162,12 @@ document.querySelectorAll("[data-selection-form]").forEach(form => {
         ? matchingUnpaidTotal
         : selectedItems.reduce((sum, item) => sum + Number(item.dataset.unpaidAmount || 0), 0);
       unpaidTotal.textContent = total.toFixed(2);
+    }
+    if (amountTotal) {
+      const total = allMatching
+        ? matchingAmountTotal
+        : selectedItems.reduce((sum, item) => sum + Number(item.dataset.amount || 0), 0);
+      amountTotal.textContent = total.toFixed(2);
     }
     actions.forEach(button => button.disabled = selected === 0);
     if (selectAll) {

@@ -1,5 +1,5 @@
 {% if result.pages > 1 %}<nav class="pager">
-  {% if result.page > 1 %}<a href="?q={{ q|urlencode }}{% if reported_from is defined %}&reported_from={{ reported_from|urlencode }}{% endif %}{% if reported_to is defined %}&reported_to={{ reported_to|urlencode }}{% endif %}&page={{ result.page - 1 }}">上一页</a>{% endif %}
+  {% if result.page > 1 %}<a href="?q={{ q|urlencode }}{% if reported_from is defined %}&reported_from={{ reported_from|urlencode }}{% endif %}{% if reported_to is defined %}&reported_to={{ reported_to|urlencode }}{% endif %}{% if employee_name is defined %}&employee_name={{ employee_name|urlencode }}{% endif %}&page={{ result.page - 1 }}">上一页</a>{% endif %}
   <span>第 {{ result.page }} / {{ result.pages }} 页，共 {{ result.total }} 条</span>
-  {% if result.page < result.pages %}<a href="?q={{ q|urlencode }}{% if reported_from is defined %}&reported_from={{ reported_from|urlencode }}{% endif %}{% if reported_to is defined %}&reported_to={{ reported_to|urlencode }}{% endif %}&page={{ result.page + 1 }}">下一页</a>{% endif %}
+  {% if result.page < result.pages %}<a href="?q={{ q|urlencode }}{% if reported_from is defined %}&reported_from={{ reported_from|urlencode }}{% endif %}{% if reported_to is defined %}&reported_to={{ reported_to|urlencode }}{% endif %}{% if employee_name is defined %}&employee_name={{ employee_name|urlencode }}{% endif %}&page={{ result.page + 1 }}">下一页</a>{% endif %}
 </nav>{% endif %}

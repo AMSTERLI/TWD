@@ -122,8 +122,6 @@ with TestClient(app) as client:
     assert records[0]["department_name"] == "\u523b\u6a21"
     assert records[0]["quantity"] == 2
     assert abs(records[0]["unit_price"] - 10.5) < 1e-9
-    assert records[0]["shipped_status"] == 0
-    assert repo.get_order(order_id)["shipped_status"] == 0
     cutter_unlock = client.post(
         "/workshop/cutter/unlock",
         data={"csrf": csrf(home.text), "password": "cutter-pass-123"},
@@ -151,27 +149,44 @@ with TestClient(app) as client:
     assert press_unlock.status_code == 303 and press_unlock.headers["location"] == "/workshop/press"
     press = client.get("/workshop/press")
     assert press.status_code == 200 and "touch-piecework-panel" in press.text
+    assert "workshop-press-page" in press.text
     assert "data-touch-keypad" in press.text and "data-touch-number" in press.text
     assert "data-touch-integer" in press.text and "data-touch-scale" in press.text
-    for employee in ["A", "B", "C", "D", "E"]:
+    press_employees = ["\u5f90\u5c71\u7acb", "\u5218\u9053\u6797", "\u6881\u8d3b\u6821", "\u79e6\u5e94\u57ce", "\u66fe\u51e4\u5a25", "\u519c\u7231\u67f3"]
+    for employee in press_employees:
         assert f'data-employee-value="{employee}"' in press.text
+        assert f'<option value="{employee}"' in press.text
     press_report = client.post(
         "/workshop/press",
-        data={"csrf": csrf(press.text), "employee_name": ["A"], "order_no": [press_order_no], "quantity": ["120"], "unit_price": ["0.08"]},
+        data={"csrf": csrf(press.text), "employee_name": ["\u5f90\u5c71\u7acb,\u5218\u9053\u6797"], "order_no": [press_order_no], "quantity": ["120"], "unit_price": ["0.08"]},
         follow_redirects=False,
     )
     assert press_report.status_code == 303
     press_records = repo.order_workshop_records(press_order_id)
-    assert len(press_records) == 1
-    assert press_records[0]["department_name"] == "\u51b2\u538b"
-    assert press_records[0]["operator_name"] == "A"
-    assert press_records[0]["quantity"] == 120
-    assert abs(press_records[0]["unit_price"] - 0.08) < 1e-9
+    assert len(press_records) == 2
+    assert {row["operator_name"] for row in press_records} == {"\u5f90\u5c71\u7acb", "\u5218\u9053\u6797"}
+    for row in press_records:
+        assert row["department_name"] == "\u51b2\u538b"
+        assert row["quantity"] == 60
+        assert abs(row["unit_price"] - 0.08) < 1e-9
+        assert abs(row["amount"] - 4.8) < 1e-9
     press_list = client.get("/workshop/press")
-    assert press_list.status_code == 200 and ">A<" in press_list.text and press_order_no in press_list.text
+    assert press_list.status_code == 200 and ">\u5f90\u5c71\u7acb<" in press_list.text and press_order_no in press_list.text
+    assert "data-selected-amount-total" in press_list.text and 'data-amount="4.80"' in press_list.text
+    assert "&#37329;&#39069;" in press_list.text and "4.80" in press_list.text
+    assert 'data-selection-amount-total-all="9.60"' in press_list.text
+    assert 'data-workshop-quantity-url="/workshop/press/records/' not in press_list.text
+    press_filtered = client.get("/workshop/press?employee_name=%E5%BE%90%E5%B1%B1%E7%AB%8B")
+    assert press_filtered.status_code == 200 and press_order_no in press_filtered.text and ">\u5f90\u5c71\u7acb<" in press_filtered.text
+    press_filtered_second = client.get("/workshop/press?employee_name=%E5%88%98%E9%81%93%E6%9E%97")
+    assert press_filtered_second.status_code == 200 and press_order_no in press_filtered_second.text
+    press_filtered_empty = client.get("/workshop/press?employee_name=%E6%A2%81%E8%B4%BB%E6%A0%A1")
+    assert press_filtered_empty.status_code == 200 and press_order_no not in press_filtered_empty.text
+    history_total = client.get(f"/workshop/press/history?order_no={press_order_no}")
+    assert history_total.status_code == 200 and history_total.json()["record"]["quantity"] == 120
     press_export = client.post(
         "/workshop/press/export",
-        data={"csrf": csrf(press_list.text), "selected_ids": [str(press_records[0]["id"])]},
+        data={"csrf": csrf(press_list.text), "selected_ids": [str(row["id"]) for row in press_records]},
     )
     assert press_export.status_code == 200
     press_workbook_path = root / "press-export.xlsx"
@@ -179,11 +194,14 @@ with TestClient(app) as client:
     press_sheet = load_workbook(press_workbook_path).active
     assert press_sheet.cell(row=1, column=5).value == "\u5458\u5de5"
     assert press_sheet.cell(row=2, column=1).value == press_order_no
-    assert press_sheet.cell(row=2, column=5).value == "A"
-    assert press_sheet.cell(row=2, column=6).value == 120
+    assert {press_sheet.cell(row=row_index, column=5).value for row_index in (2, 3)} == {"\u5f90\u5c71\u7acb", "\u5218\u9053\u6797"}
+    assert press_sheet.cell(row=2, column=6).value == 60
+    assert press_sheet.cell(row=3, column=6).value == 60
+    assert abs(sum(press_sheet.cell(row=row_index, column=8).value for row_index in (2, 3)) - 9.6) < 1e-9
     list_page = client.get("/workshop/mold")
     assert "operator_name" not in list_page.text and "&#25805;&#20316;&#20154;" not in list_page.text
-    assert "&#20986;&#36135;&#29366;&#24577;" in list_page.text
+    assert "&#20986;&#36135;&#29366;&#24577;" not in list_page.text
+    assert "/workshop/mold/ship" not in list_page.text
     assert 'data-delete-url="/workshop/mold/records/' in list_page.text
     assert 'data-request-edit-url="/workshop/mold/records/' not in list_page.text
     assert 'data-request-edit-mode="prompt"' not in list_page.text
@@ -207,16 +225,6 @@ with TestClient(app) as client:
     assert repo.order_workshop_records(order_id)[0]["quantity"] == 2
     workshop_messages = client.get("/messages")
     assert workshop_messages.status_code == 200 and "刻模数量修改" in workshop_messages.text and "数量从2修改为5" in workshop_messages.text
-    ship = client.post(
-        "/workshop/mold/ship",
-        data={"csrf": csrf(list_page.text), "order_no": [order_no], "unit_price": [""]},
-        follow_redirects=False,
-    )
-    assert ship.status_code == 303 and "shipped=1" in ship.headers["location"]
-    records = repo.order_workshop_records(order_id)
-    assert records[0]["shipped_status"] == 1
-    assert repo.get_order(order_id)["shipped_status"] == 0
-
     duplicate_report = client.post(
         "/workshop/mold",
         data={"csrf": csrf(client.get("/workshop/mold").text), "order_no": [order_no], "quantity": ["3"], "unit_price": ["20"]},
@@ -225,8 +233,6 @@ with TestClient(app) as client:
     assert duplicate_report.status_code == 303
     records = repo.order_workshop_records(order_id)
     assert len(records) == 2
-    assert records[0]["shipped_status"] == 1
-    assert records[1]["shipped_status"] == 0
     assert records[1]["quantity"] == 3
     assert abs(records[1]["unit_price"] - 20) < 1e-9
     history = client.get(f"/workshop/mold/history?order_no={order_no}")
@@ -239,14 +245,7 @@ with TestClient(app) as client:
     )
     assert delete.status_code == 303
     records = repo.order_workshop_records(order_id)
-    assert len(records) == 1 and records[0]["shipped_status"] == 1
-
-    missing_ship = client.post(
-        "/workshop/mold/ship",
-        data={"csrf": csrf(client.get("/workshop/mold").text), "order_no": ["TWD1-260721999"], "quantity": ["1"], "unit_price": [""]},
-        follow_redirects=False,
-    )
-    assert missing_ship.status_code == 422
+    assert len(records) == 1
 
     detail = client.get(f"/orders/{order_id}")
     assert detail.status_code == 200
@@ -286,9 +285,9 @@ with TestClient(app) as client:
     workbook_path = root / "cutter-export.xlsx"
     workbook_path.write_bytes(cutter_export.content)
     sheet = load_workbook(workbook_path).active
-    assert [sheet.cell(row=1, column=index).value for index in range(1, 9)] == [
-        "订单号", "产品", "客户", "部门", "数量", "单价", "出货状态", "报到时间",
-    ]
+    headers = [sheet.cell(row=1, column=index).value for index in range(1, sheet.max_column + 1)]
+    assert sheet.max_column == 7
+    assert not any("\u51fa\u8d27" in str(value) or "鍑鸿揣" in str(value) for value in headers)
     assert sheet.cell(row=2, column=1).value == cutter_order_no
     assert sheet.cell(row=2, column=4).value == "车刀"
 

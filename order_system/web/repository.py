@@ -1124,15 +1124,37 @@ class Repository:
         if not department_key or not order_no:
             return None
         with self.connect() as conn:
-            row = conn.execute(
-                """SELECT id, order_id, order_no, department_key, department_name, quantity, unit_price,
-                          shipped_status, reported_at
-                   FROM workshop_records
-                   WHERE department_key = ? AND order_no = ?
-                   ORDER BY reported_at DESC, id DESC
-                   LIMIT 1""",
-                (department_key, order_no),
-            ).fetchone()
+            if department_key == "press":
+                latest = conn.execute(
+                    """SELECT reported_at
+                       FROM workshop_records
+                       WHERE department_key = ? AND order_no = ?
+                       ORDER BY reported_at DESC, id DESC
+                       LIMIT 1""",
+                    (department_key, order_no),
+                ).fetchone()
+                if not latest:
+                    return None
+                row = conn.execute(
+                    """SELECT MAX(id) AS id, MAX(order_id) AS order_id, order_no, department_key,
+                              MAX(department_name) AS department_name, SUM(COALESCE(quantity, 1)) AS quantity,
+                              MAX(unit_price) AS unit_price, MAX(shipped_status) AS shipped_status,
+                              MAX(reported_at) AS reported_at
+                       FROM workshop_records
+                       WHERE department_key = ? AND order_no = ? AND reported_at = ?
+                       GROUP BY order_no, department_key""",
+                    (department_key, order_no, str(latest["reported_at"])),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """SELECT id, order_id, order_no, department_key, department_name, quantity, unit_price,
+                              shipped_status, reported_at
+                       FROM workshop_records
+                       WHERE department_key = ? AND order_no = ?
+                       ORDER BY reported_at DESC, id DESC
+                       LIMIT 1""",
+                    (department_key, order_no),
+                ).fetchone()
         return dict(row) if row else None
 
     def delete_workshop_record(self, record_id: int, department_key: str = "") -> str:
@@ -1159,6 +1181,7 @@ class Repository:
         department_name = str(department_name or "").strip()
         if not department_key or not department_name:
             raise ValueError("\u8f66\u95f4\u90e8\u95e8\u65e0\u6548")
+        press_employees = {"\u5f90\u5c71\u7acb", "\u5218\u9053\u6797", "\u6881\u8d3b\u6821", "\u79e6\u5e94\u57ce", "\u66fe\u51e4\u5a25", "\u519c\u7231\u67f3"}
         clean_rows: list[dict[str, Any]] = []
         for row in rows:
             order_no = str(row.get("order_no") or "").strip()
@@ -1169,17 +1192,20 @@ class Repository:
             except (TypeError, ValueError):
                 raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u5355\u4ef7\u65e0\u6548")
             try:
-                quantity = int(float(row.get("quantity") or 1))
+                quantity = float(row.get("quantity") or 1)
             except (TypeError, ValueError):
                 raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u6570\u91cf\u65e0\u6548")
             if unit_price < 0:
                 raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u5355\u4ef7\u4e0d\u80fd\u5c0f\u4e8e 0")
             if quantity <= 0:
                 raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u6570\u91cf\u5fc5\u987b\u5927\u4e8e 0")
-            employee_name = str(row.get("employee_name") or "").strip().upper()
-            if department_key == "press" and employee_name not in {"A", "B", "C", "D", "E"}:
-                raise ValueError(f"\u8ba2\u5355 {order_no} \u8bf7\u9009\u62e9\u51b2\u538b\u5458\u5de5")
-            clean_rows.append({"order_no": order_no, "unit_price": unit_price, "quantity": quantity, "employee_name": employee_name})
+            raw_employee = str(row.get("employee_name") or "").strip()
+            employee_names = [item.strip() for item in re.split(r"[,\s]+", raw_employee) if item.strip()]
+            if department_key == "press":
+                employee_names = list(dict.fromkeys(employee_names))
+                if not employee_names or any(item not in press_employees for item in employee_names):
+                    raise ValueError(f"\u8ba2\u5355 {order_no} \u8bf7\u9009\u62e9\u51b2\u538b\u5458\u5de5")
+            clean_rows.append({"order_no": order_no, "unit_price": unit_price, "quantity": quantity, "employee_names": employee_names})
         if not clean_rows:
             raise ValueError("\u8bf7\u81f3\u5c11\u626b\u63cf\u4e00\u4e2a\u8ba2\u5355")
         created_ids: list[int] = []
@@ -1193,16 +1219,19 @@ class Repository:
                 ).fetchone()
                 if not order:
                     raise ValueError(f"\u8ba2\u5355 {row['order_no']} \u4e0d\u5b58\u5728")
-                cursor = conn.execute(
-                    """INSERT INTO workshop_records
-                       (order_id, order_no, department_key, department_name, quantity, unit_price, operator_id, operator_name)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        int(order["id"]), str(order["order_no"]), department_key, department_name,
-                        row["quantity"], row["unit_price"], operator_id, row.get("employee_name") or operator_name,
-                    ),
-                )
-                created_ids.append(int(cursor.lastrowid))
+                employee_names = row.get("employee_names") or [operator_name]
+                split_quantity = row["quantity"] / max(1, len(employee_names))
+                for employee_name in employee_names:
+                    cursor = conn.execute(
+                        """INSERT INTO workshop_records
+                           (order_id, order_no, department_key, department_name, quantity, unit_price, operator_id, operator_name)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            int(order["id"]), str(order["order_no"]), department_key, department_name,
+                            split_quantity, row["unit_price"], operator_id, employee_name or operator_name,
+                        ),
+                    )
+                    created_ids.append(int(cursor.lastrowid))
         return created_ids
 
     def workshop_records(
@@ -1213,18 +1242,21 @@ class Repository:
         page_size: int = 40,
         reported_from: str = "",
         reported_to: str = "",
+        employee_name: str = "",
     ) -> dict[str, Any]:
         keyword = keyword.strip()
         department_key = department_key.strip()
         reported_from = str(reported_from or "").strip()
         reported_to = str(reported_to or "").strip()
+        employee_name = str(employee_name or "").strip()
         page = max(page, 1)
         offset = (page - 1) * page_size
         where = (
             "WHERE (? = '' OR w.order_no LIKE ? OR o.product_name LIKE ? OR w.operator_name LIKE ?) "
             "AND (? = '' OR w.department_key = ?) "
             "AND (? = '' OR date(w.reported_at, '+8 hours') >= ?) "
-            "AND (? = '' OR date(w.reported_at, '+8 hours') <= ?)"
+            "AND (? = '' OR date(w.reported_at, '+8 hours') <= ?) "
+            "AND (? = '' OR w.operator_name = ?)"
         )
         like = f"%{keyword}%"
         args = (
@@ -1232,18 +1264,21 @@ class Repository:
             department_key, department_key,
             reported_from, reported_from,
             reported_to, reported_to,
+            employee_name, employee_name,
         )
         with self.connect() as conn:
             total = int(conn.execute(f"SELECT COUNT(*) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0])
+            amount_total = float(conn.execute(f"SELECT COALESCE(SUM(COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0)), 0) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0] or 0)
             rows = conn.execute(
-                f"""SELECT w.*, o.product_name, o.customer_name
+                f"""SELECT w.*, o.product_name, o.customer_name,
+                           COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) AS amount
                     FROM workshop_records w
                     LEFT JOIN orders o ON o.id = w.order_id
                     {where}
                     ORDER BY w.reported_at DESC, w.id DESC LIMIT ? OFFSET ?""",
                 (*args, page_size, offset),
             ).fetchall()
-        return {"rows": [dict(row) for row in rows], "total": total, "page": page,
+        return {"rows": [dict(row) for row in rows], "total": total, "amount_total": amount_total, "page": page,
                 "pages": max(1, (total + page_size - 1) // page_size)}
 
     def workshop_record_rows(self, record_ids: list[int], department_key: str = "") -> list[dict[str, Any]]:
@@ -1256,7 +1291,8 @@ class Repository:
             for chunk in self._id_chunks(ids):
                 placeholders = ", ".join("?" for _ in chunk)
                 rows.extend(conn.execute(
-                    f"""SELECT w.*, o.product_name, o.customer_name
+                    f"""SELECT w.*, o.product_name, o.customer_name,
+                               COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) AS amount
                         FROM workshop_records w
                         LEFT JOIN orders o ON o.id = w.order_id
                         WHERE w.id IN ({placeholders}) AND (? = '' OR w.department_key = ?)""",
@@ -1268,7 +1304,7 @@ class Repository:
     def order_workshop_records(self, order_id: int) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
-                """SELECT w.*
+                """SELECT w.*, COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) AS amount
                    FROM workshop_records w
                    WHERE w.order_id = ?
                    ORDER BY w.reported_at ASC, w.id ASC""",

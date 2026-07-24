@@ -69,7 +69,7 @@ WORKSHOP_DEPARTMENTS = {
         "name": "\u51b2\u538b",
         "password_env": "TWD_WORKSHOP_PRESS_PASSWORD",
         "default_password": "chongya888",
-        "employees": ["A", "B", "C", "D", "E"],
+        "employees": ["\u5f90\u5c71\u7acb", "\u5218\u9053\u6797", "\u6881\u8d3b\u6821", "\u79e6\u5e94\u57ce", "\u66fe\u51e4\u5a25", "\u519c\u7231\u67f3"],
         "piecework": True,
     },
 }
@@ -243,6 +243,7 @@ async def selected_workshop_record_ids(form: Any, department_key: str) -> list[i
         BULK_MATCHING_LIMIT,
         str(form.get("reported_from") or ""),
         str(form.get("reported_to") or ""),
+        str(form.get("employee_name") or ""),
     )
     return [int(row["id"]) for row in result["rows"]]
 
@@ -1244,6 +1245,7 @@ def workshop_department_page(
     requested: int = 0,
     reported_from: str = "",
     reported_to: str = "",
+    employee_name: str = "",
 ):
     _, denied = require_page(request, {"workshop"})
     if denied:
@@ -1259,10 +1261,11 @@ def workshop_department_page(
         page_context(
             request,
             department=department,
-            result=repo.workshop_records(q, department_key, page, reported_from=reported_from, reported_to=reported_to),
+            result=repo.workshop_records(q, department_key, page, reported_from=reported_from, reported_to=reported_to, employee_name=employee_name),
             q=q,
             reported_from=reported_from,
             reported_to=reported_to,
+            employee_name=employee_name,
             created=max(0, created),
             shipped=max(0, shipped),
             requested=max(0, requested),
@@ -1370,10 +1373,10 @@ async def workshop_department_export(request: Request, department_key: str):
             row.get("operator_name") or "",
             row.get("quantity") or 1,
             row.get("unit_price") or 0,
-            "\u5df2\u51fa\u8d27" if row.get("shipped_status") else "\u5f85\u51fa\u8d27",
+            row.get("amount") or 0,
             beijing_time(row.get("reported_at") or ""),
         ] for row in rows]
-        headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u5355\u4ef7", "\u51fa\u8d27\u72b6\u6001", "\u62a5\u5230\u65f6\u95f4"]
+        headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u5355\u4ef7", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
     else:
         data = [[
             row.get("order_no") or "",
@@ -1382,10 +1385,9 @@ async def workshop_department_export(request: Request, department_key: str):
             row.get("department_name") or "",
             row.get("quantity") or 1,
             row.get("unit_price") or 0,
-            "\u5df2\u51fa\u8d27" if row.get("shipped_status") else "\u5f85\u51fa\u8d27",
             beijing_time(row.get("reported_at") or ""),
         ] for row in rows]
-        headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u6570\u91cf", "\u5355\u4ef7", "\u51fa\u8d27\u72b6\u6001", "\u62a5\u5230\u65f6\u95f4"]
+        headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u6570\u91cf", "\u5355\u4ef7", "\u62a5\u5230\u65f6\u95f4"]
     await run_in_threadpool(
         repo.audit, user, "workshop.export", f"{department_key}:{len(rows)}", client_ip(request)
     )
