@@ -23,8 +23,13 @@
     <label>是否收款<select name="receivable_paid_status"><option value=""{% if receivable_paid_status == '' %} selected{% endif %}>全部</option><option value="paid"{% if receivable_paid_status == 'paid' %} selected{% endif %}>已收款</option><option value="unpaid"{% if receivable_paid_status == 'unpaid' %} selected{% endif %}>未收款</option></select></label>
     <div class="filter-actions"><button class="primary">检索收款</button><a class="button" href="/finance/receivables">清空</a></div>
   </form>
-  <form method="post" data-selection-form>
+  <form method="post" data-selection-form data-selection-total="{{ receivables.total }}" data-selection-unpaid-total-all="{{ receivables.unpaid_total }}">
     <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="select_scope" value="page" data-select-scope>
+    <input type="hidden" name="receivable_q" value="{{ receivable_q }}">
+    <input type="hidden" name="receivable_date_from" value="{{ receivable_date_from }}">
+    <input type="hidden" name="receivable_date_to" value="{{ receivable_date_to }}">
+    <input type="hidden" name="receivable_paid_status" value="{{ receivable_paid_status }}">
     <div class="selection-toolbar">
       <span>已选择 <strong data-selected-count>0</strong> 条；已选未收款合计 ¥ <strong data-selected-unpaid-total>0.00</strong></span>
       <button formaction="/finance/receivables/status" name="paid" value="1" data-requires-selection disabled>批量确认收款</button>
@@ -65,8 +70,13 @@
     <label>至<input type="date" name="payable_date_to" value="{{ payable_date_to }}"></label>
     <div class="filter-actions"><button class="primary">检索付款</button><a class="button" href="/finance/payables">清空</a></div>
   </form>
-  <form method="post" data-selection-form>
+  <form method="post" data-selection-form data-selection-total="{{ payables.total }}">
     <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="select_scope" value="page" data-select-scope>
+    <input type="hidden" name="payable_q" value="{{ payable_q }}">
+    <input type="hidden" name="payable_factory" value="{{ payable_factory }}">
+    <input type="hidden" name="payable_date_from" value="{{ payable_date_from }}">
+    <input type="hidden" name="payable_date_to" value="{{ payable_date_to }}">
     <div class="selection-toolbar">
       <span>已选择 <strong data-selected-count>0</strong> 条</span>
       {% if can_update_payables %}<button formaction="/finance/payables/status" name="paid" value="1" data-requires-selection disabled>批量确认付款</button>

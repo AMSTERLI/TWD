@@ -1042,36 +1042,45 @@ document.querySelectorAll("[data-outsource-receive]").forEach(form => {
 
 document.querySelectorAll("[data-selection-form]").forEach(form => {
   const selectAll = form.querySelector("[data-select-all]");
+  const scopeInput = form.querySelector("[data-select-scope]");
   const items = [...form.querySelectorAll("[data-select-item]")];
   const count = form.querySelector("[data-selected-count]");
   const unpaidTotal = form.querySelector("[data-selected-unpaid-total]");
   const actions = [...form.querySelectorAll("[data-requires-selection]")];
+  const matchingTotal = Number(form.dataset.selectionTotal || items.length);
+  const matchingUnpaidTotal = Number(form.dataset.selectionUnpaidTotalAll || 0);
 
   function refreshSelection() {
     const selectedItems = items.filter(item => item.checked);
-    const selected = selectedItems.length;
+    const allMatching = scopeInput?.value === "all_matching" && selectAll?.checked;
+    const selected = allMatching ? matchingTotal : selectedItems.length;
     if (count) count.textContent = String(selected);
     if (unpaidTotal) {
-      const total = selectedItems.reduce((sum, item) => sum + Number(item.dataset.unpaidAmount || 0), 0);
+      const total = allMatching
+        ? matchingUnpaidTotal
+        : selectedItems.reduce((sum, item) => sum + Number(item.dataset.unpaidAmount || 0), 0);
       unpaidTotal.textContent = total.toFixed(2);
     }
     actions.forEach(button => button.disabled = selected === 0);
     if (selectAll) {
-      selectAll.checked = items.length > 0 && selected === items.length;
-      selectAll.indeterminate = selected > 0 && selected < items.length;
+      selectAll.checked = allMatching || (items.length > 0 && selectedItems.length === items.length);
+      selectAll.indeterminate = !allMatching && selectedItems.length > 0 && selectedItems.length < items.length;
     }
   }
 
   if (selectAll) {
     selectAll.addEventListener("change", () => {
       items.forEach(item => item.checked = selectAll.checked);
+      if (scopeInput) scopeInput.value = selectAll.checked ? "all_matching" : "page";
       refreshSelection();
     });
   }
-  items.forEach(item => item.addEventListener("change", refreshSelection));
+  items.forEach(item => item.addEventListener("change", () => {
+    if (scopeInput) scopeInput.value = "page";
+    refreshSelection();
+  }));
   refreshSelection();
 });
-
 
 document.querySelectorAll("[data-finance-stash]").forEach(stash => {
   const key = stash.dataset.storageKey || "twd-finance-stash";

@@ -19,8 +19,12 @@
   <label>报到结束<input type="date" name="reported_to" value="{{ reported_to }}"></label>
   <button>&#25628;&#32034;</button>
 </form>
-<form method="post" action="/workshop/{{ department.key }}/export" data-selection-form>
+<form method="post" action="/workshop/{{ department.key }}/export" data-selection-form data-selection-total="{{ result.total }}">
 <input type="hidden" name="csrf" value="{{ csrf }}">
+<input type="hidden" name="select_scope" value="page" data-select-scope>
+<input type="hidden" name="q" value="{{ q }}">
+<input type="hidden" name="reported_from" value="{{ reported_from }}">
+<input type="hidden" name="reported_to" value="{{ reported_to }}">
 <section class="panel">
   <div class="batch-actions padded"><span class="muted">已选择 <span data-selected-count>0</span> 条</span><button class="button primary" data-requires-selection disabled>导出选中表格</button></div>
   <div class="table-wrap"><table><thead><tr><th><input type="checkbox" data-select-all aria-label="全选当前页"></th><th>&#35746;&#21333;&#21495;</th><th>&#20135;&#21697;</th><th>&#23458;&#25143;</th><th>&#37096;&#38376;</th><th>&#25968;&#37327;</th><th>&#21333;&#20215;</th><th>&#20986;&#36135;&#29366;&#24577;</th><th>&#25253;&#21040;&#26102;&#38388;</th></tr></thead><tbody>

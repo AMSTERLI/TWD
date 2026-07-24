@@ -1001,52 +1001,63 @@ class Repository:
                 "unpaid_total": unpaid_total}
     @staticmethod
     def _normalized_ids(values: list[int]) -> list[int]:
-        return sorted({int(value) for value in values if int(value) > 0})[:1000]
+        return sorted({int(value) for value in values if int(value) > 0})
+
+    @staticmethod
+    def _id_chunks(ids: list[int], size: int = 800) -> Iterator[list[int]]:
+        for index in range(0, len(ids), size):
+            yield ids[index:index + size]
 
     def finance_order_rows(self, order_ids: list[int]) -> list[dict[str, Any]]:
         ids = self._normalized_ids(order_ids)
         if not ids:
             return []
-        placeholders = ", ".join("?" for _ in ids)
+        rows: list[Any] = []
         with self.connect() as conn:
-            rows = conn.execute(
-                f"""SELECT id, order_no, customer_code, customer_name, bi_no,
-                           production_no, product_name, quantity, quantity_unit,
-                           unit_price, price_tiers_json, extra_fee, paid_status, invoice_status, order_date
-                    FROM orders WHERE id IN ({placeholders})
-                    ORDER BY order_date DESC, id DESC""",
-                ids,
-            ).fetchall()
+            for chunk in self._id_chunks(ids):
+                placeholders = ", ".join("?" for _ in chunk)
+                rows.extend(conn.execute(
+                    f"""SELECT id, order_no, customer_code, customer_name, bi_no,
+                               production_no, product_name, quantity, quantity_unit,
+                               unit_price, price_tiers_json, extra_fee, paid_status, invoice_status, order_date
+                        FROM orders WHERE id IN ({placeholders})""",
+                    chunk,
+                ).fetchall())
         result_rows = []
         for row in rows:
             item = dict(row)
             item["amount"] = order_receivable_amount(item)
             item["multi_price"] = bool(price_tiers_from_json(item.get("price_tiers_json")))
             result_rows.append(item)
+        result_rows.sort(key=lambda item: (item.get("order_date") or "", int(item.get("id") or 0)), reverse=True)
         return result_rows
+
     def order_pdf_rows(self, order_ids: list[int]) -> list[dict[str, Any]]:
         ids = self._normalized_ids(order_ids)
         if not ids:
             return []
-        placeholders = ", ".join("?" for _ in ids)
+        rows: list[Any] = []
         with self.connect() as conn:
-            rows = conn.execute(
-                f"SELECT * FROM orders WHERE id IN ({placeholders}) ORDER BY order_date DESC, id DESC",
-                ids,
-            ).fetchall()
-        return [dict(row) for row in rows]
-
+            for chunk in self._id_chunks(ids):
+                placeholders = ", ".join("?" for _ in chunk)
+                rows.extend(conn.execute(f"SELECT * FROM orders WHERE id IN ({placeholders})", chunk).fetchall())
+        result_rows = [dict(row) for row in rows]
+        result_rows.sort(key=lambda item: (item.get("order_date") or "", int(item.get("id") or 0)), reverse=True)
+        return result_rows
     def set_order_paid_many(self, order_ids: list[int], paid: bool) -> int:
         ids = self._normalized_ids(order_ids)
         if not ids:
             return 0
-        placeholders = ", ".join("?" for _ in ids)
+        changed = 0
         with self.connect(write=True) as conn:
-            cursor = conn.execute(
-                f"UPDATE orders SET paid_status = ? WHERE id IN ({placeholders})",
-                (int(paid), *ids),
-            )
-            return int(cursor.rowcount)
+            for chunk in self._id_chunks(ids):
+                placeholders = ", ".join("?" for _ in chunk)
+                cursor = conn.execute(
+                    f"UPDATE orders SET paid_status = ? WHERE id IN ({placeholders})",
+                    (int(paid), *chunk),
+                )
+                changed += int(cursor.rowcount)
+        return changed
 
     def set_order_paid(self, order_id: int, paid: bool) -> None:
         self.set_order_paid_many([order_id], paid)
@@ -1055,13 +1066,16 @@ class Repository:
         ids = self._normalized_ids(order_ids)
         if not ids:
             return 0
-        placeholders = ", ".join("?" for _ in ids)
+        changed = 0
         with self.connect(write=True) as conn:
-            cursor = conn.execute(
-                f"UPDATE orders SET invoice_status = ? WHERE id IN ({placeholders})",
-                (int(invoiced), *ids),
-            )
-            return cursor.rowcount
+            for chunk in self._id_chunks(ids):
+                placeholders = ", ".join("?" for _ in chunk)
+                cursor = conn.execute(
+                    f"UPDATE orders SET invoice_status = ? WHERE id IN ({placeholders})",
+                    (int(invoiced), *chunk),
+                )
+                changed += int(cursor.rowcount)
+        return changed
 
     def set_order_shipped(self, order_id: int, shipped: bool) -> None:
         with self.connect(write=True) as conn:
@@ -1234,18 +1248,20 @@ class Repository:
         department_key = str(department_key or "").strip()
         if not ids:
             return []
-        placeholders = ", ".join("?" for _ in ids)
+        rows: list[Any] = []
         with self.connect() as conn:
-            rows = conn.execute(
-                f"""SELECT w.*, o.product_name, o.customer_name
-                    FROM workshop_records w
-                    LEFT JOIN orders o ON o.id = w.order_id
-                    WHERE w.id IN ({placeholders}) AND (? = '' OR w.department_key = ?)
-                    ORDER BY w.reported_at DESC, w.id DESC""",
-                (*ids, department_key, department_key),
-            ).fetchall()
-        return [dict(row) for row in rows]
-
+            for chunk in self._id_chunks(ids):
+                placeholders = ", ".join("?" for _ in chunk)
+                rows.extend(conn.execute(
+                    f"""SELECT w.*, o.product_name, o.customer_name
+                        FROM workshop_records w
+                        LEFT JOIN orders o ON o.id = w.order_id
+                        WHERE w.id IN ({placeholders}) AND (? = '' OR w.department_key = ?)""",
+                    (*chunk, department_key, department_key),
+                ).fetchall())
+        result_rows = [dict(row) for row in rows]
+        result_rows.sort(key=lambda item: (item.get("reported_at") or "", int(item.get("id") or 0)), reverse=True)
+        return result_rows
     def order_workshop_records(self, order_id: int) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
@@ -1382,28 +1398,33 @@ class Repository:
         ids = self._normalized_ids(record_ids)
         if not ids:
             return []
-        placeholders = ", ".join("?" for _ in ids)
+        rows: list[Any] = []
         with self.connect() as conn:
-            rows = conn.execute(
-                f"""SELECT r.*, o.product_name FROM outsource_records r
-                    LEFT JOIN orders o ON o.id = r.order_id
-                    WHERE r.id IN ({placeholders})
-                    ORDER BY r.outsource_date DESC, r.id DESC""",
-                ids,
-            ).fetchall()
-        return [dict(row) for row in rows]
-
+            for chunk in self._id_chunks(ids):
+                placeholders = ", ".join("?" for _ in chunk)
+                rows.extend(conn.execute(
+                    f"""SELECT r.*, o.product_name FROM outsource_records r
+                        LEFT JOIN orders o ON o.id = r.order_id
+                        WHERE r.id IN ({placeholders})""",
+                    chunk,
+                ).fetchall())
+        result_rows = [dict(row) for row in rows]
+        result_rows.sort(key=lambda item: (item.get("outsource_date") or "", int(item.get("id") or 0)), reverse=True)
+        return result_rows
     def set_outsource_paid_many(self, record_ids: list[int], paid: bool) -> int:
         ids = self._normalized_ids(record_ids)
         if not ids:
             return 0
-        placeholders = ", ".join("?" for _ in ids)
+        changed = 0
         with self.connect(write=True) as conn:
-            cursor = conn.execute(
-                f"UPDATE outsource_records SET paid_status = ? WHERE id IN ({placeholders})",
-                (int(paid), *ids),
-            )
-            return int(cursor.rowcount)
+            for chunk in self._id_chunks(ids):
+                placeholders = ", ".join("?" for _ in chunk)
+                cursor = conn.execute(
+                    f"UPDATE outsource_records SET paid_status = ? WHERE id IN ({placeholders})",
+                    (int(paid), *chunk),
+                )
+                changed += int(cursor.rowcount)
+        return changed
 
     def receive_outsource_orders(self, order_nos: list[str], received_date: str) -> list[str]:
         normalized: list[str] = []

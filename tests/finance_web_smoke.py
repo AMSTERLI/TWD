@@ -17,7 +17,9 @@ os.environ["TWD_DATA_DIR"] = str(root)
 os.environ["TWD_SESSION_SECRET"] = "finance-test-secret-that-is-long-enough"
 
 from fastapi.testclient import TestClient  # noqa: E402
+from order_system.database import dumps_json  # noqa: E402
 from order_system.web.app import app, repo  # noqa: E402
+from order_system.web.repository import ORDER_COLUMNS  # noqa: E402
 
 
 def csrf(html: str) -> str:
@@ -52,6 +54,36 @@ def create_order(client: TestClient, order_date: str, product: str, customer_cod
     order_id = int(response.headers["location"].split("/")[2].split("?")[0])
     return repo.get_order(order_id)["order_no"]
 
+
+
+def direct_order_payload(order_no: str, order_date: str) -> dict[str, object]:
+    data = {column: None for column in ORDER_COLUMNS}
+    data.update({
+        "order_type": "\u65b0\u8ba2\u5355",
+        "salesman": "\u6d4b\u8bd5",
+        "order_no": order_no,
+        "product_name": "\u6279\u91cf\u6d4b\u8bd5",
+        "order_date": order_date,
+        "delivery_date": "2026-07-30",
+        "quantity": 10,
+        "spare_quantity": 0,
+        "quantity_unit": "\u4e2a",
+        "unit_price": 2.5,
+        "extra_fee": 3,
+        "order_prefix_no": 9,
+        "paid_status": 0,
+        "invoice_status": 0,
+        "materials_json": dumps_json([]),
+        "plating_json": dumps_json([]),
+        "accessories_json": dumps_json([]),
+        "polishing_json": dumps_json([]),
+        "coloring_json": dumps_json([]),
+        "resin_json": dumps_json([]),
+        "packaging_json": dumps_json([]),
+        "image_paths_json": dumps_json([]),
+        "component_parts_json": dumps_json([]),
+    })
+    return data
 
 def xlsx_strings(content: bytes) -> str:
     with ZipFile(BytesIO(content)) as workbook:
@@ -136,6 +168,24 @@ with TestClient(app) as client:
     )
     assert uninvoice_response.status_code == 303
     assert repo.get_order(1)["invoice_status"] == 1 and repo.get_order(2)["invoice_status"] == 0
+    bulk_ids = []
+    for index in range(45):
+        order_id, _ = repo.create_order(direct_order_payload(f"TWD9-260722{index + 1:03d}", "2026-07-22"))
+        bulk_ids.append(order_id)
+    bulk_status = client.post(
+        "/finance/receivables/status",
+        data={
+            "csrf": csrf(invoice_page.text),
+            "select_scope": "all_matching",
+            "receivable_date_from": "2026-07-22",
+            "receivable_date_to": "2026-07-22",
+            "paid": "1",
+        },
+        follow_redirects=False,
+    )
+    assert bulk_status.status_code == 303
+    assert all(repo.get_order(order_id)["paid_status"] == 1 for order_id in bulk_ids)
+    assert repo.get_order(1)["paid_status"] == 1 and repo.get_order(2)["paid_status"] == 1
     filtered_unpaid_after = client.get("/finance/receivables?receivable_paid_status=unpaid")
     assert old_order not in filtered_unpaid_after.text and new_order not in filtered_unpaid_after.text
 
@@ -190,7 +240,7 @@ with TestClient(app) as client:
     approved_messages = client.get("/messages?status=approved")
     assert "同意财务修改" in approved_messages.text and "/orders/1" in approved_messages.text
     assert "/orders/1/edit?request_id=1" not in approved_messages.text
-    receivables_after_edit = client.get("/finance/receivables")
+    receivables_after_edit = client.get("/finance/receivables?receivable_date_to=2026-07-21")
     assert "多单价" in receivables_after_edit.text and "¥ 133.00" in receivables_after_edit.text
     token = csrf(receivables_after_edit.text)
 

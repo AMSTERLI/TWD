@@ -214,6 +214,29 @@ with TestClient(app) as client:
     cutter_detail = client.get(f"/orders/{cutter_order_id}")
     assert cutter_detail.status_code == 200
     assert_workshop_detail_pdf_only(cutter_detail.text, cutter_order_id, "8.8000")
+    workshop_user = repo.get_user(2)
+    assert workshop_user is not None
+    for index in range(45):
+        _, bulk_order_no = repo.create_order(payload(f"TWD1-260722{index + 200:03d}"))
+        repo.create_workshop_records(
+            "mold",
+            "\u523b\u6a21",
+            [{"order_no": bulk_order_no, "quantity": 1, "unit_price": 6.6}],
+            workshop_user,
+        )
+    bulk_page = client.get("/workshop/mold?q=TWD1-260722")
+    assert bulk_page.status_code == 200 and 'data-selection-total="45"' in bulk_page.text
+    bulk_export = client.post(
+        "/workshop/mold/export",
+        data={"csrf": csrf(bulk_page.text), "select_scope": "all_matching", "q": "TWD1-260722"},
+    )
+    assert bulk_export.status_code == 200
+    bulk_workbook_path = root / "mold-bulk-export.xlsx"
+    bulk_workbook_path.write_bytes(bulk_export.content)
+    bulk_sheet = load_workbook(bulk_workbook_path).active
+    exported_order_nos = {bulk_sheet.cell(row=row_index, column=1).value for row_index in range(2, bulk_sheet.max_row + 1)}
+    assert len(exported_order_nos) == 45
+    assert "TWD1-260722200" in exported_order_nos and "TWD1-260722244" in exported_order_nos
     cutter_export = client.post(
         "/workshop/cutter/export",
         data={"csrf": csrf(client.get("/workshop/cutter").text), "selected_ids": [str(cutter_records[0]["id"])]},

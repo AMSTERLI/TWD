@@ -184,8 +184,60 @@ def selected_ids(form: Any, field: str) -> list[int]:
         value = as_int(raw)
         if value > 0:
             values.append(value)
-    return values[:1000]
+    return values
 
+
+
+BULK_MATCHING_LIMIT = 100000
+
+
+def all_matching_selected(form: Any) -> bool:
+    return str(form.get("select_scope") or "") == "all_matching"
+
+
+async def selected_receivable_ids(form: Any) -> list[int]:
+    if not all_matching_selected(form):
+        return selected_ids(form, "selected_ids")
+    result = await run_in_threadpool(
+        repo.finance_orders,
+        str(form.get("receivable_q") or ""),
+        str(form.get("receivable_date_from") or ""),
+        str(form.get("receivable_date_to") or ""),
+        str(form.get("receivable_paid_status") or ""),
+        1,
+        BULK_MATCHING_LIMIT,
+    )
+    return [int(row["id"]) for row in result["rows"]]
+
+
+async def selected_payable_ids(form: Any) -> list[int]:
+    if not all_matching_selected(form):
+        return selected_ids(form, "selected_ids")
+    result = await run_in_threadpool(
+        repo.finance_outsource_records,
+        str(form.get("payable_q") or ""),
+        str(form.get("payable_factory") or ""),
+        str(form.get("payable_date_from") or ""),
+        str(form.get("payable_date_to") or ""),
+        1,
+        BULK_MATCHING_LIMIT,
+    )
+    return [int(row["id"]) for row in result["rows"]]
+
+
+async def selected_workshop_record_ids(form: Any, department_key: str) -> list[int]:
+    if not all_matching_selected(form):
+        return selected_ids(form, "selected_ids")
+    result = await run_in_threadpool(
+        repo.workshop_records,
+        str(form.get("q") or ""),
+        department_key,
+        1,
+        BULK_MATCHING_LIMIT,
+        str(form.get("reported_from") or ""),
+        str(form.get("reported_to") or ""),
+    )
+    return [int(row["id"]) for row in result["rows"]]
 
 def compose_materials(form: Any) -> list[str]:
     catalogs = import_catalogs()
@@ -1294,7 +1346,7 @@ async def workshop_department_export(request: Request, department_key: str):
     form = await request.form()
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
-    rows = await run_in_threadpool(repo.workshop_record_rows, selected_ids(form, "selected_ids"), department_key)
+    rows = await run_in_threadpool(repo.workshop_record_rows, await selected_workshop_record_ids(form, department_key), department_key)
     if not rows:
         return Response("请至少选择一条车间记录", status_code=400)
     data = [[
@@ -1489,7 +1541,7 @@ async def finance_receivables_status(request: Request):
     form = await request.form()
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
-    ids = selected_ids(form, "selected_ids")
+    ids = await selected_receivable_ids(form)
     paid = form.get("paid") == "1"
     changed = await run_in_threadpool(repo.set_order_paid_many, ids, paid)
     await run_in_threadpool(
@@ -1507,7 +1559,7 @@ async def finance_receivables_invoice(request: Request):
     form = await request.form()
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
-    ids = selected_ids(form, "selected_ids")
+    ids = await selected_receivable_ids(form)
     invoiced = form.get("invoiced") == "1"
     changed = await run_in_threadpool(repo.set_order_invoice_many, ids, invoiced)
     await run_in_threadpool(
@@ -1525,7 +1577,7 @@ async def finance_payables_status(request: Request):
     form = await request.form()
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
-    ids = selected_ids(form, "selected_ids")
+    ids = await selected_payable_ids(form)
     paid = form.get("paid") == "1"
     changed = await run_in_threadpool(repo.set_outsource_paid_many, ids, paid)
     await run_in_threadpool(
@@ -1543,7 +1595,7 @@ async def finance_receivables_export(request: Request):
     form = await request.form()
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
-    rows = await run_in_threadpool(repo.finance_order_rows, selected_ids(form, "selected_ids"))
+    rows = await run_in_threadpool(repo.finance_order_rows, await selected_receivable_ids(form))
     if not rows:
         return Response("请至少选择一条收款记录", status_code=400)
     data = [[
@@ -1574,7 +1626,7 @@ async def finance_receivables_pdf(request: Request):
     form = await request.form()
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
-    ids = selected_ids(form, "selected_ids")
+    ids = await selected_receivable_ids(form)
     rows = await run_in_threadpool(repo.order_pdf_rows, ids)
     if not rows:
         return Response("Please select at least one order", status_code=400)
@@ -1598,7 +1650,7 @@ async def finance_payables_export(request: Request):
     form = await request.form()
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
-    rows = await run_in_threadpool(repo.finance_outsource_rows, selected_ids(form, "selected_ids"))
+    rows = await run_in_threadpool(repo.finance_outsource_rows, await selected_payable_ids(form))
     if not rows:
         return Response("请至少选择一条付款记录", status_code=400)
     data = [[
