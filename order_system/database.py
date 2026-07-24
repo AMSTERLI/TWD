@@ -298,7 +298,7 @@ class Database:
             """,
             CUSTOMERS,
         )
-        conn.execute("DELETE FROM customers WHERE code = 63")
+        conn.execute("DELETE FROM customers WHERE code IN (63, 67, 68, 69)")
 
     def list_customers(self) -> list[dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:

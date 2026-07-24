@@ -61,9 +61,13 @@ with TestClient(app) as client:
     assert 'data-paste-image-target="#product-images"' in form_page.text
     assert 'data-customer-name' in form_page.text and "程炬（编码 1）" in form_page.text
     customers = repo.list_customers()
-    assert len(customers) == 66
-    assert {row["code"] for row in customers if row["name"] == "优品"} == {15}
-    assert {(row["code"], row["name"]) for row in customers if row["code"] in {66, 67, 68, 69}} == {(66, "宜创"), (67, "睿华"), (68, "旭日"), (69, "铭威")}
+    customer_names = {row["code"]: row["name"] for row in customers}
+    assert len(customers) == 63
+    assert {row["code"] for row in customers if row["name"] == "\u4f18\u54c1"} == {15}
+    assert {code: customer_names.get(code) for code in (7, 8, 16, 18, 21, 24, 66)} == {
+        7: "\u5408\u4e50", 8: "\u4e50\u521b", 16: "\u94ed\u5a01", 18: "\u65ed\u65e5", 21: "\u777f\u534e", 24: "\u5176\u4ed6", 66: "\u5b9c\u521b",
+    }
+    assert all(code not in customer_names for code in (67, 68, 69))
     assert client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=13").status_code == 400
     reserved = client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=1")
     assert reserved.status_code == 200 and reserved.json()["order_no"] == "TWD1-260715001"
