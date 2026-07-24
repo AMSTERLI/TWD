@@ -141,11 +141,11 @@ def _draw_order_qr_code(pdf: canvas.Canvas, order_no: str) -> None:
 def _draw_process_table(pdf: canvas.Canvas, record: dict) -> None:
     process_rows = [
         {
-            "content": _join_selected(record.get("materials_json")),
+            "content": _join_selected_lines(record.get("materials_json")),
             "note": record.get("material_note") or "",
             "top": 214,
             "height": 60,
-            "wide": True,
+            "wide": False,
             "note_color": _note_color(record, "material_note_red"),
         },
         {
@@ -513,7 +513,7 @@ def _note_color(record: dict, key: str) -> tuple[float, float, float]:
 
 
 def _coloring_content(record: dict) -> str:
-    return _join_selected(record.get("coloring_json"))
+    return _join_selected_lines(record.get("coloring_json"))
 
 def _packaging_content(record: dict) -> str:
     selected = _join_selected(record.get("packaging_json"))
@@ -524,8 +524,11 @@ def _packaging_content(record: dict) -> str:
 
 
 def _join_selected(value: str | None) -> str:
-    return "、".join(_loads_json(value))
+    return "\u3001".join(_loads_json(value))
 
+
+def _join_selected_lines(value: str | None) -> str:
+    return "\n".join(_loads_json(value))
 
 def _loads_json(value: str | None) -> list[str]:
     if not value:
