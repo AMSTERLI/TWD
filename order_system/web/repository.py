@@ -1124,6 +1124,16 @@ class Repository:
         if not department_key or not order_no:
             return None
         with self.connect() as conn:
+            order = conn.execute(
+                """SELECT id, order_no, quantity, spare_quantity
+                   FROM orders
+                   WHERE order_no = ?
+                   ORDER BY id DESC LIMIT 1""",
+                (order_no,),
+            ).fetchone()
+            if not order:
+                return None
+            order_quantity = float(order["quantity"] or 0) + float(order["spare_quantity"] or 0)
             if department_key == "press":
                 latest = conn.execute(
                     """SELECT reported_at
@@ -1133,18 +1143,19 @@ class Repository:
                        LIMIT 1""",
                     (department_key, order_no),
                 ).fetchone()
-                if not latest:
-                    return None
-                row = conn.execute(
-                    """SELECT MAX(id) AS id, MAX(order_id) AS order_id, order_no, department_key,
-                              MAX(department_name) AS department_name, SUM(COALESCE(quantity, 1)) AS quantity,
-                              MAX(unit_price) AS unit_price, MAX(shipped_status) AS shipped_status,
-                              MAX(reported_at) AS reported_at
-                       FROM workshop_records
-                       WHERE department_key = ? AND order_no = ? AND reported_at = ?
-                       GROUP BY order_no, department_key""",
-                    (department_key, order_no, str(latest["reported_at"])),
-                ).fetchone()
+                if latest:
+                    row = conn.execute(
+                        """SELECT MAX(id) AS id, MAX(order_id) AS order_id, order_no, department_key,
+                                  MAX(department_name) AS department_name, SUM(COALESCE(quantity, 1)) AS quantity,
+                                  MAX(unit_price) AS unit_price, MAX(shipped_status) AS shipped_status,
+                                  MAX(reported_at) AS reported_at
+                           FROM workshop_records
+                           WHERE department_key = ? AND order_no = ? AND reported_at = ?
+                           GROUP BY order_no, department_key""",
+                        (department_key, order_no, str(latest["reported_at"])),
+                    ).fetchone()
+                else:
+                    row = None
             else:
                 row = conn.execute(
                     """SELECT id, order_id, order_no, department_key, department_name, quantity, unit_price,
@@ -1155,7 +1166,19 @@ class Repository:
                        LIMIT 1""",
                     (department_key, order_no),
                 ).fetchone()
-        return dict(row) if row else None
+        result = dict(row) if row else {
+            "id": None,
+            "order_id": int(order["id"]),
+            "order_no": str(order["order_no"]),
+            "department_key": department_key,
+            "department_name": "",
+            "unit_price": 0,
+            "shipped_status": 0,
+            "reported_at": "",
+        }
+        result["quantity"] = order_quantity
+        result["existing_workshop_record"] = bool(row)
+        return result
 
     def delete_workshop_record(self, record_id: int, department_key: str = "") -> str:
         department_key = str(department_key or "").strip()

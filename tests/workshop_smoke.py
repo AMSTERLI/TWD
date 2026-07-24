@@ -69,6 +69,9 @@ with TestClient(app) as client:
     order_id, order_no = repo.create_order(payload("TWD1-260721101"))
     cutter_order_id, cutter_order_no = repo.create_order(payload("TWD1-260721102"))
     press_order_id, press_order_no = repo.create_order(payload("TWD1-260721103"))
+    auto_qty_payload = payload("TWD1-260721104")
+    auto_qty_payload["spare_quantity"] = 15
+    _, auto_qty_order_no = repo.create_order(auto_qty_payload)
 
     admin_login_page = client.get("/login")
     admin_login = client.post(
@@ -183,7 +186,13 @@ with TestClient(app) as client:
     press_filtered_empty = client.get("/workshop/press?employee_name=%E6%A2%81%E8%B4%BB%E6%A0%A1")
     assert press_filtered_empty.status_code == 200 and press_order_no not in press_filtered_empty.text
     history_total = client.get(f"/workshop/press/history?order_no={press_order_no}")
-    assert history_total.status_code == 200 and history_total.json()["record"]["quantity"] == 120
+    assert history_total.status_code == 200 and history_total.json()["record"]["quantity"] == 100
+    assert history_total.json()["record"]["existing_workshop_record"] is True
+    auto_qty = client.get(f"/workshop/press/history?order_no={auto_qty_order_no}")
+    assert auto_qty.status_code == 200
+    assert auto_qty.json()["record"]["quantity"] == 115
+    assert auto_qty.json()["record"]["unit_price"] == 0
+    assert auto_qty.json()["record"]["existing_workshop_record"] is False
     press_export = client.post(
         "/workshop/press/export",
         data={"csrf": csrf(press_list.text), "selected_ids": [str(row["id"]) for row in press_records]},
@@ -214,7 +223,7 @@ with TestClient(app) as client:
     assert narrow_date_page.status_code == 200 and order_no not in narrow_date_page.text
     history = client.get(f"/workshop/mold/history?order_no={order_no}")
     assert history.status_code == 200
-    assert history.json()["record"]["quantity"] == 2
+    assert history.json()["record"]["quantity"] == 100
     assert abs(history.json()["record"]["unit_price"] - 10.5) < 1e-9
     quantity_request = client.post(
         f"/workshop/mold/records/{records[0]['id']}/quantity-request",
@@ -236,7 +245,7 @@ with TestClient(app) as client:
     assert records[1]["quantity"] == 3
     assert abs(records[1]["unit_price"] - 20) < 1e-9
     history = client.get(f"/workshop/mold/history?order_no={order_no}")
-    assert history.json()["record"]["quantity"] == 3
+    assert history.json()["record"]["quantity"] == 100
     assert abs(history.json()["record"]["unit_price"] - 20) < 1e-9
     delete = client.post(
         f"/workshop/mold/records/{records[1]['id']}/delete",

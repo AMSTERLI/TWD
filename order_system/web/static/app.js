@@ -485,13 +485,14 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
         row.dataset.existingWorkshopOrderNo = "";
         return null;
       }
-      row.dataset.existingWorkshopRecord = "1";
-      row.dataset.existingWorkshopOrderNo = orderNo;
+      const hasExistingRecord = record.existing_workshop_record !== false;
+      row.dataset.existingWorkshopRecord = hasExistingRecord ? "1" : "0";
+      row.dataset.existingWorkshopOrderNo = hasExistingRecord ? orderNo : "";
       const priceInput = row.querySelector('[name="unit_price"]');
-      if (priceInput) priceInput.value = cleanNumber(record.unit_price);
+      if (priceInput && hasExistingRecord) priceInput.value = cleanNumber(record.unit_price);
       const quantityInput = row.querySelector('[name="quantity"]');
-      if (quantityInput) quantityInput.value = String(record.quantity || 1);
-      return orderNo;
+      if (quantityInput) quantityInput.value = cleanNumber(record.quantity || 1);
+      return hasExistingRecord ? orderNo : null;
     } catch (error) {
       console.warn("Failed to load workshop history", error);
       row.dataset.existingWorkshopRecord = "0";
