@@ -151,6 +151,8 @@ with TestClient(app) as client:
     assert press_unlock.status_code == 303 and press_unlock.headers["location"] == "/workshop/press"
     press = client.get("/workshop/press")
     assert press.status_code == 200 and "touch-piecework-panel" in press.text
+    assert "data-touch-keypad" in press.text and "data-touch-number" in press.text
+    assert "data-touch-integer" in press.text and "data-touch-scale" in press.text
     for employee in ["A", "B", "C", "D", "E"]:
         assert f'data-employee-value="{employee}"' in press.text
     press_report = client.post(

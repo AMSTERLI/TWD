@@ -410,6 +410,47 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   const scanAdvanceTimers = new WeakMap();
   const scanStartTimes = new WeakMap();
   const cleanNumber = value => Number(Number(value || 0).toFixed(4)).toString();
+  const touchKeypad = section.querySelector("[data-touch-keypad]");
+  const touchKeypadDisplay = section.querySelector("[data-touch-keypad-display]");
+  let activeTouchNumber = null;
+
+  function normalizedTouchValue(input, rawValue) {
+    const isInteger = input?.dataset.touchInteger === "1";
+    const scale = Number(input?.dataset.touchScale || 0);
+    let value = String(rawValue || "").replace(/[^0-9.]/g, "");
+    if (isInteger) {
+      value = value.replace(/\D/g, "");
+      return value.replace(/^0+(?=\d)/, "");
+    }
+    const firstDot = value.indexOf(".");
+    if (firstDot >= 0) {
+      const before = value.slice(0, firstDot).replace(/\./g, "") || "0";
+      let after = value.slice(firstDot + 1).replace(/\./g, "");
+      if (scale > 0) after = after.slice(0, scale);
+      return `${before.replace(/^0+(?=\d)/, "")}.${after}`;
+    }
+    return value.replace(/^0+(?=\d)/, "");
+  }
+
+  function updateTouchKeypadDisplay() {
+    if (!touchKeypadDisplay) return;
+    touchKeypadDisplay.textContent = activeTouchNumber?.value || "0";
+  }
+
+  function showTouchKeypad(input) {
+    if (!touchKeypad || !input?.matches("[data-touch-number]")) return;
+    activeTouchNumber = input;
+    touchKeypad.hidden = false;
+    updateTouchKeypadDisplay();
+  }
+
+  function setTouchNumberValue(value) {
+    if (!activeTouchNumber) return;
+    activeTouchNumber.value = normalizedTouchValue(activeTouchNumber, value);
+    activeTouchNumber.dispatchEvent(new Event("input", {bubbles: true}));
+    updateTouchKeypadDisplay();
+    activeTouchNumber.focus();
+  }
 
   function focusEnd(input) {
     if (!input) return;
@@ -513,6 +554,38 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     }, 260));
   }
 
+  section.addEventListener("focusin", event => {
+    if (event.target.matches("[data-touch-number]")) showTouchKeypad(event.target);
+  });
+  section.addEventListener("click", event => {
+    const numberInput = event.target.closest("[data-touch-number]");
+    if (numberInput) showTouchKeypad(numberInput);
+    const keyButton = event.target.closest("[data-keypad-key]");
+    if (keyButton) {
+      event.preventDefault();
+      const key = keyButton.dataset.keypadKey || "";
+      if (key === "." && activeTouchNumber?.dataset.touchInteger === "1") return;
+      if (key === "." && activeTouchNumber?.value.includes(".")) return;
+      const current = activeTouchNumber?.value || "";
+      setTouchNumberValue(current === "0" && key !== "." ? key : `${current}${key}`);
+      return;
+    }
+    if (event.target.closest("[data-keypad-backspace]")) {
+      event.preventDefault();
+      setTouchNumberValue((activeTouchNumber?.value || "").slice(0, -1));
+      return;
+    }
+    if (event.target.closest("[data-keypad-clear]")) {
+      event.preventDefault();
+      setTouchNumberValue("");
+      return;
+    }
+    if (event.target.closest("[data-keypad-done]")) {
+      event.preventDefault();
+      if (touchKeypad) touchKeypad.hidden = true;
+      activeTouchNumber = null;
+    }
+  });
   employeeButtons.forEach(button => button.addEventListener("click", () => {
     employeeButtons.forEach(item => item.classList.toggle("active", item === button));
     const emptyRows = [...rows.querySelectorAll("tr")].filter(row => !row.querySelector("[data-workshop-order]")?.value.trim());
