@@ -1176,7 +1176,10 @@ class Repository:
                 raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u5355\u4ef7\u4e0d\u80fd\u5c0f\u4e8e 0")
             if quantity <= 0:
                 raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u6570\u91cf\u5fc5\u987b\u5927\u4e8e 0")
-            clean_rows.append({"order_no": order_no, "unit_price": unit_price, "quantity": quantity})
+            employee_name = str(row.get("employee_name") or "").strip().upper()
+            if department_key == "press" and employee_name not in {"A", "B", "C", "D", "E"}:
+                raise ValueError(f"\u8ba2\u5355 {order_no} \u8bf7\u9009\u62e9\u51b2\u538b\u5458\u5de5")
+            clean_rows.append({"order_no": order_no, "unit_price": unit_price, "quantity": quantity, "employee_name": employee_name})
         if not clean_rows:
             raise ValueError("\u8bf7\u81f3\u5c11\u626b\u63cf\u4e00\u4e2a\u8ba2\u5355")
         created_ids: list[int] = []
@@ -1196,7 +1199,7 @@ class Repository:
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         int(order["id"]), str(order["order_no"]), department_key, department_name,
-                        row["quantity"], row["unit_price"], operator_id, operator_name,
+                        row["quantity"], row["unit_price"], operator_id, row.get("employee_name") or operator_name,
                     ),
                 )
                 created_ids.append(int(cursor.lastrowid))

@@ -12,6 +12,7 @@ os.environ["TWD_DATA_DIR"] = str(root)
 os.environ["TWD_SESSION_SECRET"] = "workshop-test-secret-long-enough"
 os.environ["TWD_WORKSHOP_MOLD_PASSWORD"] = "mold-pass-123"
 os.environ["TWD_WORKSHOP_CUTTER_PASSWORD"] = "cutter-pass-123"
+os.environ["TWD_WORKSHOP_PRESS_PASSWORD"] = "press-pass-123"
 
 from fastapi.testclient import TestClient  # noqa: E402
 from order_system.database import dumps_json  # noqa: E402
@@ -67,6 +68,7 @@ with TestClient(app) as client:
     repo.create_user("workshop", "workshop-pass-123", "workshop", display_name="\u8f66\u95f4")
     order_id, order_no = repo.create_order(payload("TWD1-260721101"))
     cutter_order_id, cutter_order_no = repo.create_order(payload("TWD1-260721102"))
+    press_order_id, press_order_no = repo.create_order(payload("TWD1-260721103"))
 
     admin_login_page = client.get("/login")
     admin_login = client.post(
@@ -93,7 +95,7 @@ with TestClient(app) as client:
     assert client.get("/orders").status_code == 403
 
     home = client.get("/workshop")
-    assert home.status_code == 200 and "/workshop/mold/unlock" in home.text and "/workshop/cutter/unlock" in home.text
+    assert home.status_code == 200 and "/workshop/mold/unlock" in home.text and "/workshop/cutter/unlock" in home.text and "/workshop/press/unlock" in home.text
     bad_unlock = client.post(
         "/workshop/mold/unlock",
         data={"csrf": csrf(home.text), "password": "bad"},
@@ -141,6 +143,42 @@ with TestClient(app) as client:
     assert cutter_records[0]["department_name"] == "\u8f66\u5200"
     assert cutter_records[0]["quantity"] == 1
     assert abs(cutter_records[0]["unit_price"] - 8.8) < 1e-9
+    press_unlock = client.post(
+        "/workshop/press/unlock",
+        data={"csrf": csrf(home.text), "password": "press-pass-123"},
+        follow_redirects=False,
+    )
+    assert press_unlock.status_code == 303 and press_unlock.headers["location"] == "/workshop/press"
+    press = client.get("/workshop/press")
+    assert press.status_code == 200 and "touch-piecework-panel" in press.text
+    for employee in ["A", "B", "C", "D", "E"]:
+        assert f'data-employee-value="{employee}"' in press.text
+    press_report = client.post(
+        "/workshop/press",
+        data={"csrf": csrf(press.text), "employee_name": ["A"], "order_no": [press_order_no], "quantity": ["120"], "unit_price": ["0.08"]},
+        follow_redirects=False,
+    )
+    assert press_report.status_code == 303
+    press_records = repo.order_workshop_records(press_order_id)
+    assert len(press_records) == 1
+    assert press_records[0]["department_name"] == "\u51b2\u538b"
+    assert press_records[0]["operator_name"] == "A"
+    assert press_records[0]["quantity"] == 120
+    assert abs(press_records[0]["unit_price"] - 0.08) < 1e-9
+    press_list = client.get("/workshop/press")
+    assert press_list.status_code == 200 and ">A<" in press_list.text and press_order_no in press_list.text
+    press_export = client.post(
+        "/workshop/press/export",
+        data={"csrf": csrf(press_list.text), "selected_ids": [str(press_records[0]["id"])]},
+    )
+    assert press_export.status_code == 200
+    press_workbook_path = root / "press-export.xlsx"
+    press_workbook_path.write_bytes(press_export.content)
+    press_sheet = load_workbook(press_workbook_path).active
+    assert press_sheet.cell(row=1, column=5).value == "\u5458\u5de5"
+    assert press_sheet.cell(row=2, column=1).value == press_order_no
+    assert press_sheet.cell(row=2, column=5).value == "A"
+    assert press_sheet.cell(row=2, column=6).value == 120
     list_page = client.get("/workshop/mold")
     assert "operator_name" not in list_page.text and "&#25805;&#20316;&#20154;" not in list_page.text
     assert "&#20986;&#36135;&#29366;&#24577;" in list_page.text

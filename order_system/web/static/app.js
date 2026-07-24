@@ -405,6 +405,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   const template = section.querySelector("[data-workshop-row-template]");
   const addButton = section.querySelector("[data-add-workshop-row]");
   const historyUrl = section.dataset.workshopHistoryUrl || "";
+  const employeeButtons = [...section.querySelectorAll("[data-employee-value]")];
   const historyChecks = new WeakMap();
   const scanAdvanceTimers = new WeakMap();
   const scanStartTimes = new WeakMap();
@@ -464,8 +465,18 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     historyChecks.set(row, setTimeout(() => loadWorkshopHistory(row), 200));
   }
 
+  function currentEmployee() {
+    return section.querySelector("[data-employee-value].active")?.dataset.employeeValue || employeeButtons[0]?.dataset.employeeValue || "";
+  }
+
+  function applyCurrentEmployee(row, force = false) {
+    const select = row?.querySelector("[data-workshop-employee]");
+    if (select && (force || !select.value)) select.value = currentEmployee();
+  }
+
   function addRow(focus = true) {
     rows.appendChild(template.content.cloneNode(true));
+    applyCurrentEmployee(rows.lastElementChild, true);
     const input = rows.lastElementChild.querySelector("[data-workshop-order]");
     if (focus) input.focus();
     focusEnd(input);
@@ -502,6 +513,15 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     }, 260));
   }
 
+  employeeButtons.forEach(button => button.addEventListener("click", () => {
+    employeeButtons.forEach(item => item.classList.toggle("active", item === button));
+    const emptyRows = [...rows.querySelectorAll("tr")].filter(row => !row.querySelector("[data-workshop-order]")?.value.trim());
+    emptyRows.forEach(row => applyCurrentEmployee(row, true));
+    const target = emptyRows[0]?.querySelector("[data-workshop-order]") || rows.querySelector("[data-workshop-order]");
+    target?.focus();
+    focusEnd(target);
+  }));
+  rows.querySelectorAll("tr").forEach(row => applyCurrentEmployee(row, true));
   addButton?.addEventListener("click", () => addRow());
   section.addEventListener("click", event => {
     const button = event.target.closest("[data-remove-workshop-row]");
@@ -513,6 +533,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
         else if (input.name === "quantity") input.value = "1";
         else input.value = "";
       });
+      applyCurrentEmployee(row, true);
       row.dataset.existingWorkshopRecord = "0";
       row.dataset.existingWorkshopOrderNo = "";
       row.dataset.historyKey = "";

@@ -65,6 +65,13 @@ WORKSHOP_DEPARTMENTS = {
         "password_env": "TWD_WORKSHOP_CUTTER_PASSWORD",
         "default_password": "chedao888",
     },
+    "press": {
+        "name": "\u51b2\u538b",
+        "password_env": "TWD_WORKSHOP_PRESS_PASSWORD",
+        "default_password": "chongya888",
+        "employees": ["A", "B", "C", "D", "E"],
+        "piecework": True,
+    },
 }
 
 
@@ -1142,11 +1149,16 @@ async def import_order(request: Request):
 
 
 
-def workshop_department(name: str) -> dict[str, str] | None:
+def workshop_department(name: str) -> dict[str, Any] | None:
     department = WORKSHOP_DEPARTMENTS.get(str(name or "").strip())
     if not department:
         return None
-    return {"key": name, "name": department["name"]}
+    return {
+        "key": name,
+        "name": department["name"],
+        "employees": list(department.get("employees") or []),
+        "piecework": bool(department.get("piecework")),
+    }
 
 
 def workshop_department_password(name: str) -> str:
@@ -1349,23 +1361,38 @@ async def workshop_department_export(request: Request, department_key: str):
     rows = await run_in_threadpool(repo.workshop_record_rows, await selected_workshop_record_ids(form, department_key), department_key)
     if not rows:
         return Response("请至少选择一条车间记录", status_code=400)
-    data = [[
-        row.get("order_no") or "",
-        row.get("product_name") or "",
-        row.get("customer_name") or "",
-        row.get("department_name") or "",
-        row.get("quantity") or 1,
-        row.get("unit_price") or 0,
-        "已出货" if row.get("shipped_status") else "待出货",
-        beijing_time(row.get("reported_at") or ""),
-    ] for row in rows]
+    if department.get("piecework"):
+        data = [[
+            row.get("order_no") or "",
+            row.get("product_name") or "",
+            row.get("customer_name") or "",
+            row.get("department_name") or "",
+            row.get("operator_name") or "",
+            row.get("quantity") or 1,
+            row.get("unit_price") or 0,
+            "\u5df2\u51fa\u8d27" if row.get("shipped_status") else "\u5f85\u51fa\u8d27",
+            beijing_time(row.get("reported_at") or ""),
+        ] for row in rows]
+        headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u5355\u4ef7", "\u51fa\u8d27\u72b6\u6001", "\u62a5\u5230\u65f6\u95f4"]
+    else:
+        data = [[
+            row.get("order_no") or "",
+            row.get("product_name") or "",
+            row.get("customer_name") or "",
+            row.get("department_name") or "",
+            row.get("quantity") or 1,
+            row.get("unit_price") or 0,
+            "\u5df2\u51fa\u8d27" if row.get("shipped_status") else "\u5f85\u51fa\u8d27",
+            beijing_time(row.get("reported_at") or ""),
+        ] for row in rows]
+        headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u6570\u91cf", "\u5355\u4ef7", "\u51fa\u8d27\u72b6\u6001", "\u62a5\u5230\u65f6\u95f4"]
     await run_in_threadpool(
         repo.audit, user, "workshop.export", f"{department_key}:{len(rows)}", client_ip(request)
     )
     return await run_in_threadpool(
         excel_response,
         department["name"],
-        ["订单号", "产品", "客户", "部门", "数量", "单价", "出货状态", "报到时间"],
+        headers,
         data,
         f"workshop_{department_key}",
     )
@@ -1419,12 +1446,17 @@ async def workshop_department_submit(request: Request, department_key: str):
     form = await request.form()
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
-    rows = [
-        {"order_no": order_no, "unit_price": unit_price, "quantity": quantity}
-        for order_no, unit_price, quantity in zip(
-            form.getlist("order_no"), form.getlist("unit_price"), form.getlist("quantity")
-        )
-    ]
+    employee_names = form.getlist("employee_name")
+    rows = []
+    for index, (order_no, unit_price, quantity) in enumerate(zip(
+        form.getlist("order_no"), form.getlist("unit_price"), form.getlist("quantity")
+    )):
+        rows.append({
+            "order_no": order_no,
+            "unit_price": unit_price,
+            "quantity": quantity,
+            "employee_name": employee_names[index] if index < len(employee_names) else "",
+        })
     try:
         created_ids = await run_in_threadpool(
             repo.create_workshop_records,
