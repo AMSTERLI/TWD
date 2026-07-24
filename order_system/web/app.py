@@ -143,6 +143,14 @@ def as_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def note_font_size(value: Any, default: float = 11.5) -> float:
+    try:
+        size = float(str(value or default).replace(",", ""))
+    except ValueError:
+        size = default
+    return min(14.0, max(8.0, size))
+
+
 def as_int(value: Any, default: int = 0) -> int:
     try:
         return int(float(str(value or "").replace(",", "")))
@@ -387,6 +395,7 @@ async def order_payload(form: Any, *, save_uploaded_images: bool = True) -> dict
         "back_mode_note": str(form.get("back_mode_note") or "").strip(),
         "back_mode_note_red": 1,
         "global_note": str(form.get("global_note") or "").strip(),
+        "global_note_font_size": note_font_size(form.get("global_note_font_size")),
         "global_note_red": 1,
         "image_paths_json": dumps_json(image_paths),
         "component_parts_json": dumps_json(component_parts),
@@ -442,7 +451,7 @@ ORDER_CHANGE_LABELS = {
 SUMMARY_SKIP_FIELDS = {
     "paid_status", "shipped_status", "customer_name", "coloring_text", "packaging_rule",
     "material_note_red", "plating_note_red", "accessories_note_red", "polishing_note_red",
-    "coloring_note_red", "resin_note_red", "packaging_note_red", "back_mode_note_red", "global_note_red",
+    "coloring_note_red", "resin_note_red", "packaging_note_red", "back_mode_note_red", "global_note_font_size", "global_note_red",
 }
 
 

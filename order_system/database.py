@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS orders (
     back_mode_note TEXT,
     back_mode_note_red INTEGER NOT NULL DEFAULT 0,
     global_note TEXT,
+    global_note_font_size REAL NOT NULL DEFAULT 11.5,
     global_note_red INTEGER NOT NULL DEFAULT 0,
     image_paths_json TEXT NOT NULL,
     component_parts_json TEXT NOT NULL DEFAULT '[]',
@@ -154,6 +155,7 @@ class Database:
             self._ensure_column(conn, "orders", "resin_note_red", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "orders", "packaging_note_red", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "orders", "back_mode_note_red", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column(conn, "orders", "global_note_font_size", "REAL NOT NULL DEFAULT 11.5")
             self._ensure_column(conn, "orders", "global_note_red", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "orders", "spare_quantity", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "orders", "quantity_unit", "TEXT NOT NULL DEFAULT '\u4e2a'")
@@ -362,6 +364,7 @@ class Database:
             "back_mode_note",
             "back_mode_note_red",
             "global_note",
+            "global_note_font_size",
             "global_note_red",
             "image_paths_json",
         ]

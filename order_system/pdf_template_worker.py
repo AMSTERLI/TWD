@@ -140,45 +140,106 @@ def _draw_order_qr_code(pdf: canvas.Canvas, order_no: str) -> None:
 
 def _draw_process_table(pdf: canvas.Canvas, record: dict) -> None:
     process_rows = [
-        ("材料", _join_selected(record.get("materials_json")), record.get("material_note") or "", 214, 43, True, _note_color(record, "material_note_red")),
-        ("电镀", _join_selected(record.get("plating_json")), record.get("plating_note") or "", 257, 39, False, _note_color(record, "plating_note_red")),
-        ("配件", _join_selected(record.get("accessories_json")), record.get("accessories_note") or "", 296, 40, False, _note_color(record, "accessories_note_red")),
-        ("抛光", _join_selected(record.get("polishing_json")), record.get("polishing_note") or "", 336, 40, False, _note_color(record, "polishing_note_red")),
-        ("上色", _coloring_content(record), record.get("coloring_note") or "", 376, 39, False, _note_color(record, "coloring_note_red")),
-        ("树脂", _join_selected(record.get("resin_json")), record.get("resin_note") or "", 415, 40, False, _note_color(record, "resin_note_red")),
-        ("包装", _packaging_content(record), record.get("packaging_note") or "", 455, 40, False, _note_color(record, "packaging_note_red")),
-        ("背模", record.get("back_mode") or "", record.get("back_mode_note") or "", 495, 40, False, _note_color(record, "back_mode_note_red")),
+        {
+            "content": _join_selected(record.get("materials_json")),
+            "note": record.get("material_note") or "",
+            "top": 214,
+            "height": 60,
+            "wide": True,
+            "note_color": _note_color(record, "material_note_red"),
+        },
+        {
+            "content": _join_selected(record.get("plating_json")),
+            "note": record.get("plating_note") or "",
+            "top": 273,
+            "height": 39,
+            "wide": False,
+            "note_color": _note_color(record, "plating_note_red"),
+        },
+        {
+            "content": _join_selected(record.get("accessories_json")),
+            "note": record.get("accessories_note") or "",
+            "top": 313,
+            "height": 40,
+            "wide": False,
+            "note_color": _note_color(record, "accessories_note_red"),
+        },
+        {
+            "content": _join_selected(record.get("polishing_json")),
+            "note": record.get("polishing_note") or "",
+            "top": 352,
+            "height": 24,
+            "wide": False,
+            "note_color": _note_color(record, "polishing_note_red"),
+        },
+        {
+            "content": _coloring_content(record),
+            "note": record.get("coloring_note") or "",
+            "top": 376,
+            "height": 59,
+            "wide": False,
+            "note_color": _note_color(record, "coloring_note_red"),
+        },
+        {
+            "content": _join_selected(record.get("resin_json")),
+            "note": record.get("resin_note") or "",
+            "top": 435,
+            "height": 24,
+            "wide": False,
+            "note_color": _note_color(record, "resin_note_red"),
+        },
+        {
+            "content": _packaging_content(record),
+            "note": record.get("packaging_note") or "",
+            "top": 459,
+            "height": 39,
+            "wide": False,
+            "note_color": _note_color(record, "packaging_note_red"),
+        },
+        {
+            "content": record.get("back_mode") or "",
+            "note": record.get("back_mode_note") or "",
+            "top": 499,
+            "height": 40,
+            "wide": False,
+            "note_color": _note_color(record, "back_mode_note_red"),
+        },
     ]
 
-    for _title, content, note, top, height, wide, note_color in process_rows:
-        if wide:
-            _draw_multiline_text(pdf, content, 89, top - 9, 415, 17, 13.5, 15, color=BLACK)
+    for row in process_rows:
+        content = str(row["content"] or "")
+        note = str(row["note"] or "")
+        top = float(row["top"])
+        height = float(row["height"])
+        if row["wide"]:
+            _draw_fitting_multiline_text(pdf, content, 89, top - 9, 415, 17, 13.5, 8.5, color=BLACK)
             if note.strip():
-                _draw_multiline_text(
+                _draw_fitting_multiline_text(
                     pdf,
-                    f"备注：{note.strip()}",
+                    f"\u5907\u6ce8\uff1a{note.strip()}",
                     89,
                     top + 8,
                     415,
                     height - 17,
-                    13.5,
-                    15,
-                    color=note_color,
+                    12.5,
+                    8,
+                    color=row["note_color"],
                 )
             continue
 
-        _draw_multiline_text(pdf, content, 89, top - 10, 93, height - 6, 13.5, 15, color=BLACK)
-        _draw_multiline_text(pdf, note, 193, top - 10, 315, height - 6, 13.5, 15, color=note_color)
+        _draw_fitting_multiline_text(pdf, content, 89, top - 10, 93, height - 6, 13.5, 8.5, color=BLACK)
+        _draw_fitting_multiline_text(pdf, note, 193, top - 10, 315, height - 6, 12.5, 8, color=row["note_color"])
 
-    _draw_multiline_text(
+    global_note_font_size = _clamp_float(record.get("global_note_font_size"), 8, 14, 11.5)
+    _draw_fitting_multiline_text(
         pdf,
         record.get("global_note") or "",
         REMARK_LEFT,
         REMARK_TOP,
         REMARK_WIDTH,
         REMARK_HEIGHT,
-        11.5,
-        13,
+        global_note_font_size,
+        7.5,
         color=_note_color(record, "global_note_red"),
     )
 
@@ -312,6 +373,41 @@ def _draw_order_no(
         _draw_multiline_text(pdf, content, left + 4, top - 9, width - 8, height + 22, 11.5, 11.5, color=BLACK)
         return
     _draw_box_text(pdf, clean, left, top, width, height)
+
+
+def _draw_fitting_multiline_text(
+    pdf: canvas.Canvas,
+    text: str,
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    font_size: float,
+    min_font_size: float,
+    color: tuple[float, float, float] = BLACK,
+) -> None:
+    clean = str(text or "").strip()
+    if not clean:
+        return
+    size = float(font_size)
+    min_size = float(min_font_size)
+    while size >= min_size:
+        leading = max(size + 1.2, size * 1.15)
+        lines = _wrap_text(clean, width, size)
+        if len(lines) <= max(1, int(height // leading)):
+            _draw_multiline_text(pdf, clean, left, top, width, height, size, leading, color=color)
+            return
+        size -= 0.5
+    leading = max(min_size + 1.0, min_size * 1.15)
+    _draw_multiline_text(pdf, clean, left, top, width, height, min_size, leading, color=color)
+
+
+def _clamp_float(value: object, minimum: float, maximum: float, default: float) -> float:
+    try:
+        number = float(value if value not in (None, "") else default)
+    except (TypeError, ValueError):
+        number = default
+    return min(maximum, max(minimum, number))
 
 
 def _draw_multiline_text(

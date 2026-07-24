@@ -28,7 +28,7 @@ ORDER_COLUMNS = [
     "coloring_note_red", "resin_json", "resin_note", "resin_note_red",
     "packaging_json", "packaging_rule", "packaging_note", "packaging_note_red",
     "back_mode", "back_mode_note", "back_mode_note_red", "global_note",
-    "global_note_red", "image_paths_json", "component_parts_json",
+    "global_note_font_size", "global_note_red", "image_paths_json", "component_parts_json",
 ]
 
 
@@ -876,7 +876,7 @@ class Repository:
                 "resin_json": "[]", "packaging_json": "[]", "price_tiers_json": "[]", "image_paths_json": "[]", "component_parts_json": "[]",
                 "material_note_red": 1, "plating_note_red": 1, "accessories_note_red": 1,
                 "polishing_note_red": 1, "coloring_note_red": 1, "resin_note_red": 1,
-                "packaging_note_red": 1, "back_mode_note_red": 1, "global_note_red": 1,
+                "packaging_note_red": 1, "back_mode_note_red": 1, "global_note_font_size": 11.5, "global_note_red": 1,
             }
             values = [required_defaults.get(col) if payload.get(col) is None and col in required_defaults else payload.get(col)
                       for col in ORDER_COLUMNS]
