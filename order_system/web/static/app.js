@@ -1200,7 +1200,8 @@ document.addEventListener("click", event => {
   const button = event.target.closest("[data-inline-replenish]");
   if (!button) return;
   event.preventDefault();
-  submitReplenishmentRequest(button.dataset);
+  const row = button.closest("[data-context-row]");
+  submitReplenishmentRequest({...row?.dataset, ...button.dataset});
 });
 
 const contextRows = document.querySelectorAll("[data-context-row], [data-admin-context]");
