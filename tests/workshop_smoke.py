@@ -116,7 +116,7 @@ with TestClient(app) as client:
     assert mold.status_code == 200 and "data-workshop-scan" in mold.text
     report = client.post(
         "/workshop/mold",
-        data={"csrf": csrf(mold.text), "order_no": [order_no], "quantity": ["2"], "unit_price": ["10.5"]},
+        data={"csrf": csrf(mold.text), "order_no": [order_no], "material": ["锌"], "size_text": ["50MM"], "spec": ["2D"], "quantity": ["2"], "unit_price": ["10.5"], "record_type": ["normal"]},
         follow_redirects=False,
     )
     assert report.status_code == 303
@@ -124,6 +124,10 @@ with TestClient(app) as client:
     assert len(records) == 1
     assert records[0]["department_name"] == "\u523b\u6a21"
     assert records[0]["quantity"] == 2
+    assert records[0]["material"] == "锌"
+    assert records[0]["size_text"] == "50MM"
+    assert records[0]["spec"] == "2D"
+    assert records[0]["record_type"] == "normal"
     assert abs(records[0]["unit_price"] - 10.5) < 1e-9
     cutter_unlock = client.post(
         "/workshop/cutter/unlock",
@@ -176,7 +180,7 @@ with TestClient(app) as client:
     press_list = client.get("/workshop/press")
     assert press_list.status_code == 200 and ">\u5f90\u5c71\u7acb<" in press_list.text and press_order_no in press_list.text
     assert "data-selected-amount-total" in press_list.text and 'data-amount="4.80"' in press_list.text
-    assert "&#37329;&#39069;" in press_list.text and "4.80" in press_list.text
+    assert "金额" in press_list.text and "4.80" in press_list.text
     assert 'data-selection-amount-total-all="9.60"' in press_list.text
     assert 'data-workshop-quantity-url="/workshop/press/records/' not in press_list.text
     press_filtered = client.get("/workshop/press?employee_name=%E5%BE%90%E5%B1%B1%E7%AB%8B")
@@ -211,7 +215,10 @@ with TestClient(app) as client:
     assert "operator_name" not in list_page.text and "&#25805;&#20316;&#20154;" not in list_page.text
     assert "&#20986;&#36135;&#29366;&#24577;" not in list_page.text
     assert "/workshop/mold/ship" not in list_page.text
-    assert 'data-delete-url="/workshop/mold/records/' in list_page.text
+    assert 'data-delete-url="/workshop/mold/records/' not in list_page.text
+    assert "材质" in list_page.text and "尺寸" in list_page.text and "规格" in list_page.text and "订单类别" in list_page.text
+    assert "锌" in list_page.text and "50MM" in list_page.text and "2D" in list_page.text and "正常" in list_page.text
+    assert ">产品<" not in list_page.text and ">客户<" not in list_page.text and ">部门<" not in list_page.text
     assert 'data-request-edit-url="/workshop/mold/records/' not in list_page.text
     assert 'data-request-edit-mode="prompt"' not in list_page.text
     assert 'data-workshop-quantity-url="/workshop/mold/records/' in list_page.text
@@ -225,6 +232,9 @@ with TestClient(app) as client:
     assert history.status_code == 200
     assert history.json()["record"]["quantity"] == 100
     assert abs(history.json()["record"]["unit_price"] - 10.5) < 1e-9
+    assert history.json()["record"]["material"] == "锌"
+    assert history.json()["record"]["size_text"] == "50MM"
+    assert history.json()["record"]["spec"] == "2D"
     quantity_request = client.post(
         f"/workshop/mold/records/{records[0]['id']}/quantity-request",
         data={"csrf": csrf(list_page.text), "quantity": "5", "reason": "漏扫数量"},
@@ -236,25 +246,36 @@ with TestClient(app) as client:
     assert workshop_messages.status_code == 200 and "刻模数量修改" in workshop_messages.text and "数量从2修改为5" in workshop_messages.text
     duplicate_report = client.post(
         "/workshop/mold",
-        data={"csrf": csrf(client.get("/workshop/mold").text), "order_no": [order_no], "quantity": ["3"], "unit_price": ["20"]},
+        data={"csrf": csrf(client.get("/workshop/mold").text), "order_no": [order_no], "material": ["锌"], "size_text": ["50MM"], "spec": ["2D"], "quantity": ["3"], "unit_price": ["20"], "record_type": ["normal"]},
         follow_redirects=False,
     )
-    assert duplicate_report.status_code == 303
+    assert duplicate_report.status_code == 422
+    records = repo.order_workshop_records(order_id)
+    assert len(records) == 1
+    rework_report = client.post(
+        "/workshop/mold",
+        data={"csrf": csrf(client.get("/workshop/mold").text), "order_no": [order_no], "material": ["铜"], "size_text": ["52MM"], "spec": ["3D"], "quantity": ["3"], "unit_price": ["20"], "record_type": ["rework"]},
+        follow_redirects=False,
+    )
+    assert rework_report.status_code == 303
     records = repo.order_workshop_records(order_id)
     assert len(records) == 2
     assert records[1]["quantity"] == 3
+    assert records[1]["material"] == "铜"
+    assert records[1]["record_type"] == "rework"
     assert abs(records[1]["unit_price"] - 20) < 1e-9
     history = client.get(f"/workshop/mold/history?order_no={order_no}")
     assert history.json()["record"]["quantity"] == 100
     assert abs(history.json()["record"]["unit_price"] - 20) < 1e-9
+    assert history.json()["record"]["record_type"] == "rework"
     delete = client.post(
         f"/workshop/mold/records/{records[1]['id']}/delete",
         data={"csrf": csrf(client.get("/workshop/mold").text)},
         follow_redirects=False,
     )
-    assert delete.status_code == 303
+    assert delete.status_code == 403
     records = repo.order_workshop_records(order_id)
-    assert len(records) == 1
+    assert len(records) == 2
 
     detail = client.get(f"/orders/{order_id}")
     assert detail.status_code == 200
@@ -269,7 +290,7 @@ with TestClient(app) as client:
         repo.create_workshop_records(
             "mold",
             "\u523b\u6a21",
-            [{"order_no": bulk_order_no, "quantity": 1, "unit_price": 6.6}],
+            [{"order_no": bulk_order_no, "material": "锌", "size_text": "45MM", "spec": "2D", "quantity": 1, "unit_price": 6.6, "record_type": "normal"}],
             workshop_user,
         )
     bulk_page = client.get("/workshop/mold?q=TWD1-260722")

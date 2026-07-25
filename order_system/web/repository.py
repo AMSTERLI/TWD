@@ -146,6 +146,10 @@ class Repository:
                     order_no TEXT NOT NULL,
                     department_key TEXT NOT NULL,
                     department_name TEXT NOT NULL,
+                    material TEXT,
+                    size_text TEXT,
+                    spec TEXT,
+                    record_type TEXT NOT NULL DEFAULT 'normal',
                     quantity INTEGER NOT NULL DEFAULT 1,
                     unit_price REAL NOT NULL DEFAULT 0,
                     shipped_status INTEGER NOT NULL DEFAULT 0,
@@ -203,6 +207,14 @@ class Repository:
                 conn.execute("ALTER TABLE workshop_records ADD COLUMN shipped_status INTEGER NOT NULL DEFAULT 0")
             if "quantity" not in existing_workshop_columns:
                 conn.execute("ALTER TABLE workshop_records ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1")
+            if "material" not in existing_workshop_columns:
+                conn.execute("ALTER TABLE workshop_records ADD COLUMN material TEXT")
+            if "size_text" not in existing_workshop_columns:
+                conn.execute("ALTER TABLE workshop_records ADD COLUMN size_text TEXT")
+            if "spec" not in existing_workshop_columns:
+                conn.execute("ALTER TABLE workshop_records ADD COLUMN spec TEXT")
+            if "record_type" not in existing_workshop_columns:
+                conn.execute("ALTER TABLE workshop_records ADD COLUMN record_type TEXT NOT NULL DEFAULT 'normal'")
             conn.execute(
                 "UPDATE web_users SET display_name = username "
                 "WHERE display_name IS NULL OR TRIM(display_name) = ''"
@@ -223,6 +235,23 @@ class Repository:
                    )
                    WHERE reviewer_id IS NOT NULL
                      AND EXISTS (SELECT 1 FROM web_users WHERE web_users.id = order_edit_requests.reviewer_id)"""
+            )
+            conn.execute(
+                """UPDATE order_no_reservations
+                   SET used_order_id = (
+                           SELECT o.id
+                           FROM orders o
+                           WHERE o.order_no = order_no_reservations.order_no
+                           ORDER BY o.id DESC
+                           LIMIT 1
+                       ),
+                       used_at = COALESCE(used_at, CURRENT_TIMESTAMP)
+                   WHERE used_order_id IS NULL
+                     AND EXISTS (
+                         SELECT 1
+                         FROM orders o
+                         WHERE o.order_no = order_no_reservations.order_no
+                     )"""
             )
             conn.executemany(
                 "INSERT OR IGNORE INTO outsource_processes (process_name) VALUES (?)",
@@ -1148,7 +1177,8 @@ class Repository:
                         """SELECT MAX(id) AS id, MAX(order_id) AS order_id, order_no, department_key,
                                   MAX(department_name) AS department_name, SUM(COALESCE(quantity, 1)) AS quantity,
                                   MAX(unit_price) AS unit_price, MAX(shipped_status) AS shipped_status,
-                                  MAX(reported_at) AS reported_at
+                                  MAX(material) AS material, MAX(size_text) AS size_text, MAX(spec) AS spec,
+                                  MAX(record_type) AS record_type, MAX(reported_at) AS reported_at
                            FROM workshop_records
                            WHERE department_key = ? AND order_no = ? AND reported_at = ?
                            GROUP BY order_no, department_key""",
@@ -1159,7 +1189,7 @@ class Repository:
             else:
                 row = conn.execute(
                     """SELECT id, order_id, order_no, department_key, department_name, quantity, unit_price,
-                              shipped_status, reported_at
+                              shipped_status, material, size_text, spec, record_type, reported_at
                        FROM workshop_records
                        WHERE department_key = ? AND order_no = ?
                        ORDER BY reported_at DESC, id DESC
@@ -1228,7 +1258,33 @@ class Repository:
                 employee_names = list(dict.fromkeys(employee_names))
                 if not employee_names or any(item not in press_employees for item in employee_names):
                     raise ValueError(f"\u8ba2\u5355 {order_no} \u8bf7\u9009\u62e9\u51b2\u538b\u5458\u5de5")
-            clean_rows.append({"order_no": order_no, "unit_price": unit_price, "quantity": quantity, "employee_names": employee_names})
+            material = str(row.get("material") or "").strip()
+            size_text = str(row.get("size_text") or "").strip()
+            spec = str(row.get("spec") or "").strip()
+            record_type = str(row.get("record_type") or "normal").strip()
+            if department_key == "mold":
+                if material not in {"锌", "铁", "铜"}:
+                    raise ValueError(f"订单 {order_no} 请选择材质")
+                if len(size_text) > 50:
+                    raise ValueError(f"订单 {order_no} 的尺寸不能超过 50 个字")
+                if spec not in {"2D", "3D", "2D+2D", "2D+3D", "3D+3D"}:
+                    raise ValueError(f"订单 {order_no} 请选择规格")
+                record_type = "rework" if record_type == "rework" else "normal"
+            else:
+                material = ""
+                size_text = ""
+                spec = ""
+                record_type = "normal"
+            clean_rows.append({
+                "order_no": order_no,
+                "unit_price": unit_price,
+                "quantity": quantity,
+                "employee_names": employee_names,
+                "material": material,
+                "size_text": size_text,
+                "spec": spec,
+                "record_type": record_type,
+            })
         if not clean_rows:
             raise ValueError("\u8bf7\u81f3\u5c11\u626b\u63cf\u4e00\u4e2a\u8ba2\u5355")
         created_ids: list[int] = []
@@ -1242,16 +1298,29 @@ class Repository:
                 ).fetchone()
                 if not order:
                     raise ValueError(f"\u8ba2\u5355 {row['order_no']} \u4e0d\u5b58\u5728")
+                if department_key == "mold" and row.get("record_type") != "rework":
+                    existing = conn.execute(
+                        """SELECT id FROM workshop_records
+                           WHERE department_key = 'mold' AND order_no = ?
+                             AND COALESCE(record_type, 'normal') <> 'rework'
+                           LIMIT 1""",
+                        (str(order["order_no"]),),
+                    ).fetchone()
+                    if existing:
+                        raise ValueError(f"订单 {row['order_no']} 已录入刻模，普通单不允许重复录入；请使用开重刻单")
                 employee_names = row.get("employee_names") or [operator_name]
                 split_quantity = row["quantity"] / max(1, len(employee_names))
                 for employee_name in employee_names:
                     cursor = conn.execute(
                         """INSERT INTO workshop_records
-                           (order_id, order_no, department_key, department_name, quantity, unit_price, operator_id, operator_name)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                           (order_id, order_no, department_key, department_name, material, size_text, spec,
+                            record_type, quantity, unit_price, operator_id, operator_name)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             int(order["id"]), str(order["order_no"]), department_key, department_name,
-                            split_quantity, row["unit_price"], operator_id, employee_name or operator_name,
+                            row.get("material") or "", row.get("size_text") or "", row.get("spec") or "",
+                            row.get("record_type") or "normal", split_quantity, row["unit_price"], operator_id,
+                            employee_name or operator_name,
                         ),
                     )
                     created_ids.append(int(cursor.lastrowid))

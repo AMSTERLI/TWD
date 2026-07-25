@@ -59,6 +59,9 @@ WORKSHOP_DEPARTMENTS = {
         "name": "\u523b\u6a21",
         "password_env": "TWD_WORKSHOP_MOLD_PASSWORD",
         "default_password": "kemu888",
+        "mold": True,
+        "materials": ["锌", "铁", "铜"],
+        "specs": ["2D", "3D", "2D+2D", "2D+3D", "3D+3D"],
     },
     "cutter": {
         "name": "\u8f66\u5200",
@@ -1159,6 +1162,9 @@ def workshop_department(name: str) -> dict[str, Any] | None:
         "name": department["name"],
         "employees": list(department.get("employees") or []),
         "piecework": bool(department.get("piecework")),
+        "mold": bool(department.get("mold")),
+        "materials": list(department.get("materials") or []),
+        "specs": list(department.get("specs") or []),
     }
 
 
@@ -1302,6 +1308,8 @@ async def workshop_record_delete(request: Request, department_key: str, record_i
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
     try:
+        if department_key == "mold":
+            return Response("刻模订单只能申请修改，删除请联系管理员", status_code=403)
         order_no = await run_in_threadpool(repo.delete_workshop_record, record_id, department_key)
     except ValueError as exc:
         return Response(str(exc), status_code=404)
@@ -1364,7 +1372,19 @@ async def workshop_department_export(request: Request, department_key: str):
     rows = await run_in_threadpool(repo.workshop_record_rows, await selected_workshop_record_ids(form, department_key), department_key)
     if not rows:
         return Response("请至少选择一条车间记录", status_code=400)
-    if department.get("piecework"):
+    if department.get("mold"):
+        data = [[
+            row.get("order_no") or "",
+            row.get("material") or "",
+            row.get("size_text") or "",
+            row.get("spec") or "",
+            row.get("quantity") or 1,
+            row.get("unit_price") or 0,
+            "重刻" if row.get("record_type") == "rework" else "正常",
+            beijing_time(row.get("reported_at") or ""),
+        ] for row in rows]
+        headers = ["订单号", "材质", "尺寸", "规格", "数量", "金额", "订单类别", "录入时间"]
+    elif department.get("piecework"):
         data = [[
             row.get("order_no") or "",
             row.get("product_name") or "",
@@ -1449,6 +1469,10 @@ async def workshop_department_submit(request: Request, department_key: str):
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
     employee_names = form.getlist("employee_name")
+    materials = form.getlist("material")
+    size_texts = form.getlist("size_text")
+    specs = form.getlist("spec")
+    record_types = form.getlist("record_type")
     rows = []
     for index, (order_no, unit_price, quantity) in enumerate(zip(
         form.getlist("order_no"), form.getlist("unit_price"), form.getlist("quantity")
@@ -1458,6 +1482,10 @@ async def workshop_department_submit(request: Request, department_key: str):
             "unit_price": unit_price,
             "quantity": quantity,
             "employee_name": employee_names[index] if index < len(employee_names) else "",
+            "material": materials[index] if index < len(materials) else "",
+            "size_text": size_texts[index] if index < len(size_texts) else "",
+            "spec": specs[index] if index < len(specs) else "",
+            "record_type": record_types[index] if index < len(record_types) else "normal",
         })
     try:
         created_ids = await run_in_threadpool(

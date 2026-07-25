@@ -405,6 +405,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   const template = section.querySelector("[data-workshop-row-template]");
   const addButton = section.querySelector("[data-add-workshop-row]");
   const historyUrl = section.dataset.workshopHistoryUrl || "";
+  const isMold = section.dataset.mold === "1";
   const employeeButtons = [...section.querySelectorAll("[data-employee-value]")];
   const historyChecks = new WeakMap();
   const scanAdvanceTimers = new WeakMap();
@@ -492,6 +493,12 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       if (priceInput && hasExistingRecord) priceInput.value = cleanNumber(record.unit_price);
       const quantityInput = row.querySelector('[name="quantity"]');
       if (quantityInput) quantityInput.value = cleanNumber(record.quantity || 1);
+      const materialInput = row.querySelector('[name="material"]');
+      if (materialInput && record.material) materialInput.value = record.material;
+      const sizeInput = row.querySelector('[name="size_text"]');
+      if (sizeInput && record.size_text) sizeInput.value = record.size_text;
+      const specInput = row.querySelector('[name="spec"]');
+      if (specInput && record.spec) specInput.value = record.spec;
       return hasExistingRecord ? orderNo : null;
     } catch (error) {
       console.warn("Failed to load workshop history", error);
@@ -511,6 +518,19 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     const selected = employeeButtons.filter(button => button.classList.contains("active"));
     const source = selected.length ? selected : employeeButtons.slice(0, 1);
     return source.map(button => button.dataset.employeeValue || "").filter(Boolean).join(",");
+  }
+
+  function isReworkRow(row) {
+    return row?.querySelector("[data-record-type]")?.value === "rework";
+  }
+
+  function setReworkRow(row, enabled) {
+    const input = row?.querySelector("[data-record-type]");
+    const button = row?.querySelector("[data-toggle-rework]");
+    if (!input || !button) return;
+    input.value = enabled ? "rework" : "normal";
+    button.textContent = enabled ? "重刻" : "开重刻单";
+    button.classList.toggle("primary", enabled);
   }
 
   function applyCurrentEmployee(row, force = false) {
@@ -604,6 +624,14 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   rows.querySelectorAll("tr").forEach(row => applyCurrentEmployee(row, true));
   addButton?.addEventListener("click", () => addRow());
   section.addEventListener("click", event => {
+    const reworkButton = event.target.closest("[data-toggle-rework]");
+    if (reworkButton) {
+      event.preventDefault();
+      const row = reworkButton.closest("tr");
+      setReworkRow(row, !isReworkRow(row));
+      row?.querySelector("[data-workshop-order]")?.focus();
+      return;
+    }
     const button = event.target.closest("[data-remove-workshop-row]");
     if (!button) return;
     const row = button.closest("tr");
@@ -611,6 +639,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       row.querySelectorAll("input").forEach(input => {
         if (input.name === "unit_price") input.value = "0";
         else if (input.name === "quantity") input.value = "1";
+        else if (input.name === "record_type") input.value = "normal";
         else input.value = "";
       });
       applyCurrentEmployee(row, true);
@@ -657,9 +686,16 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     const duplicates = [];
     for (const row of activeRows) {
       const existingOrderNo = await loadWorkshopHistory(row);
-      if (existingOrderNo && !duplicates.includes(existingOrderNo)) duplicates.push(existingOrderNo);
+      const duplicateBlocked = isMold ? (existingOrderNo && !isReworkRow(row)) : existingOrderNo;
+      if (duplicateBlocked && !duplicates.includes(existingOrderNo)) duplicates.push(existingOrderNo);
     }
-    if (duplicates.length && !window.confirm(`以下订单已在当前车间报到过：${duplicates.join("、")}。是否继续保存新的报到记录？`)) return;
+    if (duplicates.length) {
+      if (isMold) {
+        window.alert(`以下订单已录入刻模，普通单不允许重复录入：${duplicates.join("、")}。如需重复录入，请点击该行的“开重刻单”。`);
+        return;
+      }
+      if (!window.confirm(`以下订单已在当前车间报到过：${duplicates.join("、")}。是否继续保存新的报到记录？`)) return;
+    }
     event.target.submit();
   });
   const first = rows.querySelector("[data-workshop-order]");
