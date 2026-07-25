@@ -38,3 +38,7 @@
 .workshop-filterbar{max-width:980px}.workshop-filterbar label{min-width:150px}.workshop-filterbar button{align-self:end;min-height:39px}
 .workshop-press-page .topbar{height:44px;padding:0 18px}.workshop-press-page .topbar .brand,.workshop-press-page .topbar .userbox{display:none}.workshop-press-page .topbar nav{justify-content:flex-start}.workshop-press-page .container{padding-top:16px}
 .employee-selection{display:inline-flex;align-items:center;min-height:58px;max-width:230px;white-space:normal;line-height:1.25;font-size:18px;font-weight:800;color:var(--brand)}
+
+.workshop-selection-toolbar{margin:12px 0 10px}.workshop-selection-toolbar .primary{min-width:112px}.batch-table [name="size_text"]{width:180px;min-width:180px}
+
+.workshop-record-list{margin-bottom:18px}.workshop-record-list>.panel{margin-bottom:0}.workshop-record-list table a{font-weight:700}.batch-table [name="size_text"]{width:180px;min-width:180px}

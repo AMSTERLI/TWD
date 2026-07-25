@@ -66,7 +66,11 @@ def assert_workshop_detail_pdf_only(html: str, order_id: int, hidden_unit_price:
 with TestClient(app) as client:
     repo.create_user("admin", "admin-pass-123", "admin")
     repo.create_user("workshop", "workshop-pass-123", "workshop", display_name="\u8f66\u95f4")
-    order_id, order_no = repo.create_order(payload("TWD1-260721101"))
+    mold_payload = payload("TWD1-260721101")
+    mold_payload["height_mm"] = "1"
+    mold_payload["width_mm"] = "20"
+    mold_payload["thickness_mm"] = "5"
+    order_id, order_no = repo.create_order(mold_payload)
     cutter_order_id, cutter_order_no = repo.create_order(payload("TWD1-260721102"))
     press_order_id, press_order_no = repo.create_order(payload("TWD1-260721103"))
     auto_qty_payload = payload("TWD1-260721104")
@@ -244,7 +248,7 @@ with TestClient(app) as client:
     assert history.json()["record"]["quantity"] == 1
     assert abs(history.json()["record"]["unit_price"] - 10.5) < 1e-9
     assert history.json()["record"]["material"] == "锌"
-    assert history.json()["record"]["size_text"] == "50MM"
+    assert history.json()["record"]["size_text"] == "?1?20?5"
     assert history.json()["record"]["spec"] == "2D"
     quantity_request = client.post(
         f"/workshop/mold/records/{records[0]['id']}/quantity-request",

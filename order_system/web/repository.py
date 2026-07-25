@@ -1165,7 +1165,7 @@ class Repository:
             return None
         with self.connect() as conn:
             order = conn.execute(
-                """SELECT id, order_no, quantity, spare_quantity
+                """SELECT id, order_no, quantity, spare_quantity, width_mm, height_mm, thickness_mm, diameter_mm
                    FROM orders
                    WHERE order_no = ?
                    ORDER BY id DESC LIMIT 1""",
@@ -1218,6 +1218,13 @@ class Repository:
             "shipped_status": 0,
             "reported_at": "",
         }
+        size_parts: list[str] = []
+        for label, key in (("?", "height_mm"), ("?", "width_mm"), ("?", "thickness_mm"), ("??", "diameter_mm")):
+            value = str(order[key] or "").strip()
+            if value:
+                size_parts.append(f"{label}{value}")
+        if size_parts:
+            result["size_text"] = "".join(size_parts)
         if department_key in {"mold", "cutter"}:
             result["quantity"] = 1
         else:
