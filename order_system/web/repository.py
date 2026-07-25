@@ -512,6 +512,7 @@ class Repository:
         department_key: str,
         user: dict[str, Any],
         quantity: int,
+        unit_price: float,
         reason: str,
     ) -> int:
         quantity = int(quantity or 0)
@@ -519,21 +520,23 @@ class Repository:
         department_key = str(department_key or "").strip()
         if quantity <= 0:
             raise ValueError("数量必须大于 0")
+        if unit_price < 0:
+            raise ValueError("金额不能小于 0")
         if not reason:
             raise ValueError("请填写修改原因")
         if len(reason) > 1000:
             raise ValueError("修改原因不能超过 1000 个字")
         with self.connect(write=True) as conn:
             record = conn.execute(
-                """SELECT w.id, w.order_id, w.order_no, w.department_key, w.department_name, w.quantity
+                """SELECT w.id, w.order_id, w.order_no, w.department_key, w.department_name, w.quantity, w.unit_price
                    FROM workshop_records w
                    WHERE w.id = ? AND (? = '' OR w.department_key = ?)""",
                 (int(record_id), department_key, department_key),
             ).fetchone()
             if not record:
                 raise ValueError("车间报到记录不存在")
-            if int(record["quantity"] or 1) == quantity:
-                raise ValueError("数量没有变化")
+            if int(record["quantity"] or 1) == quantity and abs(float(record["unit_price"] or 0) - unit_price) < 1e-9:
+                raise ValueError("数量和金额都没有变化")
             existing = conn.execute(
                 """SELECT id FROM order_edit_requests
                    WHERE workshop_record_id = ? AND requester_id = ? AND status = 'pending'
@@ -543,10 +546,14 @@ class Repository:
             ).fetchone()
             if existing:
                 raise ValueError("这条刻模记录已有待审批的数量修改申请")
-            summary = (
-                f"{record['department_name']}数量从{int(record['quantity'] or 1)}修改为{quantity}；"
-                f"原因：{reason}"
-            )
+            changes = []
+            old_quantity = int(record["quantity"] or 1)
+            old_unit_price = float(record["unit_price"] or 0)
+            if old_quantity != quantity:
+                changes.append(f"数量从{old_quantity}修改为{quantity}")
+            if abs(old_unit_price - unit_price) >= 1e-9:
+                changes.append(f"金额从{old_unit_price:g}修改为{unit_price:g}")
+            summary = f"{record['department_name']}" + "，".join(changes) + f"；原因：{reason}"
             cursor = conn.execute(
                 """INSERT INTO order_edit_requests
                    (order_id, order_no, requester_id, requester_name, reason, request_type,
@@ -560,7 +567,7 @@ class Repository:
                     summary[:1000],
                     quantity,
                     int(record_id),
-                    json.dumps({"quantity": quantity}, ensure_ascii=False, separators=(",", ":")),
+                    json.dumps({"quantity": quantity, "unit_price": unit_price}, ensure_ascii=False, separators=(",", ":")),
                 ),
             )
             return int(cursor.lastrowid)
@@ -625,11 +632,12 @@ class Repository:
             elif approved and request_type == "workshop_quantity":
                 payload = json.loads(str(row["proposed_payload_json"] or "{}"))
                 quantity = int(payload.get("quantity") or row["supplement_quantity"] or 0)
+                unit_price = float(payload.get("unit_price") or 0)
                 if quantity <= 0:
                     raise ValueError("数量必须大于 0")
                 cursor = conn.execute(
-                    "UPDATE workshop_records SET quantity = ? WHERE id = ? AND order_id = ?",
-                    (quantity, int(row["workshop_record_id"] or 0), int(row["order_id"])),
+                    "UPDATE workshop_records SET quantity = ?, unit_price = ? WHERE id = ? AND order_id = ?",
+                    (quantity, unit_price, int(row["workshop_record_id"] or 0), int(row["order_id"])),
                 )
                 if cursor.rowcount != 1:
                     raise ValueError("车间报到记录不存在")
@@ -1206,7 +1214,10 @@ class Repository:
             "shipped_status": 0,
             "reported_at": "",
         }
-        result["quantity"] = order_quantity
+        if department_key == "mold":
+            result["quantity"] = 1
+        else:
+            result["quantity"] = order_quantity
         result["existing_workshop_record"] = bool(row)
         return result
 

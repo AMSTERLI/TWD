@@ -1308,7 +1308,7 @@ async def workshop_record_delete(request: Request, department_key: str, record_i
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
     try:
-        if department_key == "mold":
+        if department_key == "mold" and user.get("role") != "admin":
             return Response("刻模订单只能申请修改，删除请联系管理员", status_code=403)
         order_no = await run_in_threadpool(repo.delete_workshop_record, record_id, department_key)
     except ValueError as exc:
@@ -1337,6 +1337,7 @@ async def workshop_record_quantity_request(request: Request, department_key: str
             department_key,
             user,
             as_int(form.get("quantity"), 1),
+            as_float(form.get("unit_price")),
             str(form.get("reason") or "").strip(),
         )
         await run_in_threadpool(

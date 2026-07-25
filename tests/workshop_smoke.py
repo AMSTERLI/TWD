@@ -230,18 +230,19 @@ with TestClient(app) as client:
     assert narrow_date_page.status_code == 200 and order_no not in narrow_date_page.text
     history = client.get(f"/workshop/mold/history?order_no={order_no}")
     assert history.status_code == 200
-    assert history.json()["record"]["quantity"] == 100
+    assert history.json()["record"]["quantity"] == 1
     assert abs(history.json()["record"]["unit_price"] - 10.5) < 1e-9
     assert history.json()["record"]["material"] == "锌"
     assert history.json()["record"]["size_text"] == "50MM"
     assert history.json()["record"]["spec"] == "2D"
     quantity_request = client.post(
         f"/workshop/mold/records/{records[0]['id']}/quantity-request",
-        data={"csrf": csrf(list_page.text), "quantity": "5", "reason": "漏扫数量"},
+        data={"csrf": csrf(list_page.text), "quantity": "5", "unit_price": "12.5", "reason": "漏扫数量"},
         follow_redirects=False,
     )
     assert quantity_request.status_code == 303 and quantity_request.headers["location"] == "/messages"
     assert repo.order_workshop_records(order_id)[0]["quantity"] == 2
+    assert abs(repo.order_workshop_records(order_id)[0]["unit_price"] - 10.5) < 1e-9
     workshop_messages = client.get("/messages")
     assert workshop_messages.status_code == 200 and "刻模数量修改" in workshop_messages.text and "数量从2修改为5" in workshop_messages.text
     duplicate_report = client.post(
@@ -265,7 +266,7 @@ with TestClient(app) as client:
     assert records[1]["record_type"] == "rework"
     assert abs(records[1]["unit_price"] - 20) < 1e-9
     history = client.get(f"/workshop/mold/history?order_no={order_no}")
-    assert history.json()["record"]["quantity"] == 100
+    assert history.json()["record"]["quantity"] == 1
     assert abs(history.json()["record"]["unit_price"] - 20) < 1e-9
     assert history.json()["record"]["record_type"] == "rework"
     delete = client.post(
@@ -276,7 +277,33 @@ with TestClient(app) as client:
     assert delete.status_code == 403
     records = repo.order_workshop_records(order_id)
     assert len(records) == 2
+    client.post("/logout", data={"csrf": csrf(client.get("/workshop/mold").text)})
+    admin_login_page = client.get("/login")
+    admin_login = client.post(
+        "/login",
+        data={"csrf": csrf(admin_login_page.text), "username": "admin", "password": "admin-pass-123"},
+        follow_redirects=False,
+    )
+    assert admin_login.status_code == 303
+    admin_mold_list = client.get("/workshop/mold")
+    assert 'data-delete-url="/workshop/mold/records/' in admin_mold_list.text
+    admin_delete = client.post(
+        f"/workshop/mold/records/{records[1]['id']}/delete",
+        data={"csrf": csrf(admin_mold_list.text)},
+        follow_redirects=False,
+    )
+    assert admin_delete.status_code == 303
+    records = repo.order_workshop_records(order_id)
+    assert len(records) == 1
 
+    client.post("/logout", data={"csrf": csrf(admin_mold_list.text)})
+    workshop_login_page = client.get("/login")
+    workshop_login = client.post(
+        "/login",
+        data={"csrf": csrf(workshop_login_page.text), "username": "workshop", "password": "workshop-pass-123"},
+        follow_redirects=False,
+    )
+    assert workshop_login.status_code == 303
     detail = client.get(f"/orders/{order_id}")
     assert detail.status_code == 200
     assert_workshop_detail_pdf_only(detail.text, order_id, "10.5000")
@@ -293,6 +320,13 @@ with TestClient(app) as client:
             [{"order_no": bulk_order_no, "material": "锌", "size_text": "45MM", "spec": "2D", "quantity": 1, "unit_price": 6.6, "record_type": "normal"}],
             workshop_user,
         )
+    bulk_home = client.get("/workshop")
+    bulk_unlock = client.post(
+        "/workshop/mold/unlock",
+        data={"csrf": csrf(bulk_home.text), "password": "mold-pass-123"},
+        follow_redirects=False,
+    )
+    assert bulk_unlock.status_code == 303
     bulk_page = client.get("/workshop/mold?q=TWD1-260722")
     assert bulk_page.status_code == 200 and 'data-selection-total="45"' in bulk_page.text
     bulk_export = client.post(
@@ -306,6 +340,13 @@ with TestClient(app) as client:
     exported_order_nos = {bulk_sheet.cell(row=row_index, column=1).value for row_index in range(2, bulk_sheet.max_row + 1)}
     assert len(exported_order_nos) == 45
     assert "TWD1-260722200" in exported_order_nos and "TWD1-260722244" in exported_order_nos
+    cutter_export_home = client.get("/workshop")
+    cutter_export_unlock = client.post(
+        "/workshop/cutter/unlock",
+        data={"csrf": csrf(cutter_export_home.text), "password": "cutter-pass-123"},
+        follow_redirects=False,
+    )
+    assert cutter_export_unlock.status_code == 303
     cutter_export = client.post(
         "/workshop/cutter/export",
         data={"csrf": csrf(client.get("/workshop/cutter").text), "selected_ids": [str(cutter_records[0]["id"])]},
@@ -340,6 +381,7 @@ with TestClient(app) as client:
     )
     assert review.status_code == 303
     assert repo.order_workshop_records(order_id)[0]["quantity"] == 5
+    assert abs(repo.order_workshop_records(order_id)[0]["unit_price"] - 12.5) < 1e-9
 
     admin_detail = client.get(f"/orders/{order_id}")
     assert admin_detail.status_code == 200
@@ -347,7 +389,7 @@ with TestClient(app) as client:
     assert "current" in admin_detail.text
     assert "刻模" in admin_detail.text
     assert "冲压" not in admin_detail.text
-    assert "10.5000" in admin_detail.text
+    assert "12.5000" in admin_detail.text
     assert ">5<" in admin_detail.text
 
 print(f"workshop smoke ok: {root}")

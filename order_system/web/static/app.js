@@ -492,7 +492,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       const priceInput = row.querySelector('[name="unit_price"]');
       if (priceInput && hasExistingRecord) priceInput.value = cleanNumber(record.unit_price);
       const quantityInput = row.querySelector('[name="quantity"]');
-      if (quantityInput) quantityInput.value = cleanNumber(record.quantity || 1);
+      if (quantityInput) quantityInput.value = isMold ? "1" : cleanNumber(record.quantity || 1);
       const materialInput = row.querySelector('[name="material"]');
       if (materialInput && record.material) materialInput.value = record.material;
       const sizeInput = row.querySelector('[name="size_text"]');
@@ -1363,7 +1363,7 @@ if (contextRows.length) {
   const menu = document.createElement("div");
   menu.className = "admin-context-menu";
   menu.hidden = true;
-  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-workshop-quantity>申请改数量</button><button type="button" data-context-stash>暂存</button><button type="button" data-context-replenish>申请补数</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-delete>删除</button>';
+  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-workshop-quantity>申请改数量/金额</button><button type="button" data-context-stash>暂存</button><button type="button" data-context-replenish>申请补数</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-delete>删除</button>';
   document.body.appendChild(menu);
   let activeRow = null;
 
@@ -1412,6 +1412,14 @@ if (contextRows.length) {
       window.alert("数量必须是大于 0 的整数");
       return;
     }
+    const currentAmount = activeRow.dataset.workshopAmount || "0";
+    const rawAmount = window.prompt(`请输入${activeRow.dataset.recordLabel || "该记录"}的新金额`, currentAmount);
+    if (rawAmount === null) return;
+    const amount = rawAmount.trim();
+    if (!/^\d+(\.\d{1,4})?$/.test(amount)) {
+      window.alert("金额必须是大于等于 0 的数字，最多 4 位小数");
+      return;
+    }
     const rawReason = window.prompt(`请输入${activeRow.dataset.recordLabel || "该记录"}的修改原因`);
     if (!rawReason || !rawReason.trim()) {
       window.alert("请填写修改原因");
@@ -1428,11 +1436,15 @@ if (contextRows.length) {
     quantityInput.type = "hidden";
     quantityInput.name = "quantity";
     quantityInput.value = quantity;
+    const amountInput = document.createElement("input");
+    amountInput.type = "hidden";
+    amountInput.name = "unit_price";
+    amountInput.value = amount;
     const reasonInput = document.createElement("input");
     reasonInput.type = "hidden";
     reasonInput.name = "reason";
     reasonInput.value = rawReason.trim();
-    form.append(csrf, quantityInput, reasonInput);
+    form.append(csrf, quantityInput, amountInput, reasonInput);
     document.body.appendChild(form);
     form.submit();
   });
