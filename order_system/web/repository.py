@@ -1219,7 +1219,7 @@ class Repository:
             "reported_at": "",
         }
         size_parts: list[str] = []
-        for label, key in (("?", "height_mm"), ("?", "width_mm"), ("?", "thickness_mm"), ("??", "diameter_mm")):
+        for label, key in (("\u9ad8", "height_mm"), ("\u5bbd", "width_mm"), ("\u539a", "thickness_mm"), ("\u76f4\u5f84", "diameter_mm")):
             value = str(order[key] or "").strip()
             if value:
                 size_parts.append(f"{label}{value}")

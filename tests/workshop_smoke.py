@@ -248,7 +248,7 @@ with TestClient(app) as client:
     assert history.json()["record"]["quantity"] == 1
     assert abs(history.json()["record"]["unit_price"] - 10.5) < 1e-9
     assert history.json()["record"]["material"] == "锌"
-    assert history.json()["record"]["size_text"] == "?1?20?5"
+    assert history.json()["record"]["size_text"] == "\u9ad81\u5bbd20\u539a5"
     assert history.json()["record"]["spec"] == "2D"
     quantity_request = client.post(
         f"/workshop/mold/records/{records[0]['id']}/quantity-request",
@@ -302,6 +302,7 @@ with TestClient(app) as client:
     assert admin_login.status_code == 303
     admin_mold_list = client.get("/workshop/mold")
     assert 'data-delete-url="/workshop/mold/records/' in admin_mold_list.text
+    assert 'data-csrf="' in admin_mold_list.text
     admin_delete = client.post(
         f"/workshop/mold/records/{records[1]['id']}/delete",
         data={"csrf": csrf(admin_mold_list.text)},
