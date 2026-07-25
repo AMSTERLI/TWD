@@ -230,8 +230,8 @@ class Database:
             conn.execute(
                 """
                 UPDATE orders
-                SET materials_json = REPLACE(materials_json, '  UV"', '  UV印刷"')
-                WHERE materials_json LIKE '%  UV"%'
+                SET materials_json = REPLACE(REPLACE(materials_json, '  UV印刷"', '  UV"'), '  平面印刷"', '  平印"')
+                WHERE materials_json LIKE '%  UV印刷"%' OR materials_json LIKE '%  平面印刷"%'
                 """
             )
             self._seed_customers(conn)

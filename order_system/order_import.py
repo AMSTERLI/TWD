@@ -399,8 +399,8 @@ def build_extraction_prompt(catalogs: dict[str, list[str]]) -> str:
         "extra_fee只提取明确标注的附加费、模具费或其他独立费用。production_no仅提取生产编号/生产制号；bi_no仅提取PO号/采购单号。"
         "宽、高、厚、直径按标签分别填写；圆形且明确标注直径时填diameter_mm，不得同时把直径填入width_mm。"
         "仅在原文明示尺寸如样时size_as_sample=true，明示不是如样时为false，否则null。"
-        "materials必须从允许值中选择；烤漆、珐琅、UV印刷、平面印刷、镭雕属于制作工艺，不属于coloring。"
-        "铜冲压烤漆、锌合金压铸UV印刷等应去掉冲压/压铸/材质字样，匹配为类似'铜  烤漆'的允许值。"
+        "materials必须从允许值中选择；烤漆、珐琅、UV、平印、镭雕属于制作工艺，不属于coloring。"
+        "铜冲压烤漆、锌合金压铸UV等应去掉冲压/压铸/材质字样，匹配为类似'铜  烤漆'的允许值。"
         "coloring表示上色依据，只能选择彩图、样品、说明，不表示烤漆或印刷工艺。"
         "accessories只填写产品配件；蝴蝶帽属于packaging。"
         "polishing中三面等价于正面+侧面+背面；输出三面后不得再输出正面、侧面、背面。"
@@ -748,11 +748,11 @@ def _append_note(existing: Any, addition: str) -> str:
 def _surface_craft_from_text(value: str, allowed: list[str]) -> str:
     cleaned = re.sub(r"\s+", "", value)
     aliases = {
-        "UV印刷": "UV印刷",
-        "UV": "UV印刷",
-        "uv": "UV印刷",
-        "平面印刷": "平面印刷",
-        "印刷": "平面印刷",
+        "UV印刷": "UV",
+        "UV": "UV",
+        "uv": "UV",
+        "平面印刷": "平印",
+        "印刷": "平印",
         "烤漆": "烤漆",
         "珐琅": "珐琅",
         "法琅": "珐琅",
@@ -875,11 +875,11 @@ def _normalize_material_option(value: str, allowed: list[str]) -> str:
         "法琅": "珐琅",
         "假珐琅": "珐琅",
         "软珐琅": "珐琅",
-        "UV印刷": "UV印刷",
-        "UV": "UV印刷",
-        "uv": "UV印刷",
-        "平面印刷": "平面印刷",
-        "印刷": "平面印刷",
+        "UV印刷": "UV",
+        "UV": "UV",
+        "uv": "UV",
+        "平面印刷": "平印",
+        "印刷": "平印",
         "镭雕": "镭雕",
         "雷雕": "镭雕",
     }

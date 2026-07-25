@@ -139,15 +139,26 @@ with TestClient(app) as client:
     assert cutter.status_code == 200 and "data-workshop-scan" in cutter.text
     cutter_report = client.post(
         "/workshop/cutter",
-        data={"csrf": csrf(cutter.text), "order_no": [cutter_order_no], "quantity": ["1"], "unit_price": ["8.8"]},
+        data={"csrf": csrf(cutter.text), "order_no": [cutter_order_no], "size_text": ["35MM"], "note_text": ["\u5185\u52071\u652f"], "quantity": ["1"], "unit_price": ["8.8"], "record_type": ["normal"]},
         follow_redirects=False,
     )
     assert cutter_report.status_code == 303
     cutter_records = repo.order_workshop_records(cutter_order_id)
     assert len(cutter_records) == 1
-    assert cutter_records[0]["department_name"] == "\u8f66\u5200"
+    assert cutter_records[0]["department_name"] == "\u5207\u5200"
     assert cutter_records[0]["quantity"] == 1
+    assert cutter_records[0]["size_text"] == "35MM"
+    assert cutter_records[0]["note_text"] == "\u5185\u52071\u652f"
+    assert cutter_records[0]["record_type"] == "normal"
     assert abs(cutter_records[0]["unit_price"] - 8.8) < 1e-9
+    cutter_list = client.get("/workshop/cutter")
+    assert cutter_list.status_code == 200 and cutter_order_no in cutter_list.text
+    assert "&#23610;&#23544;" in cutter_list.text and "&#22791;&#27880;" in cutter_list.text
+    assert "35MM" in cutter_list.text and "\u5185\u52071\u652f" in cutter_list.text and "&#27491;&#24120;" in cutter_list.text
+    assert 'data-delete-url="/workshop/cutter/records/' not in cutter_list.text
+    assert 'data-workshop-quantity-url="/workshop/cutter/records/' in cutter_list.text
+    assert "data-selected-amount-total" in cutter_list.text and 'data-amount="8.80"' in cutter_list.text
+    assert 'data-selection-amount-total-all="8.80"' in cutter_list.text
     press_unlock = client.post(
         "/workshop/press/unlock",
         data={"csrf": csrf(home.text), "password": "press-pass-123"},
@@ -180,7 +191,7 @@ with TestClient(app) as client:
     press_list = client.get("/workshop/press")
     assert press_list.status_code == 200 and ">\u5f90\u5c71\u7acb<" in press_list.text and press_order_no in press_list.text
     assert "data-selected-amount-total" in press_list.text and 'data-amount="4.80"' in press_list.text
-    assert "金额" in press_list.text and "4.80" in press_list.text
+    assert "&#37329;&#39069;" in press_list.text and "4.80" in press_list.text
     assert 'data-selection-amount-total-all="9.60"' in press_list.text
     assert 'data-workshop-quantity-url="/workshop/press/records/' not in press_list.text
     press_filtered = client.get("/workshop/press?employee_name=%E5%BE%90%E5%B1%B1%E7%AB%8B")
@@ -216,9 +227,9 @@ with TestClient(app) as client:
     assert "&#20986;&#36135;&#29366;&#24577;" not in list_page.text
     assert "/workshop/mold/ship" not in list_page.text
     assert 'data-delete-url="/workshop/mold/records/' not in list_page.text
-    assert "材质" in list_page.text and "尺寸" in list_page.text and "规格" in list_page.text and "订单类别" in list_page.text
-    assert "锌" in list_page.text and "50MM" in list_page.text and "2D" in list_page.text and "正常" in list_page.text
-    assert ">产品<" not in list_page.text and ">客户<" not in list_page.text and ">部门<" not in list_page.text
+    assert "&#26448;&#36136;" in list_page.text and "&#23610;&#23544;" in list_page.text and "&#35268;&#26684;" in list_page.text and "&#35746;&#21333;&#31867;&#21035;" in list_page.text
+    assert "\u950c" in list_page.text and "50MM" in list_page.text and "2D" in list_page.text and "&#27491;&#24120;" in list_page.text
+    assert ">&#20135;&#21697;<" not in list_page.text and ">&#23458;&#25143;<" not in list_page.text and ">&#37096;&#38376;<" not in list_page.text
     assert 'data-request-edit-url="/workshop/mold/records/' not in list_page.text
     assert 'data-request-edit-mode="prompt"' not in list_page.text
     assert 'data-workshop-quantity-url="/workshop/mold/records/' in list_page.text
@@ -360,7 +371,9 @@ with TestClient(app) as client:
     assert sheet.max_column == 7
     assert not any("\u51fa\u8d27" in str(value) or "鍑鸿揣" in str(value) for value in headers)
     assert sheet.cell(row=2, column=1).value == cutter_order_no
-    assert sheet.cell(row=2, column=4).value == "车刀"
+    assert sheet.cell(row=2, column=2).value == "35MM"
+    assert sheet.cell(row=2, column=3).value == "\u5185\u52071\u652f"
+    assert sheet.cell(row=2, column=5).value == 8.8
 
     page = client.get("/")
     client.post("/logout", data={"csrf": csrf(page.text)})

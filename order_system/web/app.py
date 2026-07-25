@@ -59,14 +59,18 @@ WORKSHOP_DEPARTMENTS = {
         "name": "\u523b\u6a21",
         "password_env": "TWD_WORKSHOP_MOLD_PASSWORD",
         "default_password": "kemu888",
+        "tooling": True,
         "mold": True,
-        "materials": ["锌", "铁", "铜"],
+        "materials": ["\u950c", "\u94c1", "\u94dc"],
         "specs": ["2D", "3D", "2D+2D", "2D+3D", "3D+3D"],
     },
     "cutter": {
-        "name": "\u8f66\u5200",
+        "name": "\u5207\u5200",
         "password_env": "TWD_WORKSHOP_CUTTER_PASSWORD",
         "default_password": "chedao888",
+        "tooling": True,
+        "cutter": True,
+        "notes": ["\u5185\u52071\u652f", "\u54ac\u677f", "\u8df3\u6b65"],
     },
     "press": {
         "name": "\u51b2\u538b",
@@ -158,7 +162,7 @@ def note_font_size(value: Any, default: float = 11.5) -> float:
         size = float(str(value or default).replace(",", ""))
     except ValueError:
         size = default
-    return min(14.0, max(8.0, size))
+    return min(20.0, max(8.0, size))
 
 
 def as_int(value: Any, default: int = 0) -> int:
@@ -187,6 +191,27 @@ def parse_price_tiers(form: Any) -> list[dict[str, float]]:
 
 def format_price_tiers(tiers: list[dict[str, float]]) -> str:
     return "、".join(f"{item['quantity']:g}×{item['unit_price']:g}" for item in tiers) if tiers else "空"
+
+OPTION_ALIASES = {
+    "UV\u5370\u5237": "UV",
+    "\u5e73\u9762\u5370\u5237": "\u5e73\u5370",
+    "\u80f6\u5e3d": "\u9ed1\u80f6\u5e3d",
+}
+
+
+def normalize_option(value: Any) -> str:
+    item = str(value or "").strip()
+    return OPTION_ALIASES.get(item, item)
+
+
+def normalized_form_list(form: Any, field: str) -> list[str]:
+    values: list[str] = []
+    for raw in form.getlist(field):
+        item = normalize_option(raw)
+        if item and item not in values:
+            values.append(item)
+    return values
+
 
 def selected_ids(form: Any, field: str) -> list[int]:
     values: list[int] = []
@@ -253,15 +278,15 @@ async def selected_workshop_record_ids(form: Any, department_key: str) -> list[i
 def compose_materials(form: Any) -> list[str]:
     catalogs = import_catalogs()
     allowed = set(catalogs["materials"])
-    bases = [str(value).strip() for value in form.getlist("material_base") if str(value).strip()]
-    crafts = [str(value).strip() for value in form.getlist("material_craft") if str(value).strip()]
+    bases = normalized_form_list(form, "material_base")
+    crafts = normalized_form_list(form, "material_craft")
     values: list[str] = []
     if bases and crafts:
         candidates = [f"{base}  {craft}" for base in bases for craft in crafts]
     elif bases:
         candidates = bases
     else:
-        candidates = [str(value).strip() for value in form.getlist("materials") if str(value).strip()]
+        candidates = normalized_form_list(form, "materials")
     for candidate in candidates:
         if candidate in allowed and candidate not in values:
             values.append(candidate)
@@ -275,9 +300,10 @@ def split_materials(values: list[str]) -> tuple[list[str], list[str]]:
     bases: list[str] = []
     crafts: list[str] = []
     for value in values:
-        item = str(value or "").strip()
+        item = normalize_option(value)
         if "  " in item:
             base, craft = item.split("  ", 1)
+            craft = normalize_option(craft)
         else:
             base, craft = item, ""
         if base in base_allowed and base not in bases:
@@ -437,7 +463,7 @@ async def order_payload(form: Any, *, save_uploaded_images: bool = True) -> dict
         "plating_json": dumps_json(form.getlist("plating")),
         "plating_note": str(form.get("plating_note") or "").strip(),
         "plating_note_red": 1,
-        "accessories_json": dumps_json(form.getlist("accessories")),
+        "accessories_json": dumps_json(normalized_form_list(form, "accessories")),
         "accessories_note": str(form.get("accessories_note") or "").strip(),
         "accessories_note_red": 1,
         "polishing_json": dumps_json(form.getlist("polishing")),
@@ -450,7 +476,7 @@ async def order_payload(form: Any, *, save_uploaded_images: bool = True) -> dict
         "resin_json": dumps_json(form.getlist("resin")),
         "resin_note": str(form.get("resin_note") or "").strip(),
         "resin_note_red": 1,
-        "packaging_json": dumps_json(form.getlist("packaging")),
+        "packaging_json": dumps_json(normalized_form_list(form, "packaging")),
         "packaging_rule": "",
         "packaging_note": str(form.get("packaging_note") or "").strip(),
         "packaging_note_red": 1,
@@ -1162,6 +1188,9 @@ def workshop_department(name: str) -> dict[str, Any] | None:
         "name": department["name"],
         "employees": list(department.get("employees") or []),
         "piecework": bool(department.get("piecework")),
+        "tooling": bool(department.get("tooling")),
+        "cutter": bool(department.get("cutter")),
+        "notes": list(department.get("notes") or []),
         "mold": bool(department.get("mold")),
         "materials": list(department.get("materials") or []),
         "specs": list(department.get("specs") or []),
@@ -1308,7 +1337,7 @@ async def workshop_record_delete(request: Request, department_key: str, record_i
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
     try:
-        if department_key == "mold" and user.get("role") != "admin":
+        if department.get("tooling") and user.get("role") != "admin":
             return Response("刻模订单只能申请修改，删除请联系管理员", status_code=403)
         order_no = await run_in_threadpool(repo.delete_workshop_record, record_id, department_key)
     except ValueError as exc:
@@ -1385,6 +1414,17 @@ async def workshop_department_export(request: Request, department_key: str):
             beijing_time(row.get("reported_at") or ""),
         ] for row in rows]
         headers = ["订单号", "材质", "尺寸", "规格", "数量", "金额", "订单类别", "录入时间"]
+    elif department.get("cutter"):
+        data = [[
+            row.get("order_no") or "",
+            row.get("size_text") or "",
+            row.get("note_text") or "",
+            row.get("quantity") or 1,
+            row.get("unit_price") or 0,
+            "\u91cd\u505a" if row.get("record_type") == "rework" else "\u6b63\u5e38",
+            beijing_time(row.get("reported_at") or ""),
+        ] for row in rows]
+        headers = ["\u8ba2\u5355\u53f7", "\u5c3a\u5bf8", "\u5907\u6ce8", "\u6570\u91cf", "\u91d1\u989d", "\u8ba2\u5355\u7c7b\u522b", "\u5f55\u5165\u65f6\u95f4"]
     elif department.get("piecework"):
         data = [[
             row.get("order_no") or "",
@@ -1473,6 +1513,7 @@ async def workshop_department_submit(request: Request, department_key: str):
     materials = form.getlist("material")
     size_texts = form.getlist("size_text")
     specs = form.getlist("spec")
+    note_texts = form.getlist("note_text")
     record_types = form.getlist("record_type")
     rows = []
     for index, (order_no, unit_price, quantity) in enumerate(zip(
@@ -1486,6 +1527,7 @@ async def workshop_department_submit(request: Request, department_key: str):
             "material": materials[index] if index < len(materials) else "",
             "size_text": size_texts[index] if index < len(size_texts) else "",
             "spec": specs[index] if index < len(specs) else "",
+            "note_text": note_texts[index] if index < len(note_texts) else "",
             "record_type": record_types[index] if index < len(record_types) else "normal",
         })
     try:

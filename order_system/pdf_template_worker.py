@@ -230,7 +230,7 @@ def _draw_process_table(pdf: canvas.Canvas, record: dict) -> None:
         _draw_fitting_multiline_text(pdf, content, 89, top - 10, 93, height - 6, 13.5, 8.5, color=BLACK)
         _draw_fitting_multiline_text(pdf, note, 193, top - 10, 315, height - 6, 12.5, 8, color=row["note_color"])
 
-    global_note_font_size = _clamp_float(record.get("global_note_font_size"), 8, 14, 11.5)
+    global_note_font_size = _clamp_float(record.get("global_note_font_size"), 8, 20, 11.5)
     _draw_fitting_multiline_text(
         pdf,
         record.get("global_note") or "",

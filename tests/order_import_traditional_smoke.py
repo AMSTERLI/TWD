@@ -23,11 +23,12 @@ normalized = normalize_order_data(
 )
 
 assert normalized["product_name"] == "牌"
-assert "铜  UV印刷" in normalized["materials"]
+assert "\u94dc  UV" in normalized["materials"]
 assert normalized["coloring"] == ["说明"]
 assert "安全别针" in normalized["accessories"]
 assert "宝石" in normalized["accessories"]
-assert "焊针" in normalized["accessories"]
+assert "\u710a\u9488" not in normalized["accessories"]
+assert "\u710a\u9488" in normalized.get("accessories_note", "")
 assert "蝴蝶帽" in normalized["packaging"]
 assert not normalized.get("resin")
 assert "电话" not in normalized.get("accessories_note", "")

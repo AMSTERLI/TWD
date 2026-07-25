@@ -406,6 +406,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   const addButton = section.querySelector("[data-add-workshop-row]");
   const historyUrl = section.dataset.workshopHistoryUrl || "";
   const isMold = section.dataset.mold === "1";
+  const isTooling = section.dataset.tooling === "1";
   const employeeButtons = [...section.querySelectorAll("[data-employee-value]")];
   const historyChecks = new WeakMap();
   const scanAdvanceTimers = new WeakMap();
@@ -492,7 +493,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       const priceInput = row.querySelector('[name="unit_price"]');
       if (priceInput && hasExistingRecord) priceInput.value = cleanNumber(record.unit_price);
       const quantityInput = row.querySelector('[name="quantity"]');
-      if (quantityInput) quantityInput.value = isMold ? "1" : cleanNumber(record.quantity || 1);
+      if (quantityInput) quantityInput.value = isTooling ? "1" : cleanNumber(record.quantity || 1);
       const materialInput = row.querySelector('[name="material"]');
       if (materialInput && record.material) materialInput.value = record.material;
       const sizeInput = row.querySelector('[name="size_text"]');
@@ -686,15 +687,15 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     const duplicates = [];
     for (const row of activeRows) {
       const existingOrderNo = await loadWorkshopHistory(row);
-      const duplicateBlocked = isMold ? (existingOrderNo && !isReworkRow(row)) : existingOrderNo;
+      const duplicateBlocked = isTooling ? (existingOrderNo && !isReworkRow(row)) : existingOrderNo;
       if (duplicateBlocked && !duplicates.includes(existingOrderNo)) duplicates.push(existingOrderNo);
     }
     if (duplicates.length) {
-      if (isMold) {
-        window.alert(`以下订单已录入刻模，普通单不允许重复录入：${duplicates.join("、")}。如需重复录入，请点击该行的“开重刻单”。`);
+      if (isTooling) {
+        window.alert(`???????????????????????${duplicates.join("?")}?????????????????????`);
         return;
       }
-      if (!window.confirm(`以下订单已在当前车间报到过：${duplicates.join("、")}。是否继续保存新的报到记录？`)) return;
+      if (!window.confirm(`??????????????${duplicates.join("?")}??????????????`)) return;
     }
     event.target.submit();
   });

@@ -149,6 +149,7 @@ class Repository:
                     material TEXT,
                     size_text TEXT,
                     spec TEXT,
+                    note_text TEXT,
                     record_type TEXT NOT NULL DEFAULT 'normal',
                     quantity INTEGER NOT NULL DEFAULT 1,
                     unit_price REAL NOT NULL DEFAULT 0,
@@ -213,6 +214,8 @@ class Repository:
                 conn.execute("ALTER TABLE workshop_records ADD COLUMN size_text TEXT")
             if "spec" not in existing_workshop_columns:
                 conn.execute("ALTER TABLE workshop_records ADD COLUMN spec TEXT")
+            if "note_text" not in existing_workshop_columns:
+                conn.execute("ALTER TABLE workshop_records ADD COLUMN note_text TEXT")
             if "record_type" not in existing_workshop_columns:
                 conn.execute("ALTER TABLE workshop_records ADD COLUMN record_type TEXT NOT NULL DEFAULT 'normal'")
             conn.execute(
@@ -1186,6 +1189,7 @@ class Repository:
                                   MAX(department_name) AS department_name, SUM(COALESCE(quantity, 1)) AS quantity,
                                   MAX(unit_price) AS unit_price, MAX(shipped_status) AS shipped_status,
                                   MAX(material) AS material, MAX(size_text) AS size_text, MAX(spec) AS spec,
+                                  MAX(note_text) AS note_text,
                                   MAX(record_type) AS record_type, MAX(reported_at) AS reported_at
                            FROM workshop_records
                            WHERE department_key = ? AND order_no = ? AND reported_at = ?
@@ -1197,7 +1201,7 @@ class Repository:
             else:
                 row = conn.execute(
                     """SELECT id, order_id, order_no, department_key, department_name, quantity, unit_price,
-                              shipped_status, material, size_text, spec, record_type, reported_at
+                              shipped_status, material, size_text, spec, note_text, record_type, reported_at
                        FROM workshop_records
                        WHERE department_key = ? AND order_no = ?
                        ORDER BY reported_at DESC, id DESC
@@ -1214,7 +1218,7 @@ class Repository:
             "shipped_status": 0,
             "reported_at": "",
         }
-        if department_key == "mold":
+        if department_key in {"mold", "cutter"}:
             result["quantity"] = 1
         else:
             result["quantity"] = order_quantity
@@ -1246,6 +1250,7 @@ class Repository:
         if not department_key or not department_name:
             raise ValueError("\u8f66\u95f4\u90e8\u95e8\u65e0\u6548")
         press_employees = {"\u5f90\u5c71\u7acb", "\u5218\u9053\u6797", "\u6881\u8d3b\u6821", "\u79e6\u5e94\u57ce", "\u66fe\u51e4\u5a25", "\u519c\u7231\u67f3"}
+        tooling_departments = {"mold", "cutter"}
         clean_rows: list[dict[str, Any]] = []
         for row in rows:
             order_no = str(row.get("order_no") or "").strip()
@@ -1272,19 +1277,28 @@ class Repository:
             material = str(row.get("material") or "").strip()
             size_text = str(row.get("size_text") or "").strip()
             spec = str(row.get("spec") or "").strip()
+            note_text = str(row.get("note_text") or "").strip()
             record_type = str(row.get("record_type") or "normal").strip()
-            if department_key == "mold":
-                if material not in {"锌", "铁", "铜"}:
-                    raise ValueError(f"订单 {order_no} 请选择材质")
+            if department_key in tooling_departments:
                 if len(size_text) > 50:
                     raise ValueError(f"订单 {order_no} 的尺寸不能超过 50 个字")
-                if spec not in {"2D", "3D", "2D+2D", "2D+3D", "3D+3D"}:
-                    raise ValueError(f"订单 {order_no} 请选择规格")
+                if department_key == "mold":
+                    if material not in {"\u950c", "\u94c1", "\u94dc"}:
+                        raise ValueError(f"订单 {order_no} 请选择材质")
+                    if spec not in {"2D", "3D", "2D+2D", "2D+3D", "3D+3D"}:
+                        raise ValueError(f"订单 {order_no} 请选择规格")
+                    note_text = ""
+                elif department_key == "cutter":
+                    material = ""
+                    spec = ""
+                    if note_text not in {"\u5185\u52071\u652f", "\u54ac\u677f", "\u8df3\u6b65"}:
+                        raise ValueError(f"订单 {order_no} 请选择备注")
                 record_type = "rework" if record_type == "rework" else "normal"
             else:
                 material = ""
                 size_text = ""
                 spec = ""
+                note_text = ""
                 record_type = "normal"
             clean_rows.append({
                 "order_no": order_no,
@@ -1294,6 +1308,7 @@ class Repository:
                 "material": material,
                 "size_text": size_text,
                 "spec": spec,
+                "note_text": note_text,
                 "record_type": record_type,
             })
         if not clean_rows:
@@ -1309,27 +1324,27 @@ class Repository:
                 ).fetchone()
                 if not order:
                     raise ValueError(f"\u8ba2\u5355 {row['order_no']} \u4e0d\u5b58\u5728")
-                if department_key == "mold" and row.get("record_type") != "rework":
+                if department_key in tooling_departments and row.get("record_type") != "rework":
                     existing = conn.execute(
                         """SELECT id FROM workshop_records
-                           WHERE department_key = 'mold' AND order_no = ?
+                           WHERE department_key = ? AND order_no = ?
                              AND COALESCE(record_type, 'normal') <> 'rework'
                            LIMIT 1""",
-                        (str(order["order_no"]),),
+                        (department_key, str(order["order_no"]),),
                     ).fetchone()
                     if existing:
-                        raise ValueError(f"订单 {row['order_no']} 已录入刻模，普通单不允许重复录入；请使用开重刻单")
+                        raise ValueError(f"订单 {row['order_no']} 已录入{department_name}，普通单不允许重复录入；请使用重做单")
                 employee_names = row.get("employee_names") or [operator_name]
                 split_quantity = row["quantity"] / max(1, len(employee_names))
                 for employee_name in employee_names:
                     cursor = conn.execute(
                         """INSERT INTO workshop_records
-                           (order_id, order_no, department_key, department_name, material, size_text, spec,
+                           (order_id, order_no, department_key, department_name, material, size_text, spec, note_text,
                             record_type, quantity, unit_price, operator_id, operator_name)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             int(order["id"]), str(order["order_no"]), department_key, department_name,
-                            row.get("material") or "", row.get("size_text") or "", row.get("spec") or "",
+                            row.get("material") or "", row.get("size_text") or "", row.get("spec") or "", row.get("note_text") or "",
                             row.get("record_type") or "normal", split_quantity, row["unit_price"], operator_id,
                             employee_name or operator_name,
                         ),
@@ -1371,10 +1386,10 @@ class Repository:
         )
         with self.connect() as conn:
             total = int(conn.execute(f"SELECT COUNT(*) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0])
-            amount_total = float(conn.execute(f"SELECT COALESCE(SUM(COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0)), 0) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0] or 0)
+            amount_total = float(conn.execute(f"SELECT COALESCE(SUM(CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) END), 0) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0] or 0)
             rows = conn.execute(
                 f"""SELECT w.*, o.product_name, o.customer_name,
-                           COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) AS amount
+                           CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) END AS amount
                     FROM workshop_records w
                     LEFT JOIN orders o ON o.id = w.order_id
                     {where}
@@ -1395,7 +1410,7 @@ class Repository:
                 placeholders = ", ".join("?" for _ in chunk)
                 rows.extend(conn.execute(
                     f"""SELECT w.*, o.product_name, o.customer_name,
-                               COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) AS amount
+                               CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) END AS amount
                         FROM workshop_records w
                         LEFT JOIN orders o ON o.id = w.order_id
                         WHERE w.id IN ({placeholders}) AND (? = '' OR w.department_key = ?)""",
@@ -1407,7 +1422,7 @@ class Repository:
     def order_workshop_records(self, order_id: int) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
-                """SELECT w.*, COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) AS amount
+                """SELECT w.*, CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) END AS amount
                    FROM workshop_records w
                    WHERE w.order_id = ?
                    ORDER BY w.reported_at ASC, w.id ASC""",
