@@ -135,6 +135,11 @@ DEFAULT_OUTSOURCE_PROCESSES = [
     "印刷/UV",
 ]
 
+DEFAULT_OUTSOURCE_FACTORIES = [
+    ("\u4e0a\u8272", "\u97e9\u632f\u4f1f"),
+    ("\u4e0a\u8272", "\u9ec4\u5c0f\u4e91"),
+]
+
 
 class Database:
     def __init__(self, db_path: Path) -> None:
@@ -209,6 +214,7 @@ class Database:
                 """
             )
             self._seed_outsource_processes(conn)
+            self._seed_outsource_factories(conn)
             conn.execute(
                 "UPDATE outsource_records SET process_name = '印刷/UV' WHERE process_name IN ('印刷', 'UV')"
             )
@@ -286,6 +292,19 @@ class Database:
         conn.executemany(
             "INSERT OR IGNORE INTO outsource_processes (process_name) VALUES (?)",
             [(name,) for name in DEFAULT_OUTSOURCE_PROCESSES],
+        )
+
+    def _seed_outsource_factories(self, conn: sqlite3.Connection) -> None:
+        conn.executemany(
+            """
+            INSERT INTO outsource_factories (process_name, factory_name)
+            SELECT ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM outsource_factories
+                WHERE process_name = ? AND factory_name = ?
+            )
+            """,
+            [(process, factory, process, factory) for process, factory in DEFAULT_OUTSOURCE_FACTORIES],
         )
 
     def _seed_customers(self, conn: sqlite3.Connection) -> None:
