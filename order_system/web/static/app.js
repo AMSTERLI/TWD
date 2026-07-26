@@ -643,6 +643,8 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
         else if (input.name === "record_type") input.value = "normal";
         else input.value = "";
       });
+      const moldFeeSelect = row.querySelector('[name="mold_fee"]');
+      if (moldFeeSelect) moldFeeSelect.value = "0";
       applyCurrentEmployee(row, true);
       row.dataset.existingWorkshopRecord = "0";
       row.dataset.existingWorkshopOrderNo = "";

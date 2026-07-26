@@ -1434,10 +1434,11 @@ async def workshop_department_export(request: Request, department_key: str):
             row.get("operator_name") or "",
             row.get("quantity") or 1,
             row.get("unit_price") or 0,
+            row.get("mold_fee") or 0,
             row.get("amount") or 0,
             beijing_time(row.get("reported_at") or ""),
         ] for row in rows]
-        headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u5355\u4ef7", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
+        headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u5355\u4ef7", "\u88c5\u6a21\u8d39", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
     else:
         data = [[
             row.get("order_no") or "",
@@ -1515,6 +1516,7 @@ async def workshop_department_submit(request: Request, department_key: str):
     specs = form.getlist("spec")
     note_texts = form.getlist("note_text")
     record_types = form.getlist("record_type")
+    mold_fees = form.getlist("mold_fee")
     rows = []
     for index, (order_no, unit_price, quantity) in enumerate(zip(
         form.getlist("order_no"), form.getlist("unit_price"), form.getlist("quantity")
@@ -1523,6 +1525,7 @@ async def workshop_department_submit(request: Request, department_key: str):
             "order_no": order_no,
             "unit_price": unit_price,
             "quantity": quantity,
+            "mold_fee": mold_fees[index] if index < len(mold_fees) else "0",
             "employee_name": employee_names[index] if index < len(employee_names) else "",
             "material": materials[index] if index < len(materials) else "",
             "size_text": size_texts[index] if index < len(size_texts) else "",

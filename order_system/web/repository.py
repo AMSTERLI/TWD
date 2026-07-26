@@ -153,6 +153,7 @@ class Repository:
                     record_type TEXT NOT NULL DEFAULT 'normal',
                     quantity INTEGER NOT NULL DEFAULT 1,
                     unit_price REAL NOT NULL DEFAULT 0,
+                    mold_fee REAL NOT NULL DEFAULT 0,
                     shipped_status INTEGER NOT NULL DEFAULT 0,
                     operator_id INTEGER,
                     operator_name TEXT,
@@ -218,6 +219,8 @@ class Repository:
                 conn.execute("ALTER TABLE workshop_records ADD COLUMN note_text TEXT")
             if "record_type" not in existing_workshop_columns:
                 conn.execute("ALTER TABLE workshop_records ADD COLUMN record_type TEXT NOT NULL DEFAULT 'normal'")
+            if "mold_fee" not in existing_workshop_columns:
+                conn.execute("ALTER TABLE workshop_records ADD COLUMN mold_fee REAL NOT NULL DEFAULT 0")
             conn.execute(
                 "UPDATE web_users SET display_name = username "
                 "WHERE display_name IS NULL OR TRIM(display_name) = ''"
@@ -1187,8 +1190,8 @@ class Repository:
                     row = conn.execute(
                         """SELECT MAX(id) AS id, MAX(order_id) AS order_id, order_no, department_key,
                                   MAX(department_name) AS department_name, SUM(COALESCE(quantity, 1)) AS quantity,
-                                  MAX(unit_price) AS unit_price, MAX(shipped_status) AS shipped_status,
-                                  MAX(material) AS material, MAX(size_text) AS size_text, MAX(spec) AS spec,
+                                  MAX(unit_price) AS unit_price, SUM(COALESCE(mold_fee, 0)) AS mold_fee,
+                                  MAX(shipped_status) AS shipped_status, MAX(material) AS material, MAX(size_text) AS size_text, MAX(spec) AS spec,
                                   MAX(note_text) AS note_text,
                                   MAX(record_type) AS record_type, MAX(reported_at) AS reported_at
                            FROM workshop_records
@@ -1200,7 +1203,7 @@ class Repository:
                     row = None
             else:
                 row = conn.execute(
-                    """SELECT id, order_id, order_no, department_key, department_name, quantity, unit_price,
+                    """SELECT id, order_id, order_no, department_key, department_name, quantity, unit_price, mold_fee,
                               shipped_status, material, size_text, spec, note_text, record_type, reported_at
                        FROM workshop_records
                        WHERE department_key = ? AND order_no = ?
@@ -1215,6 +1218,7 @@ class Repository:
             "department_key": department_key,
             "department_name": "",
             "unit_price": 0,
+            "mold_fee": 0,
             "shipped_status": 0,
             "reported_at": "",
         }
@@ -1258,6 +1262,7 @@ class Repository:
             raise ValueError("\u8f66\u95f4\u90e8\u95e8\u65e0\u6548")
         press_employees = {"\u5f90\u5c71\u7acb", "\u5218\u9053\u6797", "\u6881\u8d3b\u6821", "\u79e6\u5e94\u57ce", "\u66fe\u51e4\u5a25", "\u519c\u7231\u67f3"}
         tooling_departments = {"mold", "cutter"}
+        allowed_press_mold_fees = {0.0, 4.0, 5.0, 6.0, 7.0, 8.0}
         clean_rows: list[dict[str, Any]] = []
         for row in rows:
             order_no = str(row.get("order_no") or "").strip()
@@ -1271,6 +1276,10 @@ class Repository:
                 quantity = float(row.get("quantity") or 1)
             except (TypeError, ValueError):
                 raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u6570\u91cf\u65e0\u6548")
+            try:
+                mold_fee = float(row.get("mold_fee") or 0)
+            except (TypeError, ValueError):
+                raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u88c5\u6a21\u8d39\u65e0\u6548")
             if unit_price < 0:
                 raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u5355\u4ef7\u4e0d\u80fd\u5c0f\u4e8e 0")
             if quantity <= 0:
@@ -1281,6 +1290,10 @@ class Repository:
                 employee_names = list(dict.fromkeys(employee_names))
                 if not employee_names or any(item not in press_employees for item in employee_names):
                     raise ValueError(f"\u8ba2\u5355 {order_no} \u8bf7\u9009\u62e9\u51b2\u538b\u5458\u5de5")
+                if mold_fee not in allowed_press_mold_fees:
+                    raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u88c5\u6a21\u8d39\u53ea\u80fd\u9009 0/4/5/6/7/8")
+            else:
+                mold_fee = 0.0
             material = str(row.get("material") or "").strip()
             size_text = str(row.get("size_text") or "").strip()
             spec = str(row.get("spec") or "").strip()
@@ -1311,6 +1324,7 @@ class Repository:
                 "order_no": order_no,
                 "unit_price": unit_price,
                 "quantity": quantity,
+                "mold_fee": mold_fee,
                 "employee_names": employee_names,
                 "material": material,
                 "size_text": size_text,
@@ -1342,17 +1356,19 @@ class Repository:
                     if existing:
                         raise ValueError(f"订单 {row['order_no']} 已录入{department_name}，普通单不允许重复录入；请使用重做单")
                 employee_names = row.get("employee_names") or [operator_name]
-                split_quantity = row["quantity"] / max(1, len(employee_names))
+                split_count = max(1, len(employee_names))
+                split_quantity = row["quantity"] / split_count
+                split_mold_fee = row.get("mold_fee", 0.0) / split_count
                 for employee_name in employee_names:
                     cursor = conn.execute(
                         """INSERT INTO workshop_records
                            (order_id, order_no, department_key, department_name, material, size_text, spec, note_text,
-                            record_type, quantity, unit_price, operator_id, operator_name)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            record_type, quantity, unit_price, mold_fee, operator_id, operator_name)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             int(order["id"]), str(order["order_no"]), department_key, department_name,
                             row.get("material") or "", row.get("size_text") or "", row.get("spec") or "", row.get("note_text") or "",
-                            row.get("record_type") or "normal", split_quantity, row["unit_price"], operator_id,
+                            row.get("record_type") or "normal", split_quantity, row["unit_price"], split_mold_fee, operator_id,
                             employee_name or operator_name,
                         ),
                     )
@@ -1393,10 +1409,10 @@ class Repository:
         )
         with self.connect() as conn:
             total = int(conn.execute(f"SELECT COUNT(*) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0])
-            amount_total = float(conn.execute(f"SELECT COALESCE(SUM(CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) END), 0) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0] or 0)
+            amount_total = float(conn.execute(f"SELECT COALESCE(SUM(CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END), 0) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0] or 0)
             rows = conn.execute(
                 f"""SELECT w.*, o.product_name, o.customer_name,
-                           CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) END AS amount
+                           CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
                     FROM workshop_records w
                     LEFT JOIN orders o ON o.id = w.order_id
                     {where}
@@ -1417,7 +1433,7 @@ class Repository:
                 placeholders = ", ".join("?" for _ in chunk)
                 rows.extend(conn.execute(
                     f"""SELECT w.*, o.product_name, o.customer_name,
-                               CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) END AS amount
+                               CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
                         FROM workshop_records w
                         LEFT JOIN orders o ON o.id = w.order_id
                         WHERE w.id IN ({placeholders}) AND (? = '' OR w.department_key = ?)""",
@@ -1429,7 +1445,7 @@ class Repository:
     def order_workshop_records(self, order_id: int) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
-                """SELECT w.*, CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) END AS amount
+                """SELECT w.*, CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
                    FROM workshop_records w
                    WHERE w.order_id = ?
                    ORDER BY w.reported_at ASC, w.id ASC""",

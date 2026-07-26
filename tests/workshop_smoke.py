@@ -174,13 +174,14 @@ with TestClient(app) as client:
     assert "workshop-press-page" in press.text
     assert "data-touch-keypad" in press.text and "data-touch-number" in press.text
     assert "data-touch-integer" in press.text and "data-touch-scale" in press.text
+    assert 'name="mold_fee"' in press.text and '<option value="8">8</option>' in press.text
     press_employees = ["\u5f90\u5c71\u7acb", "\u5218\u9053\u6797", "\u6881\u8d3b\u6821", "\u79e6\u5e94\u57ce", "\u66fe\u51e4\u5a25", "\u519c\u7231\u67f3"]
     for employee in press_employees:
         assert f'data-employee-value="{employee}"' in press.text
         assert f'<option value="{employee}"' in press.text
     press_report = client.post(
         "/workshop/press",
-        data={"csrf": csrf(press.text), "employee_name": ["\u5f90\u5c71\u7acb,\u5218\u9053\u6797"], "order_no": [press_order_no], "quantity": ["120"], "unit_price": ["0.08"]},
+        data={"csrf": csrf(press.text), "employee_name": ["\u5f90\u5c71\u7acb,\u5218\u9053\u6797"], "order_no": [press_order_no], "quantity": ["120"], "unit_price": ["0.08"], "mold_fee": ["8"]},
         follow_redirects=False,
     )
     assert press_report.status_code == 303
@@ -191,12 +192,13 @@ with TestClient(app) as client:
         assert row["department_name"] == "\u51b2\u538b"
         assert row["quantity"] == 60
         assert abs(row["unit_price"] - 0.08) < 1e-9
-        assert abs(row["amount"] - 4.8) < 1e-9
+        assert abs(row["mold_fee"] - 4) < 1e-9
+        assert abs(row["amount"] - 8.8) < 1e-9
     press_list = client.get("/workshop/press")
     assert press_list.status_code == 200 and ">\u5f90\u5c71\u7acb<" in press_list.text and press_order_no in press_list.text
-    assert "data-selected-amount-total" in press_list.text and 'data-amount="4.80"' in press_list.text
-    assert "&#37329;&#39069;" in press_list.text and "4.80" in press_list.text
-    assert 'data-selection-amount-total-all="9.60"' in press_list.text
+    assert "data-selected-amount-total" in press_list.text and 'data-amount="8.80"' in press_list.text
+    assert "&#37329;&#39069;" in press_list.text and "8.80" in press_list.text
+    assert 'data-selection-amount-total-all="17.60"' in press_list.text
     assert 'data-workshop-quantity-url="/workshop/press/records/' not in press_list.text
     press_filtered = client.get("/workshop/press?employee_name=%E5%BE%90%E5%B1%B1%E7%AB%8B")
     assert press_filtered.status_code == 200 and press_order_no in press_filtered.text and ">\u5f90\u5c71\u7acb<" in press_filtered.text
@@ -225,7 +227,8 @@ with TestClient(app) as client:
     assert {press_sheet.cell(row=row_index, column=5).value for row_index in (2, 3)} == {"\u5f90\u5c71\u7acb", "\u5218\u9053\u6797"}
     assert press_sheet.cell(row=2, column=6).value == 60
     assert press_sheet.cell(row=3, column=6).value == 60
-    assert abs(sum(press_sheet.cell(row=row_index, column=8).value for row_index in (2, 3)) - 9.6) < 1e-9
+    assert abs(sum(press_sheet.cell(row=row_index, column=8).value for row_index in (2, 3)) - 8) < 1e-9
+    assert abs(sum(press_sheet.cell(row=row_index, column=9).value for row_index in (2, 3)) - 17.6) < 1e-9
     list_page = client.get("/workshop/mold")
     assert "operator_name" not in list_page.text and "&#25805;&#20316;&#20154;" not in list_page.text
     assert "&#20986;&#36135;&#29366;&#24577;" not in list_page.text
