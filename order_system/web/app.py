@@ -1347,6 +1347,7 @@ async def workshop_record_delete(request: Request, department_key: str, record_i
 
 
 @app.post("/workshop/{department_key}/records/{record_id}/quantity-request")
+@app.post("/workshop/{department_key}/records/{record_id}/quantity/request")
 async def workshop_record_quantity_request(request: Request, department_key: str, record_id: int):
     user, denied = require_page(request, {"workshop"})
     if denied:

@@ -254,7 +254,7 @@ with TestClient(app) as client:
     assert history.json()["record"]["size_text"] == "\u9ad81\u5bbd20\u539a5"
     assert history.json()["record"]["spec"] == "2D"
     quantity_request = client.post(
-        f"/workshop/mold/records/{records[0]['id']}/quantity-request",
+        f"/workshop/mold/records/{records[0]['id']}/quantity/request",
         data={"csrf": csrf(list_page.text), "quantity": "5", "unit_price": "12.5", "reason": "漏扫数量"},
         follow_redirects=False,
     )
