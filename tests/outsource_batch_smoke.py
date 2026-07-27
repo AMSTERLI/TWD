@@ -76,6 +76,19 @@ with TestClient(app) as client:
         follow_redirects=False,
     )
     assert response.status_code == 303, response.text
+    assert response.headers["location"].startswith("/outsource/receipt?ids=")
+    receipt_page = client.get(response.headers["location"])
+    assert receipt_page.status_code == 200
+    assert "泰威德五金厂" in receipt_page.text
+    assert "batch-factory" in receipt_page.text and DIE_CAST in receipt_page.text
+    assert first_no in receipt_page.text and second_no in receipt_page.text
+    assert "本次合计" in receipt_page.text and "本月合计" in receipt_page.text
+    assert "63.90" in receipt_page.text and "{{" not in receipt_page.text
+    receipt_ids = [int(item) for item in response.headers["location"].split("ids=", 1)[1].split(",")]
+    receipt_data = repo.outsource_receipt(receipt_ids)
+    assert receipt_data is not None
+    assert abs(receipt_data["current_total"] - 63.9) < 1e-9
+    assert abs(receipt_data["month_total"] - 63.9) < 1e-9
     records = repo.outsource_records()["rows"]
     assert len(records) == 2
     assert {row["order_no"] for row in records} == {first_no, second_no}

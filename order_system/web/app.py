@@ -1841,6 +1841,22 @@ async def outsource_order_lookup(request: Request, order_no: str = ""):
     return JSONResponse({"order": order})
 
 
+@app.get("/outsource/receipt", response_class=HTMLResponse)
+def outsource_receipt(request: Request, ids: str = ""):
+    _, denied = require_page(request, {"outsource"})
+    if denied:
+        return denied
+    record_ids = [as_int(item) for item in str(ids or "").split(",") if item.strip()]
+    receipt = repo.outsource_receipt(record_ids)
+    if not receipt:
+        return Response("receipt not found", status_code=404)
+    return templates.TemplateResponse(
+        request,
+        "outsource_receipt.html",
+        page_context(request, receipt=receipt),
+    )
+
+
 @app.get("/outsource/{record_id}/edit", response_class=HTMLResponse)
 def edit_outsource_page(request: Request, record_id: int):
     _, denied = require_page(request, {"admin", "outsource"})
@@ -2049,7 +2065,7 @@ async def create_outsource(request: Request):
             ),
             status_code=422,
         )
-    return RedirectResponse(f"/outsource?created={len(record_ids)}", status_code=303)
+    return RedirectResponse(f"/outsource/receipt?ids={','.join(str(record_id) for record_id in record_ids)}", status_code=303)
 
 
 

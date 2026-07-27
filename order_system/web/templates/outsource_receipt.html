@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>外发小票</title>
+  <style>
+    @page { size: 58mm auto; margin: 3mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f3f4f6; color: #000; font: 12px/1.35 "Microsoft YaHei", SimSun, sans-serif; }
+    .receipt { width: 58mm; min-height: 100vh; margin: 0 auto; padding: 4mm 3mm 5mm; background: #fff; }
+    h1 { margin: 0 0 4mm; text-align: center; font-size: 18px; line-height: 1.2; font-weight: 800; }
+    .meta { margin-bottom: 3mm; }
+    .meta div { display: flex; justify-content: space-between; gap: 2mm; }
+    .line { border-top: 1px dashed #000; margin: 2mm 0; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 1mm 0; vertical-align: top; }
+    th { border-bottom: 1px solid #000; font-weight: 700; }
+    .amount, th.amount { text-align: right; white-space: nowrap; }
+    .order-no { word-break: break-all; padding-right: 2mm; }
+    .totals { margin-top: 2mm; font-size: 13px; font-weight: 700; }
+    .totals div { display: flex; justify-content: space-between; gap: 2mm; margin-top: 1mm; }
+    .actions { display: flex; gap: 8px; justify-content: center; margin: 12px auto; }
+    .actions button, .actions a { border: 1px solid #888; border-radius: 6px; background: #fff; color: #111; padding: 7px 12px; text-decoration: none; cursor: pointer; }
+    @media print {
+      body { background: #fff; }
+      .receipt { width: auto; min-height: 0; margin: 0; padding: 0; }
+      .actions { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="receipt">
+    <h1>泰威德五金厂</h1>
+    <section class="meta">
+      <div><span>工艺</span><strong>{{ receipt.process_name }}</strong></div>
+      <div><span>加工厂</span><strong>{{ receipt.factory_name }}</strong></div>
+      <div><span>日期</span><strong>{{ receipt.outsource_date or '-' }}</strong></div>
+    </section>
+    <div class="line"></div>
+    <table>
+      <thead><tr><th>订单编号</th><th class="amount">金额</th></tr></thead>
+      <tbody>
+      {% for row in receipt.rows %}
+        <tr><td class="order-no">{{ row.order_no }}</td><td class="amount">{{ '%.2f'|format(row.amount or 0) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <div class="line"></div>
+    <section class="totals">
+      <div><span>本次合计</span><span>{{ '%.2f'|format(receipt.current_total or 0) }}</span></div>
+      <div><span>本月合计</span><span>{{ '%.2f'|format(receipt.month_total or 0) }}</span></div>
+    </section>
+  </main>
+  <div class="actions"><button type="button" onclick="window.print()">打印小票</button><a href="/outsource">返回外发</a></div>
+  <script>window.addEventListener("load", () => setTimeout(() => window.print(), 250));</script>
+</body>
+</html>

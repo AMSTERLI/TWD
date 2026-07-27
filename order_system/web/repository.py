@@ -1484,6 +1484,61 @@ class Repository:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def outsource_receipt(self, record_ids: list[int]) -> dict[str, Any] | None:
+        ids = self._normalized_ids(record_ids)
+        if not ids:
+            return None
+        rows: list[Any] = []
+        with self.connect() as conn:
+            for chunk in self._id_chunks(ids):
+                placeholders = ", ".join("?" for _ in chunk)
+                rows.extend(conn.execute(
+                    f"""SELECT id, order_no, process_name, factory_name, amount, outsource_date
+                        FROM outsource_records
+                        WHERE id IN ({placeholders})""",
+                    chunk,
+                ).fetchall())
+            if not rows:
+                return None
+            result_rows = [dict(row) for row in rows]
+            order_index = {record_id: index for index, record_id in enumerate(ids)}
+            result_rows.sort(key=lambda row: order_index.get(int(row.get("id") or 0), len(order_index)))
+            first = result_rows[0]
+            process_name = str(first.get("process_name") or "")
+            factory_name = str(first.get("factory_name") or "")
+            outsource_date = str(first.get("outsource_date") or "")
+            month_start = f"{outsource_date[:7]}-01" if len(outsource_date) >= 7 else ""
+            if month_start:
+                year = int(month_start[:4])
+                month = int(month_start[5:7])
+                if month == 12:
+                    month_end = f"{year + 1:04d}-01-01"
+                else:
+                    month_end = f"{year:04d}-{month + 1:02d}-01"
+                month_total = float(conn.execute(
+                    """SELECT COALESCE(SUM(COALESCE(amount, 0)), 0)
+                       FROM outsource_records
+                       WHERE process_name = ? AND factory_name = ?
+                         AND outsource_date >= ? AND outsource_date < ?""",
+                    (process_name, factory_name, month_start, month_end),
+                ).fetchone()[0] or 0)
+            else:
+                month_total = float(conn.execute(
+                    """SELECT COALESCE(SUM(COALESCE(amount, 0)), 0)
+                       FROM outsource_records
+                       WHERE process_name = ? AND factory_name = ?""",
+                    (process_name, factory_name),
+                ).fetchone()[0] or 0)
+        current_total = sum(float(row.get("amount") or 0) for row in result_rows)
+        return {
+            "rows": result_rows,
+            "process_name": process_name,
+            "factory_name": factory_name,
+            "outsource_date": outsource_date,
+            "current_total": current_total,
+            "month_total": month_total,
+        }
+
     def get_outsource_record(self, record_id: int) -> dict[str, Any] | None:
         with self.connect() as conn:
             row = conn.execute(
