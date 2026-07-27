@@ -1493,7 +1493,7 @@ class Repository:
             for chunk in self._id_chunks(ids):
                 placeholders = ", ".join("?" for _ in chunk)
                 rows.extend(conn.execute(
-                    f"""SELECT id, order_no, process_name, factory_name, amount, outsource_date
+                    f"""SELECT id, order_no, process_name, factory_name, quantity, amount, outsource_date
                         FROM outsource_records
                         WHERE id IN ({placeholders})""",
                     chunk,

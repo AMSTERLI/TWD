@@ -12,11 +12,12 @@
     .meta { margin-bottom: 3mm; }
     .meta div { display: flex; justify-content: space-between; gap: 2mm; }
     .line { border-top: 1px dashed #000; margin: 2mm 0; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 1mm 0; vertical-align: top; }
-    th { border-bottom: 1px solid #000; font-weight: 700; }
-    .amount, th.amount { text-align: right; white-space: nowrap; }
-    .order-no { word-break: break-all; padding-right: 2mm; }
+    .item-list { display: grid; gap: 1.6mm; }
+    .item { border-bottom: 1px dotted #999; padding-bottom: 1.2mm; }
+    .order-no { display: block; white-space: nowrap; overflow: hidden; text-overflow: clip; font-size: 12px; line-height: 1.25; }
+    .item-subline { display: flex; justify-content: space-between; gap: 2mm; margin-top: .6mm; }
+    .quantity { white-space: nowrap; }
+    .amount { text-align: right; white-space: nowrap; }
     .totals { margin-top: 2mm; font-size: 13px; font-weight: 700; }
     .totals div { display: flex; justify-content: space-between; gap: 2mm; margin-top: 1mm; }
     .actions { display: flex; gap: 8px; justify-content: center; margin: 12px auto; }
@@ -37,14 +38,14 @@
       <div><span>日期</span><strong>{{ receipt.outsource_date or '-' }}</strong></div>
     </section>
     <div class="line"></div>
-    <table>
-      <thead><tr><th>订单编号</th><th class="amount">金额</th></tr></thead>
-      <tbody>
+    <section class="item-list">
       {% for row in receipt.rows %}
-        <tr><td class="order-no">{{ row.order_no }}</td><td class="amount">{{ '%.2f'|format(row.amount or 0) }}</td></tr>
+      <article class="item">
+        <span class="order-no">{{ row.order_no }}</span>
+        <div class="item-subline"><span class="quantity">{{ '%g'|format(row.quantity or 0) }}个</span><span class="amount">{{ '%.2f'|format(row.amount or 0) }}</span></div>
+      </article>
       {% endfor %}
-      </tbody>
-    </table>
+    </section>
     <div class="line"></div>
     <section class="totals">
       <div><span>本次合计</span><span>{{ '%.2f'|format(receipt.current_total or 0) }}</span></div>
