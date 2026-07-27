@@ -15,15 +15,15 @@ from reportlab.pdfgen import canvas
 
 PAGE_WIDTH = 540
 PAGE_HEIGHT = 780
-QR_CODE_RIGHT = 518
+QR_CODE_RIGHT = 526
 QR_CODE_TOP = 6
-QR_CODE_SIZE = 56.69
-FOOTER_QR_CODE_RIGHT = 517
+QR_CODE_SIZE = 62.36
+FOOTER_QR_CODE_RIGHT = 526
 FOOTER_QR_CODE_TOP = 744
-FOOTER_QR_CODE_SIZE = 28.35
-REMARK_LEFT = 36
+FOOTER_QR_CODE_SIZE = 34.02
+REMARK_LEFT = 28
 REMARK_TOP = 540
-REMARK_WIDTH = 146
+REMARK_WIDTH = 154
 REMARK_HEIGHT = 188
 IMAGE_AREA_LEFT = 193
 IMAGE_AREA_TOP = 522
@@ -232,7 +232,7 @@ def _draw_process_table(pdf: canvas.Canvas, record: dict) -> None:
             continue
 
         _draw_fitting_multiline_text(pdf, content, 89, top - 10, 93, height - 6, 13.5, 8.5, color=BLACK)
-        _draw_fitting_multiline_text(pdf, note, 193, top - 10, 315, height - 6, 12.5, 8, color=row["note_color"])
+        _draw_fitting_multiline_text(pdf, note, 193, top - 16, 315, height - 6, 12.5, 8, color=row["note_color"])
 
     global_note_font_size = _clamp_float(record.get("global_note_font_size"), 8, 20, 11.5)
     _draw_fitting_multiline_text(
@@ -313,8 +313,8 @@ def _draw_component_part(pdf: canvas.Canvas, part: dict, data_root: Path, number
 def _draw_footer(pdf: canvas.Canvas, record: dict) -> None:
     _draw_footer_qr_code(pdf, record.get("order_no") or "")
     pdf.setFont(FONT_NAME, 13)
-    _draw_single_line(pdf, f"{record.get('bi_no') or ''}", 55, 762)
-    _draw_single_line(pdf, f"{record.get('production_no') or ''}", 266, 762)
+    _draw_single_line(pdf, f"{record.get('bi_no') or ''}", 55, 757)
+    _draw_single_line(pdf, f"{record.get('production_no') or ''}", 266, 757)
 
 
 def _format_quantity(record: dict) -> str:
