@@ -1260,7 +1260,10 @@ class Repository:
         department_name = str(department_name or "").strip()
         if not department_key or not department_name:
             raise ValueError("\u8f66\u95f4\u90e8\u95e8\u65e0\u6548")
-        press_employees = {"\u5f90\u5c71\u7acb", "\u5218\u9053\u6797", "\u6881\u8d3b\u6821", "\u79e6\u5e94\u57ce", "\u66fe\u51e4\u5a25", "\u519c\u7231\u67f3"}
+        piecework_employees = {
+            "press": {"\u5f90\u5c71\u7acb", "\u5218\u9053\u6797", "\u6881\u8d3b\u6821", "\u79e6\u5e94\u57ce", "\u66fe\u51e4\u5a25", "\u519c\u7231\u67f3"},
+            "packaging": {"\u6d82\u5c0f\u82f1", "\u5f90\u5f69\u8fde", "\u5468\u7f8e\u8bc6", "\u9648\u5c0f\u971e", "\u738b\u5bb6\u4e3d", "\u6768\u660e\u4ed9", "\u5f20\u96ea\u6797", "\u738b\u6587\u5bb9"},
+        }
         tooling_departments = {"mold", "cutter"}
         allowed_press_mold_fees = {0.0, 4.0, 5.0, 6.0, 7.0, 8.0}
         clean_rows: list[dict[str, Any]] = []
@@ -1286,12 +1289,16 @@ class Repository:
                 raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u6570\u91cf\u5fc5\u987b\u5927\u4e8e 0")
             raw_employee = str(row.get("employee_name") or "").strip()
             employee_names = [item.strip() for item in re.split(r"[,\s]+", raw_employee) if item.strip()]
-            if department_key == "press":
+            if department_key in piecework_employees:
                 employee_names = list(dict.fromkeys(employee_names))
-                if not employee_names or any(item not in press_employees for item in employee_names):
-                    raise ValueError(f"\u8ba2\u5355 {order_no} \u8bf7\u9009\u62e9\u51b2\u538b\u5458\u5de5")
-                if mold_fee not in allowed_press_mold_fees:
-                    raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u88c5\u6a21\u8d39\u53ea\u80fd\u9009 0/4/5/6/7/8")
+                allowed_employees = piecework_employees[department_key]
+                if not employee_names or any(item not in allowed_employees for item in employee_names):
+                    raise ValueError(f"\u8ba2\u5355 {order_no} \u8bf7\u9009\u62e9{department_name}\u5458\u5de5")
+                if department_key == "press":
+                    if mold_fee not in allowed_press_mold_fees:
+                        raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u88c5\u6a21\u8d39\u53ea\u80fd\u9009 0/4/5/6/7/8")
+                else:
+                    mold_fee = 0.0
             else:
                 mold_fee = 0.0
             material = str(row.get("material") or "").strip()

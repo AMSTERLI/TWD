@@ -5,14 +5,14 @@
 <div class="page-head">
   <div>
     <h1>{{ department.name }}</h1>
-    <p>{% if department.piecework %}&#36873;&#25321;&#21592;&#24037;&#65292;&#25195;&#25551;&#35746;&#21333;&#21495;&#65292;&#22635;&#20889;&#20135;&#21697;&#25968;&#37327;&#21644;&#21152;&#24037;&#21333;&#20215;&#65292;&#22810;&#21592;&#24037;&#24179;&#20998;&#35745;&#31639;&#12290;{% elif department.tooling %}&#25195;&#25551;&#35746;&#21333;&#21495;&#65292;&#22635;&#20889;&#25968;&#37327;&#21644;&#37329;&#39069;&#65307;&#26222;&#36890;&#21333;&#19981;&#21487;&#37325;&#22797;&#24405;&#20837;&#65292;&#37325;&#20570;&#21333;&#21487;&#22810;&#27425;&#24405;&#20837;&#12290;{% else %}&#25195;&#25551;&#35746;&#21333;&#21495;&#24182;&#22635;&#20889;&#21333;&#20215;&#65292;&#25253;&#21040;&#21518;&#35746;&#21333;&#20301;&#32622;&#20250;&#26356;&#26032;&#21040;{{ department.name }}&#12290;{% endif %}</p>
+    <p>{% if department.piecework %}&#36873;&#25321;&#21592;&#24037;&#65292;&#25195;&#25551;&#35746;&#21333;&#21495;&#65292;&#22635;&#20889;&#20135;&#21697;&#25968;&#37327;&#21644;&#21152;&#24037;&#21333;&#20215;&#65292;&#22810;&#21592;&#24037;&#24179;&#20998;&#35745;&#31639;&#12290;{% elif department.quantity_only %}&#25195;&#25551;&#35746;&#21333;&#21495;&#24182;&#22635;&#20889;&#25968;&#37327;&#65292;&#20445;&#23384;&#21518;&#35746;&#21333;&#20301;&#32622;&#20250;&#26356;&#26032;&#21040;{{ department.name }}&#12290;{% elif department.tooling %}&#25195;&#25551;&#35746;&#21333;&#21495;&#65292;&#22635;&#20889;&#25968;&#37327;&#21644;&#37329;&#39069;&#65307;&#26222;&#36890;&#21333;&#19981;&#21487;&#37325;&#22797;&#24405;&#20837;&#65292;&#37325;&#20570;&#21333;&#21487;&#22810;&#27425;&#24405;&#20837;&#12290;{% else %}&#25195;&#25551;&#35746;&#21333;&#21495;&#24182;&#22635;&#20889;&#21333;&#20215;&#65292;&#25253;&#21040;&#21518;&#35746;&#21333;&#20301;&#32622;&#20250;&#26356;&#26032;&#21040;{{ department.name }}&#12290;{% endif %}</p>
   </div>
   <a class="button" href="/workshop">&#36820;&#22238;&#36710;&#38388;</a>
 </div>
 {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
 {% if created %}<div class="alert success">{% if department.piecework %}&#24050;&#20445;&#23384;&#35745;&#20214;{% else %}&#24050;&#25253;&#21040;{% endif %} {{ created }} &#26465;&#35760;&#24405;&#12290;</div>{% endif %}
 {% if requested %}<div class="alert success">&#20462;&#25913;&#30003;&#35831;&#24050;&#25552;&#20132;&#65292;&#35831;&#21040;&#28040;&#24687;&#39029;&#26597;&#30475;&#31649;&#29702;&#21592;&#25209;&#22797;&#12290;</div>{% endif %}
-<section class="panel create-panel {% if department.piecework %}touch-piecework-panel{% endif %}" data-workshop-scan data-workshop-history-url="/workshop/{{ department.key }}/history" data-piecework="{{ 1 if department.piecework else 0 }}" data-tooling="{{ 1 if department.tooling else 0 }}" data-mold="{{ 1 if department.mold else 0 }}">
+<section class="panel create-panel {% if department.piecework %}touch-piecework-panel{% endif %}" data-workshop-scan data-workshop-history-url="/workshop/{{ department.key }}/history" data-piecework="{{ 1 if department.piecework else 0 }}" data-tooling="{{ 1 if department.tooling else 0 }}" data-mold="{{ 1 if department.mold else 0 }}" data-quantity-only="{{ 1 if department.quantity_only else 0 }}">
   <div class="padded">
     <form method="post" class="workshop-scan-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -30,8 +30,8 @@
               <th>&#35746;&#21333;&#21495;</th>
               {% if department.mold %}<th>&#26448;&#36136;</th><th>&#23610;&#23544; mm</th><th>&#35268;&#26684;</th>{% elif department.cutter %}<th>&#23610;&#23544; mm</th><th>&#22791;&#27880;</th>{% endif %}
               <th>{% if department.piecework %}&#20135;&#21697;&#25968;&#37327;{% else %}&#25968;&#37327;{% endif %}</th>
-              <th>{% if department.tooling %}&#37329;&#39069;{% elif department.piecework %}&#21152;&#24037;&#21333;&#20215;{% else %}&#21333;&#20215;{% endif %}</th>
-              {% if department.piecework %}<th>&#35013;&#27169;&#36153;</th>{% endif %}
+              {% if not department.quantity_only %}<th>{% if department.tooling %}&#37329;&#39069;{% elif department.piecework %}&#21152;&#24037;&#21333;&#20215;{% else %}&#21333;&#20215;{% endif %}</th>{% endif %}
+              {% if department.mold_fee %}<th>&#35013;&#27169;&#36153;</th>{% endif %}
               {% if department.tooling %}<th>&#35746;&#21333;&#31867;&#21035;</th>{% endif %}
               <th></th>
             </tr>
@@ -49,8 +49,8 @@
               <td><select name="note_text" required>{% for item in department.notes %}<option value="{{ item }}">{{ item }}</option>{% endfor %}</select></td>
               {% endif %}
               <td><input type="{% if department.piecework %}text{% else %}number{% endif %}" name="quantity" step="1" min="1" value="1" required{% if department.piecework %} inputmode="numeric" pattern="[0-9]*" data-touch-number data-touch-integer="1"{% endif %}></td>
-              <td><input type="{% if department.piecework %}text{% else %}number{% endif %}" name="unit_price" step="0.0001" min="0" value="0"{% if department.piecework %} inputmode="decimal" data-touch-number data-touch-scale="4"{% endif %}></td>
-              {% if department.piecework %}<td><select name="mold_fee"><option value="0" selected>0</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option></select></td>{% endif %}
+              {% if not department.quantity_only %}<td><input type="{% if department.piecework %}text{% else %}number{% endif %}" name="unit_price" step="0.0001" min="0" value="0"{% if department.piecework %} inputmode="decimal" data-touch-number data-touch-scale="4"{% endif %}></td>{% endif %}
+              {% if department.mold_fee %}<td><select name="mold_fee"><option value="0" selected>0</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option></select></td>{% endif %}
               {% if department.tooling %}<td><input type="hidden" name="record_type" value="normal" data-record-type><button type="button" class="small" data-toggle-rework>&#24320;&#37325;&#20570;&#21333;</button></td>{% endif %}
               <td><button type="button" class="small danger-button" data-remove-workshop-row>&#21024;&#38500;</button></td>
             </tr>
@@ -70,14 +70,14 @@
           <td><select name="note_text" required>{% for item in department.notes %}<option value="{{ item }}">{{ item }}</option>{% endfor %}</select></td>
           {% endif %}
           <td><input type="{% if department.piecework %}text{% else %}number{% endif %}" name="quantity" step="1" min="1" value="1" required{% if department.piecework %} inputmode="numeric" pattern="[0-9]*" data-touch-number data-touch-integer="1"{% endif %}></td>
-          <td><input type="{% if department.piecework %}text{% else %}number{% endif %}" name="unit_price" step="0.0001" min="0" value="0"{% if department.piecework %} inputmode="decimal" data-touch-number data-touch-scale="4"{% endif %}></td>
-          {% if department.piecework %}<td><select name="mold_fee"><option value="0" selected>0</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option></select></td>{% endif %}
+          {% if not department.quantity_only %}<td><input type="{% if department.piecework %}text{% else %}number{% endif %}" name="unit_price" step="0.0001" min="0" value="0"{% if department.piecework %} inputmode="decimal" data-touch-number data-touch-scale="4"{% endif %}></td>{% endif %}
+          {% if department.mold_fee %}<td><select name="mold_fee"><option value="0" selected>0</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option></select></td>{% endif %}
           {% if department.tooling %}<td><input type="hidden" name="record_type" value="normal" data-record-type><button type="button" class="small" data-toggle-rework>&#24320;&#37325;&#20570;&#21333;</button></td>{% endif %}
           <td><button type="button" class="small danger-button" data-remove-workshop-row>&#21024;&#38500;</button></td>
         </tr>
       </template>
       {% if department.piecework %}<div class="touch-keypad" data-touch-keypad hidden><div class="touch-keypad-display" data-touch-keypad-display>0</div><div class="touch-keypad-grid">{% for key in ["7","8","9","4","5","6","1","2","3","0","."] %}<button type="button" data-keypad-key="{{ key }}">{{ key }}</button>{% endfor %}<button type="button" data-keypad-backspace>&#36864;&#26684;</button><button type="button" data-keypad-clear>&#28165;&#31354;</button><button type="button" class="primary" data-keypad-done>&#30830;&#23450;</button></div></div>{% endif %}
-      <div class="batch-actions"><button type="button" class="button" data-add-workshop-row>+ &#26032;&#22686;&#19968;&#34892;</button><button class="button primary">{% if department.piecework %}&#20445;&#23384;&#35745;&#20214;{% else %}&#20445;&#23384;&#25253;&#21040;{% endif %}</button></div>
+      <div class="batch-actions"><button type="button" class="button" data-add-workshop-row>+ &#26032;&#22686;&#19968;&#34892;</button>{% if department.key == 'press' %}<button type="button" class="button" data-batch-workshop-price>&#25209;&#37327;&#25913;&#21333;&#20215;</button>{% endif %}<button class="button primary">{% if department.piecework %}&#20445;&#23384;&#35745;&#20214;{% else %}&#20445;&#23384;&#25253;&#21040;{% endif %}</button></div>
     </form>
   </div>
 </section>
@@ -89,6 +89,7 @@
   <button>&#25628;&#32034;</button>
 </form>
 <form method="post" action="/workshop/{{ department.key }}/export" data-selection-form data-selection-total="{{ result.total }}"{% if department.piecework or department.tooling %} data-selection-amount-total-all="{{ '%.2f'|format(result.amount_total or 0) }}"{% endif %}>
+  {% set empty_colspan = 9 if department.mold else 8 if department.cutter else 10 if department.mold_fee else 9 if department.piecework else 7 if department.quantity_only else 8 %}
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <input type="hidden" name="select_scope" value="page" data-select-scope>
   <input type="hidden" name="q" value="{{ q }}">
@@ -97,14 +98,14 @@
   {% if department.piecework %}<input type="hidden" name="employee_name" value="{{ employee_name }}">{% endif %}
   <section class="workshop-record-list">
     <div class="selection-toolbar workshop-selection-toolbar"><span>&#24050;&#36873;&#25321; <strong data-selected-count>0</strong> &#26465;{% if department.piecework or department.tooling %}&#65307;&#36873;&#20013;&#24635;&#37329;&#39069; <strong data-selected-amount-total>0.00</strong>{% endif %}</span><button type="submit" class="button small primary" data-requires-selection disabled>&#23548;&#20986;&#36873;&#20013;</button></div>
-    <div class="panel table-wrap"><table><thead><tr><th><input type="checkbox" data-select-all aria-label="&#20840;&#36873;&#24403;&#21069;&#39029;"></th><th>&#35746;&#21333;&#21495;</th>{% if department.mold %}<th>&#26448;&#36136;</th><th>&#23610;&#23544; mm</th><th>&#35268;&#26684;</th>{% elif department.cutter %}<th>&#23610;&#23544; mm</th><th>&#22791;&#27880;</th>{% elif department.piecework %}<th>&#21592;&#24037;</th><th>&#20135;&#21697;</th><th>&#23458;&#25143;</th>{% else %}<th>&#20135;&#21697;</th><th>&#23458;&#25143;</th><th>&#37096;&#38376;</th>{% endif %}<th>&#25968;&#37327;</th><th>{% if department.tooling %}&#37329;&#39069;{% else %}&#21333;&#20215;{% endif %}</th>{% if department.piecework %}<th>&#35013;&#27169;&#36153;</th><th>&#37329;&#39069;</th>{% endif %}{% if department.tooling %}<th>&#35746;&#21333;&#31867;&#21035;</th>{% endif %}<th>&#24405;&#20837;&#26102;&#38388;</th></tr></thead><tbody>
+    <div class="panel table-wrap"><table><thead><tr><th><input type="checkbox" data-select-all aria-label="&#20840;&#36873;&#24403;&#21069;&#39029;"></th><th>&#35746;&#21333;&#21495;</th>{% if department.mold %}<th>&#26448;&#36136;</th><th>&#23610;&#23544; mm</th><th>&#35268;&#26684;</th>{% elif department.cutter %}<th>&#23610;&#23544; mm</th><th>&#22791;&#27880;</th>{% elif department.piecework %}<th>&#21592;&#24037;</th><th>&#20135;&#21697;</th><th>&#23458;&#25143;</th>{% else %}<th>&#20135;&#21697;</th><th>&#23458;&#25143;</th><th>&#37096;&#38376;</th>{% endif %}<th>&#25968;&#37327;</th>{% if not department.quantity_only %}<th>{% if department.tooling %}&#37329;&#39069;{% else %}&#21333;&#20215;{% endif %}</th>{% endif %}{% if department.mold_fee %}<th>&#35013;&#27169;&#36153;</th>{% endif %}{% if department.piecework %}<th>&#37329;&#39069;</th>{% endif %}{% if department.tooling %}<th>&#35746;&#21333;&#31867;&#21035;</th>{% endif %}<th>&#24405;&#20837;&#26102;&#38388;</th></tr></thead><tbody>
       {% for row in result.rows %}
-      <tr data-context-row data-csrf="{{ csrf }}" data-record-label="&#36710;&#38388;&#35760;&#24405; {{ row.order_no }}"{% if not department.tooling or user.role == 'admin' %} data-delete-url="/workshop/{{ department.key }}/records/{{ row.id }}/delete"{% endif %}{% if not department.piecework %} data-workshop-quantity-url="/workshop/{{ department.key }}/records/{{ row.id }}/quantity/request" data-workshop-quantity="{{ row.quantity }}" data-workshop-amount="{{ row.unit_price }}"{% endif %}{% if department.piecework or department.tooling %} data-amount="{{ '%.2f'|format(row.amount or 0) }}"{% endif %}>
+      <tr data-context-row data-csrf="{{ csrf }}" data-record-label="&#36710;&#38388;&#35760;&#24405; {{ row.order_no }}"{% if not department.tooling or user.role == 'admin' %} data-delete-url="/workshop/{{ department.key }}/records/{{ row.id }}/delete"{% endif %}{% if department.tooling %} data-workshop-quantity-url="/workshop/{{ department.key }}/records/{{ row.id }}/quantity/request" data-workshop-quantity="{{ row.quantity }}" data-workshop-amount="{{ row.unit_price }}"{% endif %}{% if department.piecework or department.tooling %} data-amount="{{ '%.2f'|format(row.amount or 0) }}"{% endif %}>
         <td><input type="checkbox" name="selected_ids" value="{{ row.id }}" data-select-item></td><td><a href="/orders/{{ row.order_id }}">{{ row.order_no }}</a></td>
         {% if department.mold %}<td>{{ row.material or '' }}</td><td>{{ row.size_text or '' }}</td><td>{{ row.spec or '' }}</td>{% elif department.cutter %}<td>{{ row.size_text or '' }}</td><td>{{ row.note_text or '' }}</td>{% elif department.piecework %}<td>{{ row.operator_name }}</td><td>{{ row.product_name or '' }}</td><td>{{ row.customer_name or '' }}</td>{% else %}<td>{{ row.product_name or '' }}</td><td>{{ row.customer_name or '' }}</td><td>{{ row.department_name }}</td>{% endif %}
-        <td>{{ row.quantity }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td>{% if department.piecework %}<td>{{ '%.2f'|format(row.mold_fee or 0) }}</td><td>{{ '%.2f'|format(row.amount or 0) }}</td>{% endif %}{% if department.tooling %}<td>{% if row.record_type == 'rework' %}&#37325;&#20570;{% else %}&#27491;&#24120;{% endif %}</td>{% endif %}<td>{{ row.reported_at|beijing_time }}</td>
+        <td>{{ row.quantity }}</td>{% if not department.quantity_only %}<td>{{ '%.4f'|format(row.unit_price or 0) }}</td>{% endif %}{% if department.mold_fee %}<td>{{ '%.2f'|format(row.mold_fee or 0) }}</td>{% endif %}{% if department.piecework %}<td>{{ '%.2f'|format(row.amount or 0) }}</td>{% endif %}{% if department.tooling %}<td>{% if row.record_type == 'rework' %}&#37325;&#20570;{% else %}&#27491;&#24120;{% endif %}</td>{% endif %}<td>{{ row.reported_at|beijing_time }}</td>
       </tr>
-      {% else %}<tr><td colspan="{% if department.mold %}9{% elif department.cutter %}8{% elif department.piecework %}10{% else %}8{% endif %}" class="muted center">&#26242;&#26080;&#35760;&#24405;</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="{{ empty_colspan }}" class="muted center">&#26242;&#26080;&#35760;&#24405;</td></tr>{% endfor %}
     </tbody></table></div>
     {{ pager|safe }}
   </section>

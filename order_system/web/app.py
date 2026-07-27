@@ -67,7 +67,7 @@ WORKSHOP_DEPARTMENTS = {
     "cutter": {
         "name": "\u5207\u5200",
         "password_env": "TWD_WORKSHOP_CUTTER_PASSWORD",
-        "default_password": "chedao888",
+        "default_password": "888888",
         "tooling": True,
         "cutter": True,
         "notes": ["\u5185\u52071\u652f", "\u54ac\u677f", "\u8df3\u6b65"],
@@ -77,6 +77,20 @@ WORKSHOP_DEPARTMENTS = {
         "password_env": "TWD_WORKSHOP_PRESS_PASSWORD",
         "default_password": "chongya888",
         "employees": ["\u5f90\u5c71\u7acb", "\u5218\u9053\u6797", "\u6881\u8d3b\u6821", "\u79e6\u5e94\u57ce", "\u66fe\u51e4\u5a25", "\u519c\u7231\u67f3"],
+        "piecework": True,
+        "mold_fee": True,
+    },
+    "crystal": {
+        "name": "\u6676\u9762",
+        "password_env": "TWD_WORKSHOP_CRYSTAL_PASSWORD",
+        "default_password": "jingmian888",
+        "quantity_only": True,
+    },
+    "packaging": {
+        "name": "\u5305\u88c5",
+        "password_env": "TWD_WORKSHOP_PACKAGING_PASSWORD",
+        "default_password": "baozhuang888",
+        "employees": ["\u6d82\u5c0f\u82f1", "\u5f90\u5f69\u8fde", "\u5468\u7f8e\u8bc6", "\u9648\u5c0f\u971e", "\u738b\u5bb6\u4e3d", "\u6768\u660e\u4ed9", "\u5f20\u96ea\u6797", "\u738b\u6587\u5bb9"],
         "piecework": True,
     },
 }
@@ -1188,6 +1202,8 @@ def workshop_department(name: str) -> dict[str, Any] | None:
         "name": department["name"],
         "employees": list(department.get("employees") or []),
         "piecework": bool(department.get("piecework")),
+        "quantity_only": bool(department.get("quantity_only")),
+        "mold_fee": bool(department.get("mold_fee")),
         "tooling": bool(department.get("tooling")),
         "cutter": bool(department.get("cutter")),
         "notes": list(department.get("notes") or []),
@@ -1441,19 +1457,43 @@ async def workshop_department_export(request: Request, department_key: str):
         ] for row in rows]
         headers = ["\u8ba2\u5355\u53f7", "\u5c3a\u5bf8", "\u5907\u6ce8", "\u6570\u91cf", "\u91d1\u989d", "\u8ba2\u5355\u7c7b\u522b", "\u5f55\u5165\u65f6\u95f4"]
     elif department.get("piecework"):
+        if department.get("mold_fee"):
+            data = [[
+                row.get("order_no") or "",
+                row.get("product_name") or "",
+                row.get("customer_name") or "",
+                row.get("department_name") or "",
+                row.get("operator_name") or "",
+                row.get("quantity") or 1,
+                row.get("unit_price") or 0,
+                row.get("mold_fee") or 0,
+                row.get("amount") or 0,
+                beijing_time(row.get("reported_at") or ""),
+            ] for row in rows]
+            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u5355\u4ef7", "\u88c5\u6a21\u8d39", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
+        else:
+            data = [[
+                row.get("order_no") or "",
+                row.get("product_name") or "",
+                row.get("customer_name") or "",
+                row.get("department_name") or "",
+                row.get("operator_name") or "",
+                row.get("quantity") or 1,
+                row.get("unit_price") or 0,
+                row.get("amount") or 0,
+                beijing_time(row.get("reported_at") or ""),
+            ] for row in rows]
+            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u5355\u4ef7", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
+    elif department.get("quantity_only"):
         data = [[
             row.get("order_no") or "",
             row.get("product_name") or "",
             row.get("customer_name") or "",
             row.get("department_name") or "",
-            row.get("operator_name") or "",
             row.get("quantity") or 1,
-            row.get("unit_price") or 0,
-            row.get("mold_fee") or 0,
-            row.get("amount") or 0,
             beijing_time(row.get("reported_at") or ""),
         ] for row in rows]
-        headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u5355\u4ef7", "\u88c5\u6a21\u8d39", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
+        headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u6570\u91cf", "\u62a5\u5230\u65f6\u95f4"]
     else:
         data = [[
             row.get("order_no") or "",
@@ -1532,14 +1572,14 @@ async def workshop_department_submit(request: Request, department_key: str):
     note_texts = form.getlist("note_text")
     record_types = form.getlist("record_type")
     mold_fees = form.getlist("mold_fee")
+    unit_prices = form.getlist("unit_price")
+    quantities = form.getlist("quantity")
     rows = []
-    for index, (order_no, unit_price, quantity) in enumerate(zip(
-        form.getlist("order_no"), form.getlist("unit_price"), form.getlist("quantity")
-    )):
+    for index, order_no in enumerate(form.getlist("order_no")):
         rows.append({
             "order_no": order_no,
-            "unit_price": unit_price,
-            "quantity": quantity,
+            "unit_price": unit_prices[index] if index < len(unit_prices) else "0",
+            "quantity": quantities[index] if index < len(quantities) else "1",
             "mold_fee": mold_fees[index] if index < len(mold_fees) else "0",
             "employee_name": employee_names[index] if index < len(employee_names) else "",
             "material": materials[index] if index < len(materials) else "",

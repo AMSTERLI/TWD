@@ -13,6 +13,8 @@ os.environ["TWD_SESSION_SECRET"] = "workshop-test-secret-long-enough"
 os.environ["TWD_WORKSHOP_MOLD_PASSWORD"] = "mold-pass-123"
 os.environ["TWD_WORKSHOP_CUTTER_PASSWORD"] = "cutter-pass-123"
 os.environ["TWD_WORKSHOP_PRESS_PASSWORD"] = "press-pass-123"
+os.environ["TWD_WORKSHOP_CRYSTAL_PASSWORD"] = "crystal-pass-123"
+os.environ["TWD_WORKSHOP_PACKAGING_PASSWORD"] = "packaging-pass-123"
 
 from fastapi.testclient import TestClient  # noqa: E402
 from order_system.database import dumps_json  # noqa: E402
@@ -73,6 +75,8 @@ with TestClient(app) as client:
     order_id, order_no = repo.create_order(mold_payload)
     cutter_order_id, cutter_order_no = repo.create_order(payload("TWD1-260721102"))
     press_order_id, press_order_no = repo.create_order(payload("TWD1-260721103"))
+    crystal_order_id, crystal_order_no = repo.create_order(payload("TWD1-260721105"))
+    packaging_order_id, packaging_order_no = repo.create_order(payload("TWD1-260721106"))
     auto_qty_payload = payload("TWD1-260721104")
     auto_qty_payload["spare_quantity"] = 15
     _, auto_qty_order_no = repo.create_order(auto_qty_payload)
@@ -103,6 +107,7 @@ with TestClient(app) as client:
 
     home = client.get("/workshop")
     assert home.status_code == 200 and "/workshop/mold/unlock" in home.text and "/workshop/cutter/unlock" in home.text and "/workshop/press/unlock" in home.text
+    assert "/workshop/crystal/unlock" in home.text and "/workshop/packaging/unlock" in home.text
     bad_unlock = client.post(
         "/workshop/mold/unlock",
         data={"csrf": csrf(home.text), "password": "bad"},
@@ -179,6 +184,7 @@ with TestClient(app) as client:
     assert 'name="date_range" value="week"' in press.text
     assert 'name="date_range" value="day"' in press.text
     assert 'name="mold_fee"' in press.text and '<option value="8">8</option>' in press.text
+    assert 'data-batch-workshop-price' in press.text
     press_employees = ["\u5f90\u5c71\u7acb", "\u5218\u9053\u6797", "\u6881\u8d3b\u6821", "\u79e6\u5e94\u57ce", "\u66fe\u51e4\u5a25", "\u519c\u7231\u67f3"]
     for employee in press_employees:
         assert f'data-employee-value="{employee}"' in press.text
@@ -233,6 +239,72 @@ with TestClient(app) as client:
     assert press_sheet.cell(row=3, column=6).value == 60
     assert abs(sum(press_sheet.cell(row=row_index, column=8).value for row_index in (2, 3)) - 8) < 1e-9
     assert abs(sum(press_sheet.cell(row=row_index, column=9).value for row_index in (2, 3)) - 17.6) < 1e-9
+    crystal_unlock = client.post(
+        "/workshop/crystal/unlock",
+        data={"csrf": csrf(home.text), "password": "crystal-pass-123"},
+        follow_redirects=False,
+    )
+    assert crystal_unlock.status_code == 303 and crystal_unlock.headers["location"] == "/workshop/crystal"
+    crystal = client.get("/workshop/crystal")
+    assert crystal.status_code == 200 and "data-workshop-scan" in crystal.text
+    assert 'name="unit_price"' not in crystal.text and 'data-workshop-employees' not in crystal.text
+    crystal_report = client.post(
+        "/workshop/crystal",
+        data={"csrf": csrf(crystal.text), "order_no": [crystal_order_no], "quantity": ["12"]},
+        follow_redirects=False,
+    )
+    assert crystal_report.status_code == 303
+    crystal_records = repo.order_workshop_records(crystal_order_id)
+    assert len(crystal_records) == 1
+    assert crystal_records[0]["department_name"] == "\u6676\u9762"
+    assert crystal_records[0]["quantity"] == 12
+    assert abs(crystal_records[0]["unit_price"] - 0) < 1e-9
+    crystal_list = client.get("/workshop/crystal")
+    assert crystal_list.status_code == 200 and crystal_order_no in crystal_list.text
+    assert "data-selected-amount-total" not in crystal_list.text and "&#21333;&#20215;" not in crystal_list.text
+    packaging_unlock = client.post(
+        "/workshop/packaging/unlock",
+        data={"csrf": csrf(home.text), "password": "packaging-pass-123"},
+        follow_redirects=False,
+    )
+    assert packaging_unlock.status_code == 303 and packaging_unlock.headers["location"] == "/workshop/packaging"
+    packaging = client.get("/workshop/packaging")
+    assert packaging.status_code == 200 and "touch-piecework-panel" in packaging.text
+    assert 'name="mold_fee"' not in packaging.text and 'data-batch-workshop-price' not in packaging.text
+    packaging_employees = ["\u6d82\u5c0f\u82f1", "\u5f90\u5f69\u8fde", "\u5468\u7f8e\u8bc6", "\u9648\u5c0f\u971e", "\u738b\u5bb6\u4e3d", "\u6768\u660e\u4ed9", "\u5f20\u96ea\u6797", "\u738b\u6587\u5bb9"]
+    for employee in packaging_employees:
+        assert f'data-employee-value="{employee}"' in packaging.text
+        assert f'<option value="{employee}"' in packaging.text
+    packaging_report = client.post(
+        "/workshop/packaging",
+        data={"csrf": csrf(packaging.text), "employee_name": ["\u6d82\u5c0f\u82f1,\u5f90\u5f69\u8fde"], "order_no": [packaging_order_no], "quantity": ["100"], "unit_price": ["0.5"]},
+        follow_redirects=False,
+    )
+    assert packaging_report.status_code == 303
+    packaging_records = repo.order_workshop_records(packaging_order_id)
+    assert len(packaging_records) == 2
+    assert {row["operator_name"] for row in packaging_records} == {"\u6d82\u5c0f\u82f1", "\u5f90\u5f69\u8fde"}
+    for row in packaging_records:
+        assert row["department_name"] == "\u5305\u88c5"
+        assert row["quantity"] == 50
+        assert abs(row["unit_price"] - 0.5) < 1e-9
+        assert abs(row["mold_fee"] - 0) < 1e-9
+        assert abs(row["amount"] - 25) < 1e-9
+    packaging_list = client.get("/workshop/packaging")
+    assert packaging_list.status_code == 200 and packaging_order_no in packaging_list.text
+    assert 'data-amount="25.00"' in packaging_list.text and 'data-selection-amount-total-all="50.00"' in packaging_list.text
+    assert "&#35013;&#27169;&#36153;" not in packaging_list.text
+    packaging_export = client.post(
+        "/workshop/packaging/export",
+        data={"csrf": csrf(packaging_list.text), "selected_ids": [str(row["id"]) for row in packaging_records]},
+    )
+    assert packaging_export.status_code == 200
+    packaging_workbook_path = root / "packaging-export.xlsx"
+    packaging_workbook_path.write_bytes(packaging_export.content)
+    packaging_sheet = load_workbook(packaging_workbook_path).active
+    assert packaging_sheet.cell(row=1, column=8).value == "\u91d1\u989d"
+    assert packaging_sheet.cell(row=1, column=9).value == "\u62a5\u5230\u65f6\u95f4"
+    assert packaging_sheet.cell(row=2, column=1).value == packaging_order_no
     list_page = client.get("/workshop/mold")
     assert 'type="date"' in list_page.text
     assert "operator_name" not in list_page.text and "&#25805;&#20316;&#20154;" not in list_page.text

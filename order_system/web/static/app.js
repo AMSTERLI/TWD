@@ -404,6 +404,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   const rows = section.querySelector("[data-workshop-rows]");
   const template = section.querySelector("[data-workshop-row-template]");
   const addButton = section.querySelector("[data-add-workshop-row]");
+  const batchPriceButton = section.querySelector("[data-batch-workshop-price]");
   const historyUrl = section.dataset.workshopHistoryUrl || "";
   const isMold = section.dataset.mold === "1";
   const isTooling = section.dataset.tooling === "1";
@@ -624,6 +625,24 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   }));
   rows.querySelectorAll("tr").forEach(row => applyCurrentEmployee(row, true));
   addButton?.addEventListener("click", () => addRow());
+  batchPriceButton?.addEventListener("click", () => {
+    const value = window.prompt("\u8bf7\u8f93\u5165\u65b0\u7684\u52a0\u5de5\u5355\u4ef7");
+    if (value === null) return;
+    const cleaned = value.trim();
+    if (!/^\d+(?:\.\d{1,4})?$/.test(cleaned)) {
+      window.alert("\u8bf7\u8f93\u5165\u6709\u6548\u7684\u52a0\u5de5\u5355\u4ef7\uff0c\u6700\u591a 4 \u4f4d\u5c0f\u6570");
+      return;
+    }
+    const activeRows = [...rows.querySelectorAll("tr")].filter(row => row.querySelector("[data-workshop-order]")?.value.trim());
+    if (!activeRows.length) {
+      window.alert("\u8bf7\u5148\u5f55\u5165\u8ba2\u5355\u53f7");
+      return;
+    }
+    activeRows.forEach(row => {
+      const input = row.querySelector('[name="unit_price"]');
+      if (input) input.value = cleaned;
+    });
+  });
   section.addEventListener("click", event => {
     const reworkButton = event.target.closest("[data-toggle-rework]");
     if (reworkButton) {
