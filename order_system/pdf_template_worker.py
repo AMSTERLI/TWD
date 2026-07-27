@@ -16,16 +16,19 @@ from reportlab.pdfgen import canvas
 PAGE_WIDTH = 540
 PAGE_HEIGHT = 780
 QR_CODE_RIGHT = 518
-QR_CODE_TOP = 17
-QR_CODE_SIZE = 34
+QR_CODE_TOP = 6
+QR_CODE_SIZE = 56.69
+FOOTER_QR_CODE_RIGHT = 517
+FOOTER_QR_CODE_TOP = 744
+FOOTER_QR_CODE_SIZE = 28.35
 REMARK_LEFT = 36
-REMARK_TOP = 550
+REMARK_TOP = 540
 REMARK_WIDTH = 146
-REMARK_HEIGHT = 182
+REMARK_HEIGHT = 188
 IMAGE_AREA_LEFT = 193
-IMAGE_AREA_TOP = 536
+IMAGE_AREA_TOP = 522
 IMAGE_AREA_WIDTH = 315
-IMAGE_AREA_HEIGHT = 200
+IMAGE_AREA_HEIGHT = 205
 FONT_NAME = "MicrosoftYaHei"
 BLACK = (0, 0, 0)
 RED = (0.8, 0.12, 0.12)
@@ -123,20 +126,21 @@ def _draw_header(pdf: canvas.Canvas, record: dict) -> None:
     _draw_box_text(pdf, record.get("delivery_date") or "", 434, 146, 77, 20, top_offset=8)
 
 
-def _draw_order_qr_code(pdf: canvas.Canvas, order_no: str) -> None:
-    value = str(order_no or "").strip()
-    if not value:
+def _draw_qr_code(pdf: canvas.Canvas, value: str, right: float, top: float, size: float) -> None:
+    clean = str(value or "").strip()
+    if not clean:
         return
+    qr_code = createBarcodeDrawing("QR", value=clean, width=size, height=size)
+    qr_code.drawOn(pdf, right - size, PAGE_HEIGHT - top - size)
 
-    qr_code = createBarcodeDrawing(
-        "QR",
-        value=value,
-        width=QR_CODE_SIZE,
-        height=QR_CODE_SIZE,
-    )
-    draw_x = QR_CODE_RIGHT - QR_CODE_SIZE
-    draw_y = PAGE_HEIGHT - QR_CODE_TOP - QR_CODE_SIZE
-    qr_code.drawOn(pdf, draw_x, draw_y)
+
+def _draw_order_qr_code(pdf: canvas.Canvas, order_no: str) -> None:
+    _draw_qr_code(pdf, order_no, QR_CODE_RIGHT, QR_CODE_TOP, QR_CODE_SIZE)
+
+
+def _draw_footer_qr_code(pdf: canvas.Canvas, order_no: str) -> None:
+    _draw_qr_code(pdf, order_no, FOOTER_QR_CODE_RIGHT, FOOTER_QR_CODE_TOP, FOOTER_QR_CODE_SIZE)
+
 
 def _draw_process_table(pdf: canvas.Canvas, record: dict) -> None:
     process_rows = [
@@ -167,7 +171,7 @@ def _draw_process_table(pdf: canvas.Canvas, record: dict) -> None:
         {
             "content": _join_selected(record.get("polishing_json")),
             "note": record.get("polishing_note") or "",
-            "top": 352,
+            "top": 348,
             "height": 24,
             "wide": False,
             "note_color": _note_color(record, "polishing_note_red"),
@@ -183,7 +187,7 @@ def _draw_process_table(pdf: canvas.Canvas, record: dict) -> None:
         {
             "content": _join_selected(record.get("resin_json")),
             "note": record.get("resin_note") or "",
-            "top": 435,
+            "top": 431,
             "height": 24,
             "wide": False,
             "note_color": _note_color(record, "resin_note_red"),
@@ -191,7 +195,7 @@ def _draw_process_table(pdf: canvas.Canvas, record: dict) -> None:
         {
             "content": _packaging_content(record),
             "note": record.get("packaging_note") or "",
-            "top": 459,
+            "top": 456,
             "height": 39,
             "wide": False,
             "note_color": _note_color(record, "packaging_note_red"),
@@ -307,9 +311,10 @@ def _draw_component_part(pdf: canvas.Canvas, part: dict, data_root: Path, number
 
 
 def _draw_footer(pdf: canvas.Canvas, record: dict) -> None:
+    _draw_footer_qr_code(pdf, record.get("order_no") or "")
     pdf.setFont(FONT_NAME, 13)
-    _draw_single_line(pdf, f"{record.get('bi_no') or ''}", 105, 762)
-    _draw_single_line(pdf, f"{record.get('production_no') or ''}", 322, 762)
+    _draw_single_line(pdf, f"{record.get('bi_no') or ''}", 55, 762)
+    _draw_single_line(pdf, f"{record.get('production_no') or ''}", 266, 762)
 
 
 def _format_quantity(record: dict) -> str:
