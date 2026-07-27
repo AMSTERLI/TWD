@@ -83,9 +83,9 @@
 </section>
 <form class="searchbar workshop-filterbar">
   <input name="q" value="{{ q }}" placeholder="&#25628;&#32034;&#35746;&#21333;&#21495;&#25110;&#20135;&#21697;{% if department.piecework %}&#12289;&#21592;&#24037;{% endif %}">
-  {% if department.piecework %}<label>&#21592;&#24037;<select name="employee_name"><option value="">&#20840;&#37096;</option>{% for employee in department.employees %}<option value="{{ employee }}"{% if employee_name == employee %} selected{% endif %}>{{ employee }}</option>{% endfor %}</select></label>{% endif %}
+  {% if department.piecework %}<label>&#21592;&#24037;<select name="employee_name"><option value="">&#20840;&#37096;</option>{% for employee in department.employees %}<option value="{{ employee }}"{% if employee_name == employee %} selected{% endif %}>{{ employee }}</option>{% endfor %}</select></label><button class="small{% if date_range == 'month' %} primary{% endif %}" name="date_range" value="month">&#26412;&#26376;</button><button class="small{% if date_range == 'week' %} primary{% endif %}" name="date_range" value="week">&#26412;&#21608;</button><button class="small{% if date_range == 'day' %} primary{% endif %}" name="date_range" value="day">&#26412;&#26085;</button>{% else %}
   <label>&#24320;&#22987;<input type="date" name="reported_from" value="{{ reported_from }}"></label>
-  <label>&#32467;&#26463;<input type="date" name="reported_to" value="{{ reported_to }}"></label>
+  <label>&#32467;&#26463;<input type="date" name="reported_to" value="{{ reported_to }}"></label>{% endif %}
   <button>&#25628;&#32034;</button>
 </form>
 <form method="post" action="/workshop/{{ department.key }}/export" data-selection-form data-selection-total="{{ result.total }}"{% if department.piecework or department.tooling %} data-selection-amount-total-all="{{ '%.2f'|format(result.amount_total or 0) }}"{% endif %}>

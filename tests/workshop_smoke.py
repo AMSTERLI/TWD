@@ -174,6 +174,10 @@ with TestClient(app) as client:
     assert "workshop-press-page" in press.text
     assert "data-touch-keypad" in press.text and "data-touch-number" in press.text
     assert "data-touch-integer" in press.text and "data-touch-scale" in press.text
+    assert 'type="date"' not in press.text
+    assert 'name="date_range" value="month"' in press.text
+    assert 'name="date_range" value="week"' in press.text
+    assert 'name="date_range" value="day"' in press.text
     assert 'name="mold_fee"' in press.text and '<option value="8">8</option>' in press.text
     press_employees = ["\u5f90\u5c71\u7acb", "\u5218\u9053\u6797", "\u6881\u8d3b\u6821", "\u79e6\u5e94\u57ce", "\u66fe\u51e4\u5a25", "\u519c\u7231\u67f3"]
     for employee in press_employees:
@@ -230,6 +234,7 @@ with TestClient(app) as client:
     assert abs(sum(press_sheet.cell(row=row_index, column=8).value for row_index in (2, 3)) - 8) < 1e-9
     assert abs(sum(press_sheet.cell(row=row_index, column=9).value for row_index in (2, 3)) - 17.6) < 1e-9
     list_page = client.get("/workshop/mold")
+    assert 'type="date"' in list_page.text
     assert "operator_name" not in list_page.text and "&#25805;&#20316;&#20154;" not in list_page.text
     assert "&#20986;&#36135;&#29366;&#24577;" not in list_page.text
     assert "/workshop/mold/ship" not in list_page.text

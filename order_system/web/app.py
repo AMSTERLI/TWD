@@ -5,7 +5,7 @@ import json
 import os
 import shutil
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from typing import Any
@@ -1281,6 +1281,7 @@ def workshop_department_page(
     reported_from: str = "",
     reported_to: str = "",
     employee_name: str = "",
+    date_range: str = "",
 ):
     _, denied = require_page(request, {"workshop"})
     if denied:
@@ -1290,6 +1291,18 @@ def workshop_department_page(
         return Response(status_code=404)
     if not workshop_unlocked(request, department_key):
         return RedirectResponse("/workshop", status_code=303)
+    date_range = str(date_range or "").strip()
+    if department.get("piecework") and date_range in {"month", "week", "day"}:
+        today = date.today()
+        if date_range == "month":
+            reported_from = today.replace(day=1).isoformat()
+            reported_to = today.isoformat()
+        elif date_range == "week":
+            reported_from = (today - timedelta(days=today.weekday())).isoformat()
+            reported_to = today.isoformat()
+        else:
+            reported_from = today.isoformat()
+            reported_to = today.isoformat()
     return templates.TemplateResponse(
         request,
         "workshop_department.html",
@@ -1301,6 +1314,7 @@ def workshop_department_page(
             reported_from=reported_from,
             reported_to=reported_to,
             employee_name=employee_name,
+            date_range=date_range,
             created=max(0, created),
             shipped=max(0, shipped),
             requested=max(0, requested),
