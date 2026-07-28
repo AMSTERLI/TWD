@@ -138,6 +138,7 @@ DEFAULT_OUTSOURCE_PROCESSES = [
 DEFAULT_OUTSOURCE_FACTORIES = [
     ("\u4e0a\u8272", "\u97e9\u632f\u4f1f"),
     ("\u4e0a\u8272", "\u9ec4\u5c0f\u4e91"),
+    ("\u710a\u9488", "\u79e6\u6c38\u548c"),
 ]
 
 

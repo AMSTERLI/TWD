@@ -21,6 +21,7 @@ from order_system.web.repository import ORDER_COLUMNS  # noqa: E402
 DIE_CAST = "\u538b\u94f8"
 PUNCH = "\u51b2\u538b"
 COLORING = "\u4e0a\u8272"
+PIN = "\u710a\u9488"
 
 
 def token(html: str) -> str:
@@ -52,6 +53,8 @@ with TestClient(app) as client:
     client.post("/login", data={
         "csrf": token(login.text), "username": "admin", "password": "test-password",
     })
+    pin_factories = {item["factory_name"] for item in repo.factories(PIN)}
+    assert "\u79e6\u6c38\u548c" in pin_factories
     page = client.get("/outsource")
     assert page.status_code == 200
     assert "data-outsource-batch" in page.text
