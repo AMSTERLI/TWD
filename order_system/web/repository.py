@@ -1263,8 +1263,14 @@ class Repository:
         piecework_employees = {
             "press": {"\u5f90\u5c71\u7acb", "\u5218\u9053\u6797", "\u6881\u8d3b\u6821", "\u79e6\u5e94\u57ce", "\u66fe\u51e4\u5a25", "\u519c\u7231\u67f3"},
             "packaging": {"\u6d82\u5c0f\u82f1", "\u5f90\u5f69\u8fde", "\u5468\u7f8e\u8bc6", "\u9648\u5c0f\u971e", "\u738b\u5bb6\u4e3d", "\u6768\u660e\u4ed9", "\u5f20\u96ea\u6797", "\u738b\u6587\u5bb9"},
+            "polishing": {"\u725f\u6c5f", "\u6bdb\u536b\u5175"},
+            "painting": {"\u5218\u8fdb", "\u9ec4\u4e09\u679a", "\u5468\u6625\u71d5", "\u519c\u91d1\u7ea2", "\u519c\u8273\u7ea2", "\u9648\u7eaf\u82f1", "\u6881\u5f66", "\u6768\u7ea2\u82f1", "\u5f90\u53cb\u4e3d"},
+            "diecast": {"\u519c\u5982\u5e72", "\u674e\u56fd\u5bcc", "\u66fe\u660e", "\u519c\u5929\u4f69"},
         }
         tooling_departments = {"mold", "cutter"}
+        additive_fee_departments = {"press", "polishing", "diecast"}
+        dropdown_fee_departments = {"press", "diecast"}
+        multiplier_fee_departments = {"painting"}
         allowed_press_mold_fees = {0.0, 4.0, 5.0, 6.0, 7.0, 8.0}
         clean_rows: list[dict[str, Any]] = []
         for row in rows:
@@ -1294,10 +1300,13 @@ class Repository:
                 allowed_employees = piecework_employees[department_key]
                 if not employee_names or any(item not in allowed_employees for item in employee_names):
                     raise ValueError(f"\u8ba2\u5355 {order_no} \u8bf7\u9009\u62e9{department_name}\u5458\u5de5")
-                if department_key == "press":
+                if department_key in dropdown_fee_departments:
                     if mold_fee not in allowed_press_mold_fees:
                         raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u88c5\u6a21\u8d39\u53ea\u80fd\u9009 0/4/5/6/7/8")
-                else:
+                elif department_key in multiplier_fee_departments:
+                    if mold_fee <= 0:
+                        raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u989c\u8272\u6570\u91cf\u5fc5\u987b\u5927\u4e8e 0")
+                elif department_key not in additive_fee_departments:
                     mold_fee = 0.0
             else:
                 mold_fee = 0.0
@@ -1365,7 +1374,9 @@ class Repository:
                 employee_names = row.get("employee_names") or [operator_name]
                 split_count = max(1, len(employee_names))
                 split_quantity = row["quantity"] / split_count
-                split_mold_fee = row.get("mold_fee", 0.0) / split_count
+                split_mold_fee = row.get("mold_fee", 0.0)
+                if department_key in additive_fee_departments:
+                    split_mold_fee = split_mold_fee / split_count
                 for employee_name in employee_names:
                     cursor = conn.execute(
                         """INSERT INTO workshop_records
@@ -1416,10 +1427,10 @@ class Repository:
         )
         with self.connect() as conn:
             total = int(conn.execute(f"SELECT COUNT(*) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0])
-            amount_total = float(conn.execute(f"SELECT COALESCE(SUM(CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END), 0) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0] or 0)
+            amount_total = float(conn.execute(f"SELECT COALESCE(SUM(CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END), 0) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0] or 0)
             rows = conn.execute(
                 f"""SELECT w.*, o.product_name, o.customer_name,
-                           CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
+                           CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
                     FROM workshop_records w
                     LEFT JOIN orders o ON o.id = w.order_id
                     {where}
@@ -1440,7 +1451,7 @@ class Repository:
                 placeholders = ", ".join("?" for _ in chunk)
                 rows.extend(conn.execute(
                     f"""SELECT w.*, o.product_name, o.customer_name,
-                               CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
+                               CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
                         FROM workshop_records w
                         LEFT JOIN orders o ON o.id = w.order_id
                         WHERE w.id IN ({placeholders}) AND (? = '' OR w.department_key = ?)""",
@@ -1452,7 +1463,7 @@ class Repository:
     def order_workshop_records(self, order_id: int) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
-                """SELECT w.*, CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
+                """SELECT w.*, CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
                    FROM workshop_records w
                    WHERE w.order_id = ?
                    ORDER BY w.reported_at ASC, w.id ASC""",

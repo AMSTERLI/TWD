@@ -16,6 +16,8 @@ os.environ["TWD_WORKSHOP_PRESS_PASSWORD"] = "press-pass-123"
 os.environ["TWD_WORKSHOP_CRYSTAL_PASSWORD"] = "crystal-pass-123"
 os.environ["TWD_WORKSHOP_PACKAGING_PASSWORD"] = "packaging-pass-123"
 os.environ["TWD_WORKSHOP_POLISHING_PASSWORD"] = "polishing-pass-123"
+os.environ["TWD_WORKSHOP_PAINTING_PASSWORD"] = "painting-pass-123"
+os.environ["TWD_WORKSHOP_DIECAST_PASSWORD"] = "diecast-pass-123"
 
 from fastapi.testclient import TestClient  # noqa: E402
 from order_system.database import dumps_json  # noqa: E402
@@ -79,6 +81,8 @@ with TestClient(app) as client:
     crystal_order_id, crystal_order_no = repo.create_order(payload("TWD1-260721105"))
     packaging_order_id, packaging_order_no = repo.create_order(payload("TWD1-260721106"))
     polishing_order_id, polishing_order_no = repo.create_order(payload("TWD1-260721107"))
+    painting_order_id, painting_order_no = repo.create_order(payload("TWD1-260721108"))
+    diecast_order_id, diecast_order_no = repo.create_order(payload("TWD1-260721109"))
     auto_qty_payload = payload("TWD1-260721104")
     auto_qty_payload["spare_quantity"] = 15
     _, auto_qty_order_no = repo.create_order(auto_qty_payload)
@@ -110,6 +114,7 @@ with TestClient(app) as client:
     home = client.get("/workshop")
     assert home.status_code == 200 and "/workshop/mold/unlock" in home.text and "/workshop/cutter/unlock" in home.text and "/workshop/press/unlock" in home.text
     assert "/workshop/crystal/unlock" in home.text and "/workshop/packaging/unlock" in home.text and "/workshop/polishing/unlock" in home.text
+    assert "/workshop/painting/unlock" in home.text and "/workshop/diecast/unlock" in home.text
     bad_unlock = client.post(
         "/workshop/mold/unlock",
         data={"csrf": csrf(home.text), "password": "bad"},
@@ -271,22 +276,81 @@ with TestClient(app) as client:
     )
     assert polishing_unlock.status_code == 303 and polishing_unlock.headers["location"] == "/workshop/polishing"
     polishing = client.get("/workshop/polishing")
-    assert polishing.status_code == 200 and "data-workshop-scan" in polishing.text
-    assert 'name="unit_price"' not in polishing.text and 'data-workshop-employees' not in polishing.text
+    assert polishing.status_code == 200 and "touch-piecework-panel" in polishing.text
+    assert 'name="unit_price"' in polishing.text and 'data-workshop-employees' in polishing.text
+    assert "\u725f\u6c5f" in polishing.text and "\u6bdb\u536b\u5175" in polishing.text
+    assert "\u6253\u6837\u8d39" in polishing.text and 'name="mold_fee"' in polishing.text
     polishing_report = client.post(
         "/workshop/polishing",
-        data={"csrf": csrf(polishing.text), "order_no": [polishing_order_no], "quantity": ["18"]},
+        data={"csrf": csrf(polishing.text), "employee_name": ["\u725f\u6c5f,\u6bdb\u536b\u5175"], "order_no": [polishing_order_no], "quantity": ["18"], "unit_price": ["0.2"], "mold_fee": ["10"]},
         follow_redirects=False,
     )
     assert polishing_report.status_code == 303
     polishing_records = repo.order_workshop_records(polishing_order_id)
-    assert len(polishing_records) == 1
-    assert polishing_records[0]["department_name"] == "\u629b\u5149"
-    assert polishing_records[0]["quantity"] == 18
-    assert abs(polishing_records[0]["unit_price"] - 0) < 1e-9
+    assert len(polishing_records) == 2
+    assert {row["operator_name"] for row in polishing_records} == {"\u725f\u6c5f", "\u6bdb\u536b\u5175"}
+    for row in polishing_records:
+        assert row["department_name"] == "\u629b\u5149"
+        assert row["quantity"] == 9
+        assert abs(row["unit_price"] - 0.2) < 1e-9
+        assert abs(row["mold_fee"] - 5) < 1e-9
+        assert abs(row["amount"] - 6.8) < 1e-9
     polishing_list = client.get("/workshop/polishing")
     assert polishing_list.status_code == 200 and polishing_order_no in polishing_list.text
-    assert "data-selected-amount-total" not in polishing_list.text and "&#21333;&#20215;" not in polishing_list.text
+    assert "data-selected-amount-total" in polishing_list.text and 'data-amount="6.80"' in polishing_list.text
+    assert 'data-selection-amount-total-all="13.60"' in polishing_list.text
+    painting_unlock = client.post(
+        "/workshop/painting/unlock",
+        data={"csrf": csrf(home.text), "password": "painting-pass-123"},
+        follow_redirects=False,
+    )
+    assert painting_unlock.status_code == 303 and painting_unlock.headers["location"] == "/workshop/painting"
+    painting = client.get("/workshop/painting")
+    assert painting.status_code == 200 and "touch-piecework-panel" in painting.text
+    assert "\u989c\u8272\u6570\u91cf" in painting.text and 'data-default-value="1"' in painting.text
+    assert "\u5218\u8fdb" in painting.text and "\u5f90\u53cb\u4e3d" in painting.text
+    painting_report = client.post(
+        "/workshop/painting",
+        data={"csrf": csrf(painting.text), "employee_name": ["\u5218\u8fdb,\u9ec4\u4e09\u679a"], "order_no": [painting_order_no], "quantity": ["100"], "unit_price": ["0.15"], "mold_fee": ["3"]},
+        follow_redirects=False,
+    )
+    assert painting_report.status_code == 303
+    painting_records = repo.order_workshop_records(painting_order_id)
+    assert len(painting_records) == 2
+    for row in painting_records:
+        assert row["department_name"] == "\u70e4\u6f06"
+        assert row["quantity"] == 50
+        assert abs(row["unit_price"] - 0.15) < 1e-9
+        assert abs(row["mold_fee"] - 3) < 1e-9
+        assert abs(row["amount"] - 22.5) < 1e-9
+    painting_list = client.get("/workshop/painting")
+    assert painting_list.status_code == 200 and 'data-selection-amount-total-all="45.00"' in painting_list.text
+    diecast_unlock = client.post(
+        "/workshop/diecast/unlock",
+        data={"csrf": csrf(home.text), "password": "diecast-pass-123"},
+        follow_redirects=False,
+    )
+    assert diecast_unlock.status_code == 303 and diecast_unlock.headers["location"] == "/workshop/diecast"
+    diecast = client.get("/workshop/diecast")
+    assert diecast.status_code == 200 and "touch-piecework-panel" in diecast.text
+    assert "\u519c\u5982\u5e72" in diecast.text and "\u519c\u5929\u4f69" in diecast.text
+    assert "\u88c5\u6a21\u8d39" in diecast.text and '<option value="8">8</option>' in diecast.text
+    diecast_report = client.post(
+        "/workshop/diecast",
+        data={"csrf": csrf(diecast.text), "employee_name": ["\u519c\u5982\u5e72,\u674e\u56fd\u5bcc"], "order_no": [diecast_order_no], "quantity": ["80"], "unit_price": ["0.25"], "mold_fee": ["8"]},
+        follow_redirects=False,
+    )
+    assert diecast_report.status_code == 303
+    diecast_records = repo.order_workshop_records(diecast_order_id)
+    assert len(diecast_records) == 2
+    for row in diecast_records:
+        assert row["department_name"] == "\u538b\u94f8"
+        assert row["quantity"] == 40
+        assert abs(row["unit_price"] - 0.25) < 1e-9
+        assert abs(row["mold_fee"] - 4) < 1e-9
+        assert abs(row["amount"] - 14) < 1e-9
+    diecast_list = client.get("/workshop/diecast")
+    assert diecast_list.status_code == 200 and 'data-selection-amount-total-all="28.00"' in diecast_list.text
     packaging_unlock = client.post(
         "/workshop/packaging/unlock",
         data={"csrf": csrf(home.text), "password": "packaging-pass-123"},

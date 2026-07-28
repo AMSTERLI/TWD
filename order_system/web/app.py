@@ -79,6 +79,8 @@ WORKSHOP_DEPARTMENTS = {
         "employees": ["\u5f90\u5c71\u7acb", "\u5218\u9053\u6797", "\u6881\u8d3b\u6821", "\u79e6\u5e94\u57ce", "\u66fe\u51e4\u5a25", "\u519c\u7231\u67f3"],
         "piecework": True,
         "mold_fee": True,
+        "mold_fee_label": "\u88c5\u6a21\u8d39",
+        "mold_fee_options": ["0", "4", "5", "6", "7", "8"],
     },
     "crystal": {
         "name": "\u6676\u9762",
@@ -97,7 +99,33 @@ WORKSHOP_DEPARTMENTS = {
         "name": "\u629b\u5149",
         "password_env": "TWD_WORKSHOP_POLISHING_PASSWORD",
         "default_password": "paoguang888",
-        "quantity_only": True,
+        "employees": ["\u725f\u6c5f", "\u6bdb\u536b\u5175"],
+        "piecework": True,
+        "mold_fee": True,
+        "mold_fee_label": "\u6253\u6837\u8d39",
+        "mold_fee_input": True,
+    },
+    "painting": {
+        "name": "\u70e4\u6f06",
+        "password_env": "TWD_WORKSHOP_PAINTING_PASSWORD",
+        "default_password": "kaoqi888",
+        "employees": ["\u5218\u8fdb", "\u9ec4\u4e09\u679a", "\u5468\u6625\u71d5", "\u519c\u91d1\u7ea2", "\u519c\u8273\u7ea2", "\u9648\u7eaf\u82f1", "\u6881\u5f66", "\u6768\u7ea2\u82f1", "\u5f90\u53cb\u4e3d"],
+        "piecework": True,
+        "mold_fee": True,
+        "mold_fee_label": "\u989c\u8272\u6570\u91cf",
+        "mold_fee_input": True,
+        "mold_fee_default": "1",
+        "mold_fee_mode": "multiplier",
+    },
+    "diecast": {
+        "name": "\u538b\u94f8",
+        "password_env": "TWD_WORKSHOP_DIECAST_PASSWORD",
+        "default_password": "yazhu888",
+        "employees": ["\u519c\u5982\u5e72", "\u674e\u56fd\u5bcc", "\u66fe\u660e", "\u519c\u5929\u4f69"],
+        "piecework": True,
+        "mold_fee": True,
+        "mold_fee_label": "\u88c5\u6a21\u8d39",
+        "mold_fee_options": ["0", "4", "5", "6", "7", "8"],
     },
 }
 
@@ -1210,6 +1238,11 @@ def workshop_department(name: str) -> dict[str, Any] | None:
         "piecework": bool(department.get("piecework")),
         "quantity_only": bool(department.get("quantity_only")),
         "mold_fee": bool(department.get("mold_fee")),
+        "mold_fee_label": str(department.get("mold_fee_label") or "\u88c5\u6a21\u8d39"),
+        "mold_fee_options": list(department.get("mold_fee_options") or []),
+        "mold_fee_input": bool(department.get("mold_fee_input")),
+        "mold_fee_default": str(department.get("mold_fee_default") or "0"),
+        "mold_fee_mode": str(department.get("mold_fee_mode") or "add"),
         "tooling": bool(department.get("tooling")),
         "cutter": bool(department.get("cutter")),
         "notes": list(department.get("notes") or []),
@@ -1476,7 +1509,7 @@ async def workshop_department_export(request: Request, department_key: str):
                 row.get("amount") or 0,
                 beijing_time(row.get("reported_at") or ""),
             ] for row in rows]
-            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u5355\u4ef7", "\u88c5\u6a21\u8d39", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
+            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u5355\u4ef7", department.get("mold_fee_label") or "\u88c5\u6a21\u8d39", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
         else:
             data = [[
                 row.get("order_no") or "",
