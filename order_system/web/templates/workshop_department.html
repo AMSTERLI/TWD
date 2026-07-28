@@ -19,7 +19,7 @@
       {% if department.piecework %}
       <div class="employee-picker" data-workshop-employees>
         <span>&#21592;&#24037;</span>
-        {% for employee in department.employees %}<button type="button" class="employee-button{% if loop.first %} active{% endif %}" data-employee-value="{{ employee }}">{{ employee }}</button>{% endfor %}
+        {% for employee in department.employees %}<button type="button" class="employee-button" data-employee-value="{{ employee }}">{{ employee }}</button>{% endfor %}
       </div>
       {% endif %}
       <div class="table-wrap batch-table {% if department.piecework %}piecework-table{% endif %}">
@@ -50,7 +50,7 @@
               {% endif %}
               <td><input type="{% if department.piecework %}text{% else %}number{% endif %}" name="quantity" step="1" min="1" value="1" required{% if department.piecework %} inputmode="numeric" pattern="[0-9]*" data-touch-number data-touch-integer="1"{% endif %}></td>
               {% if not department.quantity_only %}<td><input type="{% if department.piecework %}text{% else %}number{% endif %}" name="unit_price" step="0.0001" min="0" value="0"{% if department.piecework %} inputmode="decimal" data-touch-number data-touch-scale="4"{% endif %}></td>{% endif %}
-              {% if department.mold_fee %}<td>{% if department.mold_fee_input %}<input type="text" name="mold_fee" value="{{ department.mold_fee_default }}" inputmode="decimal" data-touch-number data-touch-scale="4" data-default-value="{{ department.mold_fee_default }}">{% else %}<select name="mold_fee" data-default-value="{{ department.mold_fee_default }}">{% for option in department.mold_fee_options %}<option value="{{ option }}"{% if option == department.mold_fee_default %} selected{% endif %}>{{ option }}</option>{% endfor %}</select>{% endif %}</td>{% endif %}
+              {% if department.mold_fee %}<td><input type="text" name="mold_fee" value="{{ department.mold_fee_default }}" inputmode="decimal" list="mold-fee-options-{{ department.key }}" data-touch-number data-touch-scale="4" data-default-value="{{ department.mold_fee_default }}">{% if department.mold_fee_options %}<datalist id="mold-fee-options-{{ department.key }}">{% for option in department.mold_fee_options %}<option value="{{ option }}"></option>{% endfor %}</datalist>{% endif %}</td>{% endif %}
               {% if department.tooling %}<td><input type="hidden" name="record_type" value="normal" data-record-type><button type="button" class="small" data-toggle-rework>&#24320;&#37325;&#20570;&#21333;</button></td>{% endif %}
               <td><button type="button" class="small danger-button" data-remove-workshop-row>&#21024;&#38500;</button></td>
             </tr>
@@ -71,7 +71,7 @@
           {% endif %}
           <td><input type="{% if department.piecework %}text{% else %}number{% endif %}" name="quantity" step="1" min="1" value="1" required{% if department.piecework %} inputmode="numeric" pattern="[0-9]*" data-touch-number data-touch-integer="1"{% endif %}></td>
           {% if not department.quantity_only %}<td><input type="{% if department.piecework %}text{% else %}number{% endif %}" name="unit_price" step="0.0001" min="0" value="0"{% if department.piecework %} inputmode="decimal" data-touch-number data-touch-scale="4"{% endif %}></td>{% endif %}
-          {% if department.mold_fee %}<td>{% if department.mold_fee_input %}<input type="text" name="mold_fee" value="{{ department.mold_fee_default }}" inputmode="decimal" data-touch-number data-touch-scale="4" data-default-value="{{ department.mold_fee_default }}">{% else %}<select name="mold_fee" data-default-value="{{ department.mold_fee_default }}">{% for option in department.mold_fee_options %}<option value="{{ option }}"{% if option == department.mold_fee_default %} selected{% endif %}>{{ option }}</option>{% endfor %}</select>{% endif %}</td>{% endif %}
+          {% if department.mold_fee %}<td><input type="text" name="mold_fee" value="{{ department.mold_fee_default }}" inputmode="decimal" list="mold-fee-options-{{ department.key }}" data-touch-number data-touch-scale="4" data-default-value="{{ department.mold_fee_default }}">{% if department.mold_fee_options %}<datalist id="mold-fee-options-{{ department.key }}">{% for option in department.mold_fee_options %}<option value="{{ option }}"></option>{% endfor %}</datalist>{% endif %}</td>{% endif %}
           {% if department.tooling %}<td><input type="hidden" name="record_type" value="normal" data-record-type><button type="button" class="small" data-toggle-rework>&#24320;&#37325;&#20570;&#21333;</button></td>{% endif %}
           <td><button type="button" class="small danger-button" data-remove-workshop-row>&#21024;&#38500;</button></td>
         </tr>

@@ -190,7 +190,8 @@ with TestClient(app) as client:
     assert 'name="date_range" value="month"' in press.text
     assert 'name="date_range" value="week"' in press.text
     assert 'name="date_range" value="day"' in press.text
-    assert 'name="mold_fee"' in press.text and '<option value="8">8</option>' in press.text
+    assert 'name="mold_fee"' in press.text and 'list="mold-fee-options-press"' in press.text and '<option value="8"></option>' in press.text
+    assert 'employee-button active' not in press.text
     assert 'data-batch-workshop-price' in press.text
     press_employees = ["\u5f90\u5c71\u7acb", "\u5218\u9053\u6797", "\u6881\u8d3b\u6821", "\u79e6\u5e94\u57ce", "\u66fe\u51e4\u5a25", "\u519c\u7231\u67f3"]
     for employee in press_employees:
@@ -198,7 +199,7 @@ with TestClient(app) as client:
         assert f'<option value="{employee}"' in press.text
     press_report = client.post(
         "/workshop/press",
-        data={"csrf": csrf(press.text), "employee_name": ["\u5f90\u5c71\u7acb,\u5218\u9053\u6797"], "order_no": [press_order_no], "quantity": ["120"], "unit_price": ["0.08"], "mold_fee": ["8"]},
+        data={"csrf": csrf(press.text), "employee_name": ["\u5f90\u5c71\u7acb,\u5218\u9053\u6797"], "order_no": [press_order_no], "quantity": ["120"], "unit_price": ["0.08"], "mold_fee": ["9"]},
         follow_redirects=False,
     )
     assert press_report.status_code == 303
@@ -209,13 +210,13 @@ with TestClient(app) as client:
         assert row["department_name"] == "\u51b2\u538b"
         assert row["quantity"] == 60
         assert abs(row["unit_price"] - 0.08) < 1e-9
-        assert abs(row["mold_fee"] - 4) < 1e-9
-        assert abs(row["amount"] - 8.8) < 1e-9
+        assert abs(row["mold_fee"] - 4.5) < 1e-9
+        assert abs(row["amount"] - 9.3) < 1e-9
     press_list = client.get("/workshop/press")
     assert press_list.status_code == 200 and ">\u5f90\u5c71\u7acb<" in press_list.text and press_order_no in press_list.text
-    assert "data-selected-amount-total" in press_list.text and 'data-amount="8.80"' in press_list.text
-    assert "&#37329;&#39069;" in press_list.text and "8.80" in press_list.text
-    assert 'data-selection-amount-total-all="17.60"' in press_list.text
+    assert "data-selected-amount-total" in press_list.text and 'data-amount="9.30"' in press_list.text
+    assert "&#37329;&#39069;" in press_list.text and "9.30" in press_list.text
+    assert 'data-selection-amount-total-all="18.60"' in press_list.text
     assert 'data-workshop-quantity-url="/workshop/press/records/' not in press_list.text
     press_filtered = client.get("/workshop/press?employee_name=%E5%BE%90%E5%B1%B1%E7%AB%8B")
     assert press_filtered.status_code == 200 and press_order_no in press_filtered.text and ">\u5f90\u5c71\u7acb<" in press_filtered.text
@@ -244,8 +245,8 @@ with TestClient(app) as client:
     assert {press_sheet.cell(row=row_index, column=5).value for row_index in (2, 3)} == {"\u5f90\u5c71\u7acb", "\u5218\u9053\u6797"}
     assert press_sheet.cell(row=2, column=6).value == 60
     assert press_sheet.cell(row=3, column=6).value == 60
-    assert abs(sum(press_sheet.cell(row=row_index, column=8).value for row_index in (2, 3)) - 8) < 1e-9
-    assert abs(sum(press_sheet.cell(row=row_index, column=9).value for row_index in (2, 3)) - 17.6) < 1e-9
+    assert abs(sum(press_sheet.cell(row=row_index, column=8).value for row_index in (2, 3)) - 9) < 1e-9
+    assert abs(sum(press_sheet.cell(row=row_index, column=9).value for row_index in (2, 3)) - 18.6) < 1e-9
     crystal_unlock = client.post(
         "/workshop/crystal/unlock",
         data={"csrf": csrf(home.text), "password": "crystal-pass-123"},
@@ -279,6 +280,7 @@ with TestClient(app) as client:
     assert polishing.status_code == 200 and "touch-piecework-panel" in polishing.text
     assert 'name="unit_price"' in polishing.text and 'data-workshop-employees' in polishing.text
     assert "\u725f\u6c5f" in polishing.text and "\u6bdb\u536b\u5175" in polishing.text
+    assert 'employee-button active' not in polishing.text
     assert "\u6253\u6837\u8d39" in polishing.text and 'name="mold_fee"' in polishing.text
     polishing_report = client.post(
         "/workshop/polishing",
@@ -308,6 +310,7 @@ with TestClient(app) as client:
     painting = client.get("/workshop/painting")
     assert painting.status_code == 200 and "touch-piecework-panel" in painting.text
     assert "\u989c\u8272\u6570\u91cf" in painting.text and 'data-default-value="1"' in painting.text
+    assert 'employee-button active' not in painting.text
     assert "\u5218\u8fdb" in painting.text and "\u5f90\u53cb\u4e3d" in painting.text
     painting_report = client.post(
         "/workshop/painting",
@@ -334,10 +337,11 @@ with TestClient(app) as client:
     diecast = client.get("/workshop/diecast")
     assert diecast.status_code == 200 and "touch-piecework-panel" in diecast.text
     assert "\u519c\u5982\u5e72" in diecast.text and "\u519c\u5929\u4f69" in diecast.text
-    assert "\u88c5\u6a21\u8d39" in diecast.text and '<option value="8">8</option>' in diecast.text
+    assert "\u88c5\u6a21\u8d39" in diecast.text and 'list="mold-fee-options-diecast"' in diecast.text and '<option value="8"></option>' in diecast.text
+    assert 'employee-button active' not in diecast.text
     diecast_report = client.post(
         "/workshop/diecast",
-        data={"csrf": csrf(diecast.text), "employee_name": ["\u519c\u5982\u5e72,\u674e\u56fd\u5bcc"], "order_no": [diecast_order_no], "quantity": ["80"], "unit_price": ["0.25"], "mold_fee": ["8"]},
+        data={"csrf": csrf(diecast.text), "employee_name": ["\u519c\u5982\u5e72,\u674e\u56fd\u5bcc"], "order_no": [diecast_order_no], "quantity": ["80"], "unit_price": ["0.25"], "mold_fee": ["9"]},
         follow_redirects=False,
     )
     assert diecast_report.status_code == 303
@@ -347,10 +351,10 @@ with TestClient(app) as client:
         assert row["department_name"] == "\u538b\u94f8"
         assert row["quantity"] == 40
         assert abs(row["unit_price"] - 0.25) < 1e-9
-        assert abs(row["mold_fee"] - 4) < 1e-9
-        assert abs(row["amount"] - 14) < 1e-9
+        assert abs(row["mold_fee"] - 4.5) < 1e-9
+        assert abs(row["amount"] - 14.5) < 1e-9
     diecast_list = client.get("/workshop/diecast")
-    assert diecast_list.status_code == 200 and 'data-selection-amount-total-all="28.00"' in diecast_list.text
+    assert diecast_list.status_code == 200 and 'data-selection-amount-total-all="29.00"' in diecast_list.text
     packaging_unlock = client.post(
         "/workshop/packaging/unlock",
         data={"csrf": csrf(home.text), "password": "packaging-pass-123"},

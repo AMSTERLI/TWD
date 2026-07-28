@@ -518,8 +518,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
 
   function currentEmployee() {
     const selected = employeeButtons.filter(button => button.classList.contains("active"));
-    const source = selected.length ? selected : employeeButtons.slice(0, 1);
-    return source.map(button => button.dataset.employeeValue || "").filter(Boolean).join(",");
+    return selected.map(button => button.dataset.employeeValue || "").filter(Boolean).join(",");
   }
 
   function isReworkRow(row) {
@@ -616,7 +615,6 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   });
   employeeButtons.forEach(button => button.addEventListener("click", () => {
     button.classList.toggle("active");
-    if (!employeeButtons.some(item => item.classList.contains("active"))) button.classList.add("active");
     rows.querySelectorAll("tr").forEach(row => applyCurrentEmployee(row, true));
     const emptyRows = [...rows.querySelectorAll("tr")].filter(row => !row.querySelector("[data-workshop-order]")?.value.trim());
     const target = emptyRows[0]?.querySelector("[data-workshop-order]") || rows.querySelector("[data-workshop-order]");

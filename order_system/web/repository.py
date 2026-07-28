@@ -1271,7 +1271,6 @@ class Repository:
         additive_fee_departments = {"press", "polishing", "diecast"}
         dropdown_fee_departments = {"press", "diecast"}
         multiplier_fee_departments = {"painting"}
-        allowed_press_mold_fees = {0.0, 4.0, 5.0, 6.0, 7.0, 8.0}
         clean_rows: list[dict[str, Any]] = []
         for row in rows:
             order_no = str(row.get("order_no") or "").strip()
@@ -1301,8 +1300,8 @@ class Repository:
                 if not employee_names or any(item not in allowed_employees for item in employee_names):
                     raise ValueError(f"\u8ba2\u5355 {order_no} \u8bf7\u9009\u62e9{department_name}\u5458\u5de5")
                 if department_key in dropdown_fee_departments:
-                    if mold_fee not in allowed_press_mold_fees:
-                        raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u88c5\u6a21\u8d39\u53ea\u80fd\u9009 0/4/5/6/7/8")
+                    if mold_fee < 0:
+                        raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u88c5\u6a21\u8d39\u4e0d\u80fd\u5c0f\u4e8e 0")
                 elif department_key in multiplier_fee_departments:
                     if mold_fee <= 0:
                         raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u989c\u8272\u6570\u91cf\u5fc5\u987b\u5927\u4e8e 0")
