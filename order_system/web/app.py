@@ -93,6 +93,12 @@ WORKSHOP_DEPARTMENTS = {
         "employees": ["\u6d82\u5c0f\u82f1", "\u5f90\u5f69\u8fde", "\u5468\u7f8e\u8bc6", "\u9648\u5c0f\u971e", "\u738b\u5bb6\u4e3d", "\u6768\u660e\u4ed9", "\u5f20\u96ea\u6797", "\u738b\u6587\u5bb9"],
         "piecework": True,
     },
+    "polishing": {
+        "name": "\u629b\u5149",
+        "password_env": "TWD_WORKSHOP_POLISHING_PASSWORD",
+        "default_password": "paoguang888",
+        "quantity_only": True,
+    },
 }
 
 

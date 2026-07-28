@@ -15,6 +15,7 @@ os.environ["TWD_WORKSHOP_CUTTER_PASSWORD"] = "cutter-pass-123"
 os.environ["TWD_WORKSHOP_PRESS_PASSWORD"] = "press-pass-123"
 os.environ["TWD_WORKSHOP_CRYSTAL_PASSWORD"] = "crystal-pass-123"
 os.environ["TWD_WORKSHOP_PACKAGING_PASSWORD"] = "packaging-pass-123"
+os.environ["TWD_WORKSHOP_POLISHING_PASSWORD"] = "polishing-pass-123"
 
 from fastapi.testclient import TestClient  # noqa: E402
 from order_system.database import dumps_json  # noqa: E402
@@ -77,6 +78,7 @@ with TestClient(app) as client:
     press_order_id, press_order_no = repo.create_order(payload("TWD1-260721103"))
     crystal_order_id, crystal_order_no = repo.create_order(payload("TWD1-260721105"))
     packaging_order_id, packaging_order_no = repo.create_order(payload("TWD1-260721106"))
+    polishing_order_id, polishing_order_no = repo.create_order(payload("TWD1-260721107"))
     auto_qty_payload = payload("TWD1-260721104")
     auto_qty_payload["spare_quantity"] = 15
     _, auto_qty_order_no = repo.create_order(auto_qty_payload)
@@ -107,7 +109,7 @@ with TestClient(app) as client:
 
     home = client.get("/workshop")
     assert home.status_code == 200 and "/workshop/mold/unlock" in home.text and "/workshop/cutter/unlock" in home.text and "/workshop/press/unlock" in home.text
-    assert "/workshop/crystal/unlock" in home.text and "/workshop/packaging/unlock" in home.text
+    assert "/workshop/crystal/unlock" in home.text and "/workshop/packaging/unlock" in home.text and "/workshop/polishing/unlock" in home.text
     bad_unlock = client.post(
         "/workshop/mold/unlock",
         data={"csrf": csrf(home.text), "password": "bad"},
@@ -262,6 +264,29 @@ with TestClient(app) as client:
     crystal_list = client.get("/workshop/crystal")
     assert crystal_list.status_code == 200 and crystal_order_no in crystal_list.text
     assert "data-selected-amount-total" not in crystal_list.text and "&#21333;&#20215;" not in crystal_list.text
+    polishing_unlock = client.post(
+        "/workshop/polishing/unlock",
+        data={"csrf": csrf(home.text), "password": "polishing-pass-123"},
+        follow_redirects=False,
+    )
+    assert polishing_unlock.status_code == 303 and polishing_unlock.headers["location"] == "/workshop/polishing"
+    polishing = client.get("/workshop/polishing")
+    assert polishing.status_code == 200 and "data-workshop-scan" in polishing.text
+    assert 'name="unit_price"' not in polishing.text and 'data-workshop-employees' not in polishing.text
+    polishing_report = client.post(
+        "/workshop/polishing",
+        data={"csrf": csrf(polishing.text), "order_no": [polishing_order_no], "quantity": ["18"]},
+        follow_redirects=False,
+    )
+    assert polishing_report.status_code == 303
+    polishing_records = repo.order_workshop_records(polishing_order_id)
+    assert len(polishing_records) == 1
+    assert polishing_records[0]["department_name"] == "\u629b\u5149"
+    assert polishing_records[0]["quantity"] == 18
+    assert abs(polishing_records[0]["unit_price"] - 0) < 1e-9
+    polishing_list = client.get("/workshop/polishing")
+    assert polishing_list.status_code == 200 and polishing_order_no in polishing_list.text
+    assert "data-selected-amount-total" not in polishing_list.text and "&#21333;&#20215;" not in polishing_list.text
     packaging_unlock = client.post(
         "/workshop/packaging/unlock",
         data={"csrf": csrf(home.text), "password": "packaging-pass-123"},
