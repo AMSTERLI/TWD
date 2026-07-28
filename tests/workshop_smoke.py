@@ -380,6 +380,13 @@ with TestClient(app) as client:
         follow_redirects=False,
     )
     assert admin_login.status_code == 303
+    admin_press_detail = client.get(f"/orders/{press_order_id}")
+    assert admin_press_detail.status_code == 200
+    assert "\u51b2\u538b&#65288;\u5f90\u5c71\u7acb&#65289;" in admin_press_detail.text
+    assert "\u51b2\u538b&#65288;\u5218\u9053\u6797&#65289;" in admin_press_detail.text
+    admin_mold_detail = client.get(f"/orders/{order_id}")
+    assert admin_mold_detail.status_code == 200
+    assert "\u523b\u6a21&#65288;" not in admin_mold_detail.text
     admin_mold_list = client.get("/workshop/mold")
     assert 'data-delete-url="/workshop/mold/records/' in admin_mold_list.text
     assert 'data-csrf="' in admin_mold_list.text
