@@ -83,6 +83,21 @@ with TestClient(app) as client:
     polishing_order_id, polishing_order_no = repo.create_order(payload("TWD1-260721107"))
     painting_order_id, painting_order_no = repo.create_order(payload("TWD1-260721108"))
     diecast_order_id, diecast_order_no = repo.create_order(payload("TWD1-260721109"))
+    painting_limit_payload = payload("TWD1-260721110")
+    painting_limit_payload["quantity"] = 100
+    painting_limit_payload["spare_quantity"] = 10
+    _, painting_limit_order_no = repo.create_order(painting_limit_payload)
+    painting_limit_extra = payload(painting_limit_order_no)
+    painting_limit_extra["quantity"] = 50
+    painting_limit_extra["spare_quantity"] = 0
+    painting_limit_extra["_manual_order_no"] = True
+    repo.create_order(painting_limit_extra)
+    painting_limit_shipped = payload(painting_limit_order_no)
+    painting_limit_shipped["quantity"] = 1000
+    painting_limit_shipped["spare_quantity"] = 0
+    painting_limit_shipped["shipped_status"] = 1
+    painting_limit_shipped["_manual_order_no"] = True
+    repo.create_order(painting_limit_shipped)
     auto_qty_payload = payload("TWD1-260721104")
     auto_qty_payload["spare_quantity"] = 15
     _, auto_qty_order_no = repo.create_order(auto_qty_payload)
@@ -328,6 +343,24 @@ with TestClient(app) as client:
         assert abs(row["amount"] - 22.5) < 1e-9
     painting_list = client.get("/workshop/painting")
     assert painting_list.status_code == 200 and 'data-selection-amount-total-all="45.00"' in painting_list.text
+    painting_limit_history = client.get(f"/workshop/painting/history?order_no={painting_limit_order_no}")
+    assert painting_limit_history.status_code == 200
+    painting_limit_record = painting_limit_history.json()["record"]
+    assert painting_limit_record["limited"] is True
+    assert abs(painting_limit_record["order_quantity"] - 160) < 1e-9
+    assert abs(painting_limit_record["quantity_limit"] - 240) < 1e-9
+    painting_limit_ok = client.post(
+        "/workshop/painting",
+        data={"csrf": csrf(painting.text), "employee_name": ["\u5218\u8fdb"], "order_no": [painting_limit_order_no], "quantity": ["240"], "unit_price": ["0.1"], "mold_fee": ["1"]},
+        follow_redirects=False,
+    )
+    assert painting_limit_ok.status_code == 303, painting_limit_ok.text
+    painting_limit_over = client.post(
+        "/workshop/painting",
+        data={"csrf": csrf(painting.text), "employee_name": ["\u5218\u8fdb"], "order_no": [painting_limit_order_no], "quantity": ["1"], "unit_price": ["0.1"], "mold_fee": ["1"]},
+        follow_redirects=False,
+    )
+    assert painting_limit_over.status_code == 422
     diecast_unlock = client.post(
         "/workshop/diecast/unlock",
         data={"csrf": csrf(home.text), "password": "diecast-pass-123"},
@@ -387,6 +420,12 @@ with TestClient(app) as client:
     assert packaging_list.status_code == 200 and packaging_order_no in packaging_list.text
     assert 'data-amount="25.00"' in packaging_list.text and 'data-selection-amount-total-all="50.00"' in packaging_list.text
     assert "&#35013;&#27169;&#36153;" not in packaging_list.text
+    packaging_over = client.post(
+        "/workshop/packaging",
+        data={"csrf": csrf(packaging.text), "employee_name": ["\u6d82\u5c0f\u82f1"], "order_no": [packaging_order_no], "quantity": ["1"], "unit_price": ["0.5"]},
+        follow_redirects=False,
+    )
+    assert packaging_over.status_code == 422
     packaging_export = client.post(
         "/workshop/packaging/export",
         data={"csrf": csrf(packaging_list.text), "selected_ids": [str(row["id"]) for row in packaging_records]},
