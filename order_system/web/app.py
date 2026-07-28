@@ -1504,12 +1504,13 @@ async def workshop_department_export(request: Request, department_key: str):
                 row.get("department_name") or "",
                 row.get("operator_name") or "",
                 row.get("quantity") or 1,
+                row.get("reference_quantity") or 0,
                 row.get("unit_price") or 0,
                 row.get("mold_fee") or 0,
                 row.get("amount") or 0,
                 beijing_time(row.get("reported_at") or ""),
             ] for row in rows]
-            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u5355\u4ef7", department.get("mold_fee_label") or "\u88c5\u6a21\u8d39", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
+            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u5355\u4ef7", department.get("mold_fee_label") or "\u88c5\u6a21\u8d39", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
         else:
             data = [[
                 row.get("order_no") or "",
@@ -1518,11 +1519,12 @@ async def workshop_department_export(request: Request, department_key: str):
                 row.get("department_name") or "",
                 row.get("operator_name") or "",
                 row.get("quantity") or 1,
+                row.get("reference_quantity") or 0,
                 row.get("unit_price") or 0,
                 row.get("amount") or 0,
                 beijing_time(row.get("reported_at") or ""),
             ] for row in rows]
-            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u5355\u4ef7", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
+            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u5355\u4ef7", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
     elif department.get("quantity_only"):
         data = [[
             row.get("order_no") or "",

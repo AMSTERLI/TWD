@@ -1457,7 +1457,30 @@ class Repository:
                     (*chunk, department_key, department_key),
                 ).fetchall())
         result_rows = [dict(row) for row in rows]
-        result_rows.sort(key=lambda item: (item.get("reported_at") or "", int(item.get("id") or 0)), reverse=True)
+        reference_quantities: dict[str, float] = {}
+        order_nos = sorted({str(row.get("order_no") or "").strip() for row in result_rows if str(row.get("order_no") or "").strip()})
+        if order_nos:
+            with self.connect() as conn:
+                for start in range(0, len(order_nos), 500):
+                    chunk = order_nos[start:start + 500]
+                    placeholders = ", ".join("?" for _ in chunk)
+                    reference_quantities.update({
+                        str(row["order_no"]): float(row["reference_quantity"] or 0)
+                        for row in conn.execute(
+                            f"""SELECT order_no, COALESCE(SUM(COALESCE(quantity, 0) + COALESCE(spare_quantity, 0)), 0) AS reference_quantity
+                                FROM orders
+                                WHERE order_no IN ({placeholders}) AND date(order_date) >= date('now', 'localtime', '-2 months')
+                                GROUP BY order_no""",
+                            chunk,
+                        ).fetchall()
+                    })
+        for row in result_rows:
+            row["reference_quantity"] = reference_quantities.get(str(row.get("order_no") or "").strip(), 0)
+        result_rows.sort(key=lambda item: (
+            str(item.get("order_no") or ""),
+            item.get("reported_at") or "",
+            int(item.get("id") or 0),
+        ))
         return result_rows
     def order_workshop_records(self, order_id: int) -> list[dict[str, Any]]:
         with self.connect() as conn:

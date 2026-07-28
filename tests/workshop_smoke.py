@@ -78,6 +78,7 @@ with TestClient(app) as client:
     order_id, order_no = repo.create_order(mold_payload)
     cutter_order_id, cutter_order_no = repo.create_order(payload("TWD1-260721102"))
     press_order_id, press_order_no = repo.create_order(payload("TWD1-260721103"))
+    press_sort_order_id, press_sort_order_no = repo.create_order(payload("TWD1-260721099"))
     crystal_order_id, crystal_order_no = repo.create_order(payload("TWD1-260721105"))
     packaging_order_id, packaging_order_no = repo.create_order(payload("TWD1-260721106"))
     polishing_order_id, polishing_order_no = repo.create_order(payload("TWD1-260721107"))
@@ -232,6 +233,12 @@ with TestClient(app) as client:
     assert auto_qty.json()["record"]["quantity"] == 115
     assert auto_qty.json()["record"]["unit_price"] == 0
     assert auto_qty.json()["record"]["existing_workshop_record"] is False
+    press_reference_payload = payload(press_order_no)
+    press_reference_payload.update({"quantity": 40, "spare_quantity": 5, "_manual_order_no": True})
+    repo.create_order(press_reference_payload)
+    press_old_reference_payload = payload(press_order_no)
+    press_old_reference_payload.update({"order_date": "2026-04-01", "quantity": 999, "spare_quantity": 1, "_manual_order_no": True})
+    repo.create_order(press_old_reference_payload)
     press_export = client.post(
         "/workshop/press/export",
         data={"csrf": csrf(press_list.text), "selected_ids": [str(row["id"]) for row in press_records]},
@@ -241,12 +248,31 @@ with TestClient(app) as client:
     press_workbook_path.write_bytes(press_export.content)
     press_sheet = load_workbook(press_workbook_path).active
     assert press_sheet.cell(row=1, column=5).value == "\u5458\u5de5"
+    assert press_sheet.cell(row=1, column=7).value == "\u53c2\u8003\u6570\u91cf"
     assert press_sheet.cell(row=2, column=1).value == press_order_no
     assert {press_sheet.cell(row=row_index, column=5).value for row_index in (2, 3)} == {"\u5f90\u5c71\u7acb", "\u5218\u9053\u6797"}
     assert press_sheet.cell(row=2, column=6).value == 60
     assert press_sheet.cell(row=3, column=6).value == 60
-    assert abs(sum(press_sheet.cell(row=row_index, column=8).value for row_index in (2, 3)) - 9) < 1e-9
-    assert abs(sum(press_sheet.cell(row=row_index, column=9).value for row_index in (2, 3)) - 18.6) < 1e-9
+    assert press_sheet.cell(row=2, column=7).value == 145
+    assert press_sheet.cell(row=3, column=7).value == 145
+    assert abs(sum(press_sheet.cell(row=row_index, column=9).value for row_index in (2, 3)) - 9) < 1e-9
+    assert abs(sum(press_sheet.cell(row=row_index, column=10).value for row_index in (2, 3)) - 18.6) < 1e-9
+    press_sort_report = client.post(
+        "/workshop/press",
+        data={"csrf": csrf(press_list.text), "employee_name": ["\u6881\u8d3b\u6821"], "order_no": [press_sort_order_no], "quantity": ["20"], "unit_price": ["0.1"], "mold_fee": ["0"]},
+        follow_redirects=False,
+    )
+    assert press_sort_report.status_code == 303
+    press_sort_records = repo.order_workshop_records(press_sort_order_id)
+    press_sort_export = client.post(
+        "/workshop/press/export",
+        data={"csrf": csrf(press_list.text), "selected_ids": [str(press_records[0]["id"]), str(press_sort_records[0]["id"]), str(press_records[1]["id"])]},
+    )
+    assert press_sort_export.status_code == 200
+    press_sort_workbook_path = root / "press-sort-export.xlsx"
+    press_sort_workbook_path.write_bytes(press_sort_export.content)
+    press_sort_sheet = load_workbook(press_sort_workbook_path).active
+    assert [press_sort_sheet.cell(row=row_index, column=1).value for row_index in (2, 3, 4)] == [press_sort_order_no, press_order_no, press_order_no]
     crystal_unlock = client.post(
         "/workshop/crystal/unlock",
         data={"csrf": csrf(home.text), "password": "crystal-pass-123"},
@@ -395,8 +421,9 @@ with TestClient(app) as client:
     packaging_workbook_path = root / "packaging-export.xlsx"
     packaging_workbook_path.write_bytes(packaging_export.content)
     packaging_sheet = load_workbook(packaging_workbook_path).active
-    assert packaging_sheet.cell(row=1, column=8).value == "\u91d1\u989d"
-    assert packaging_sheet.cell(row=1, column=9).value == "\u62a5\u5230\u65f6\u95f4"
+    assert packaging_sheet.cell(row=1, column=7).value == "\u53c2\u8003\u6570\u91cf"
+    assert packaging_sheet.cell(row=1, column=9).value == "\u91d1\u989d"
+    assert packaging_sheet.cell(row=1, column=10).value == "\u62a5\u5230\u65f6\u95f4"
     assert packaging_sheet.cell(row=2, column=1).value == packaging_order_no
     list_page = client.get("/workshop/mold")
     assert 'type="date"' in list_page.text
