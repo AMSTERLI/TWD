@@ -486,17 +486,11 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       if (!record) {
         row.dataset.existingWorkshopRecord = "0";
         row.dataset.existingWorkshopOrderNo = "";
-        row.dataset.quantityLimited = "0";
-        row.dataset.quantityLimit = "";
-        row.dataset.enteredQuantity = "";
         return null;
       }
       const hasExistingRecord = record.existing_workshop_record !== false;
       row.dataset.existingWorkshopRecord = hasExistingRecord ? "1" : "0";
       row.dataset.existingWorkshopOrderNo = hasExistingRecord ? orderNo : "";
-      row.dataset.quantityLimited = record.limited ? "1" : "0";
-      row.dataset.quantityLimit = record.quantity_limit ?? "";
-      row.dataset.enteredQuantity = record.entered_quantity ?? "";
       const priceInput = row.querySelector('[name="unit_price"]');
       if (priceInput && hasExistingRecord) priceInput.value = cleanNumber(record.unit_price);
       const quantityInput = row.querySelector('[name="quantity"]');
@@ -507,7 +501,6 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       if (sizeInput && record.size_text) sizeInput.value = record.size_text;
       const specInput = row.querySelector('[name="spec"]');
       if (specInput && record.spec) specInput.value = record.spec;
-      checkWorkshopQuantityLimit(row, true);
       return hasExistingRecord ? orderNo : null;
     } catch (error) {
       console.warn("Failed to load workshop history", error);
@@ -515,28 +508,6 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       row.dataset.existingWorkshopOrderNo = "";
       return null;
     }
-  }
-
-  function workshopQuantity(row) {
-    const value = Number(row?.querySelector('[name="quantity"]')?.value || 0);
-    return Number.isFinite(value) ? value : 0;
-  }
-
-  function checkWorkshopQuantityLimit(row, showAlert = false) {
-    if (!row || row.dataset.quantityLimited !== "1") return true;
-    const orderNo = row.querySelector("[data-workshop-order]")?.value.trim() || "";
-    if (!orderNo) return true;
-    const limit = Number(row.dataset.quantityLimit || 0);
-    const entered = Number(row.dataset.enteredQuantity || 0);
-    const current = [...rows.querySelectorAll("tr")]
-      .filter(item => (item.querySelector("[data-workshop-order]")?.value.trim() || "") === orderNo)
-      .reduce((sum, item) => sum + workshopQuantity(item), 0);
-    if (entered + current <= limit + 1e-9) return true;
-    if (showAlert && row.dataset.limitAlertedFor !== `${orderNo}|${current}`) {
-      row.dataset.limitAlertedFor = `${orderNo}|${current}`;
-      window.alert(`${orderNo}订单录入数量超过限额，无法录入。`);
-    }
-    return false;
   }
 
   function scheduleWorkshopHistory(row) {
@@ -700,21 +671,15 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     } else row.remove();
   });
   section.addEventListener("input", event => {
-    if (event.target.matches("[data-workshop-order]")) {
-      const row = event.target.closest("tr");
-      if (row) {
-        row.dataset.historyKey = "";
-        row.dataset.existingWorkshopRecord = "0";
-        row.dataset.quantityLimited = "0";
-        if (row.dataset.autoAdvancedFor && row.dataset.autoAdvancedFor !== event.target.value.trim()) row.dataset.autoAdvancedFor = "";
-        focusEnd(event.target);
-        scheduleWorkshopHistory(row);
-        scheduleScanAdvance(event.target);
-      }
-      return;
-    }
-    if (event.target.matches('[name="quantity"]')) {
-      checkWorkshopQuantityLimit(event.target.closest("tr"), true);
+    if (!event.target.matches("[data-workshop-order]")) return;
+    const row = event.target.closest("tr");
+    if (row) {
+      row.dataset.historyKey = "";
+      row.dataset.existingWorkshopRecord = "0";
+      if (row.dataset.autoAdvancedFor && row.dataset.autoAdvancedFor !== event.target.value.trim()) row.dataset.autoAdvancedFor = "";
+      focusEnd(event.target);
+      scheduleWorkshopHistory(row);
+      scheduleScanAdvance(event.target);
     }
   });
   section.addEventListener("change", event => {
@@ -739,14 +704,11 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     if (!activeRows.length) return;
     event.preventDefault();
     const duplicates = [];
-    let limitBlocked = false;
     for (const row of activeRows) {
       const existingOrderNo = await loadWorkshopHistory(row);
-      if (!checkWorkshopQuantityLimit(row, true)) limitBlocked = true;
       const duplicateBlocked = isTooling ? (existingOrderNo && !isReworkRow(row)) : existingOrderNo;
       if (duplicateBlocked && !duplicates.includes(existingOrderNo)) duplicates.push(existingOrderNo);
     }
-    if (limitBlocked) return;
     if (duplicates.length) {
       if (isTooling) {
         window.alert(`???????????????????????${duplicates.join("?")}?????????????????????`);

@@ -1161,40 +1161,6 @@ class Repository:
                 shipped.append(str(row["order_no"]))
         return shipped
 
-    def _workshop_quantity_limit(self, conn: sqlite3.Connection, department_key: str, order_no: str) -> dict[str, Any]:
-        if department_key not in {"painting", "packaging"}:
-            return {"limited": False}
-        pending_quantity = float(conn.execute(
-            """SELECT COALESCE(SUM(COALESCE(quantity, 0) + COALESCE(spare_quantity, 0)), 0)
-               FROM orders
-               WHERE order_no = ? AND COALESCE(shipped_status, 0) = 0""",
-            (order_no,),
-        ).fetchone()[0] or 0)
-        entered_quantity = float(conn.execute(
-            """SELECT COALESCE(SUM(COALESCE(quantity, 0)), 0)
-               FROM workshop_records
-               WHERE department_key = ? AND order_no = ?""",
-            (department_key, order_no),
-        ).fetchone()[0] or 0)
-        if department_key == "packaging":
-            limit = pending_quantity
-        elif pending_quantity <= 50:
-            limit = 100.0
-        elif pending_quantity <= 200:
-            limit = pending_quantity * 1.5
-        elif pending_quantity <= 500:
-            limit = pending_quantity * 1.2
-        elif pending_quantity <= 10000:
-            limit = pending_quantity * 1.1
-        else:
-            limit = pending_quantity * 1.05
-        return {
-            "limited": True,
-            "order_quantity": pending_quantity,
-            "entered_quantity": entered_quantity,
-            "quantity_limit": limit,
-        }
-
     def latest_workshop_record_for_order(self, department_key: str, order_no: str) -> dict[str, Any] | None:
         department_key = str(department_key or "").strip()
         order_no = str(order_no or "").strip()
@@ -1208,7 +1174,6 @@ class Repository:
                    ORDER BY id DESC LIMIT 1""",
                 (order_no,),
             ).fetchone()
-            limit_info = self._workshop_quantity_limit(conn, department_key, order_no)
             if not order:
                 return None
             order_quantity = float(order["quantity"] or 0) + float(order["spare_quantity"] or 0)
@@ -1269,7 +1234,6 @@ class Repository:
         else:
             result["quantity"] = order_quantity
         result["existing_workshop_record"] = bool(row)
-        result.update(limit_info)
         return result
 
     def delete_workshop_record(self, record_id: int, department_key: str = "") -> str:
@@ -1387,14 +1351,6 @@ class Repository:
             raise ValueError("\u8bf7\u81f3\u5c11\u626b\u63cf\u4e00\u4e2a\u8ba2\u5355")
         created_ids: list[int] = []
         with self.connect(write=True) as conn:
-            if department_key in {"painting", "packaging"}:
-                submitted_by_order: dict[str, float] = {}
-                for row in clean_rows:
-                    submitted_by_order[row["order_no"]] = submitted_by_order.get(row["order_no"], 0.0) + float(row["quantity"] or 0)
-                for order_no, submitted_quantity in submitted_by_order.items():
-                    limit_info = self._workshop_quantity_limit(conn, department_key, order_no)
-                    if limit_info.get("limited") and float(limit_info.get("entered_quantity") or 0) + submitted_quantity > float(limit_info.get("quantity_limit") or 0) + 1e-9:
-                        raise ValueError(f"{order_no}\u8ba2\u5355\u5f55\u5165\u6570\u91cf\u8d85\u8fc7\u9650\u989d\uff0c\u65e0\u6cd5\u5f55\u5165\u3002")
             operator_id = int(user.get("id") or 0) or None
             operator_name = str(user.get("display_name") or user.get("username") or "")
             for row in clean_rows:
