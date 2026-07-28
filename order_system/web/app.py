@@ -376,6 +376,69 @@ def excel_response(sheet_name: str, headers: list[str], rows: list[list[Any]], p
     )
 
 
+def excel_response_with_thumbnails(
+    sheet_name: str,
+    headers: list[str],
+    rows: list[list[Any]],
+    thumbnail_paths: list[Path | None],
+    prefix: str,
+) -> Response:
+    target = TMP_DIR / f"{uuid4().hex}.xlsx"
+    try:
+        export_rows_to_excel(target, sheet_name, headers, rows)
+        from openpyxl import load_workbook
+        from openpyxl.drawing.image import Image as ExcelImage
+
+        workbook = load_workbook(target)
+        sheet = workbook.active
+        image_column = len(headers)
+        sheet.column_dimensions[_excel_column_name(image_column)].width = 14
+        for row_index, image_path in enumerate(thumbnail_paths, start=2):
+            if not image_path or not image_path.is_file():
+                continue
+            try:
+                image = ExcelImage(str(image_path))
+            except Exception:
+                continue
+            max_width = 72
+            max_height = 54
+            scale = min(max_width / max(image.width, 1), max_height / max(image.height, 1), 1)
+            image.width = int(image.width * scale)
+            image.height = int(image.height * scale)
+            sheet.row_dimensions[row_index].height = 45
+            sheet.add_image(image, f"{_excel_column_name(image_column)}{row_index}")
+        workbook.save(target)
+        content = target.read_bytes()
+    finally:
+        target.unlink(missing_ok=True)
+    filename = f"{prefix}_{date.today().strftime('%Y%m%d')}.xlsx"
+    return Response(
+        content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _excel_column_name(index: int) -> str:
+    name = ""
+    current = index
+    while current > 0:
+        current, remainder = divmod(current - 1, 26)
+        name = chr(65 + remainder) + name
+    return name
+
+
+def first_order_image_path(row: dict[str, Any]) -> Path | None:
+    for raw_name in loads_json(row.get("image_paths_json") or "[]"):
+        name = safe_image_name(raw_name)
+        if not name:
+            continue
+        image_path = IMAGES_DIR / name
+        if image_path.is_file():
+            return image_path
+    return None
+
+
 async def save_image_upload(upload: UploadFile, *, preview: bool = False) -> str:
     if not upload.filename:
         return ""
@@ -1472,6 +1535,7 @@ async def workshop_department_export(request: Request, department_key: str):
     rows = await run_in_threadpool(repo.workshop_record_rows, await selected_workshop_record_ids(form, department_key), department_key)
     if not rows:
         return Response("请至少选择一条车间记录", status_code=400)
+    thumbnail_paths: list[Path | None] | None = None
     if department.get("mold"):
         data = [[
             row.get("order_no") or "",
@@ -1509,8 +1573,10 @@ async def workshop_department_export(request: Request, department_key: str):
                 row.get("mold_fee") or 0,
                 row.get("amount") or 0,
                 beijing_time(row.get("reported_at") or ""),
+                "",
             ] for row in rows]
-            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u5355\u4ef7", department.get("mold_fee_label") or "\u88c5\u6a21\u8d39", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
+            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u5355\u4ef7", department.get("mold_fee_label") or "\u88c5\u6a21\u8d39", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4", "\u4ea7\u54c1\u7f29\u7565\u56fe"]
+            thumbnail_paths = [first_order_image_path(row) for row in rows]
         else:
             data = [[
                 row.get("order_no") or "",
@@ -1523,8 +1589,10 @@ async def workshop_department_export(request: Request, department_key: str):
                 row.get("unit_price") or 0,
                 row.get("amount") or 0,
                 beijing_time(row.get("reported_at") or ""),
+                "",
             ] for row in rows]
-            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u5355\u4ef7", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
+            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u5355\u4ef7", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4", "\u4ea7\u54c1\u7f29\u7565\u56fe"]
+            thumbnail_paths = [first_order_image_path(row) for row in rows]
     elif department.get("quantity_only"):
         data = [[
             row.get("order_no") or "",
@@ -1549,6 +1617,15 @@ async def workshop_department_export(request: Request, department_key: str):
     await run_in_threadpool(
         repo.audit, user, "workshop.export", f"{department_key}:{len(rows)}", client_ip(request)
     )
+    if thumbnail_paths is not None:
+        return await run_in_threadpool(
+            excel_response_with_thumbnails,
+            department["name"],
+            headers,
+            data,
+            thumbnail_paths,
+            f"workshop_{department_key}",
+        )
     return await run_in_threadpool(
         excel_response,
         department["name"],

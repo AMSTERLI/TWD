@@ -1449,7 +1449,7 @@ class Repository:
             for chunk in self._id_chunks(ids):
                 placeholders = ", ".join("?" for _ in chunk)
                 rows.extend(conn.execute(
-                    f"""SELECT w.*, o.product_name, o.customer_name,
+                    f"""SELECT w.*, o.product_name, o.customer_name, o.image_paths_json,
                                CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
                         FROM workshop_records w
                         LEFT JOIN orders o ON o.id = w.order_id

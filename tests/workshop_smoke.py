@@ -24,6 +24,8 @@ from order_system.database import dumps_json  # noqa: E402
 from order_system.web.app import app, repo  # noqa: E402
 from order_system.web.repository import ORDER_COLUMNS  # noqa: E402
 from openpyxl import load_workbook  # noqa: E402
+from PIL import Image as PilImage  # noqa: E402
+from order_system.web.settings import IMAGES_DIR  # noqa: E402
 
 
 def csrf(html: str) -> str:
@@ -71,13 +73,18 @@ def assert_workshop_detail_pdf_only(html: str, order_id: int, hidden_unit_price:
 with TestClient(app) as client:
     repo.create_user("admin", "admin-pass-123", "admin")
     repo.create_user("workshop", "workshop-pass-123", "workshop", display_name="\u8f66\u95f4")
+    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    press_thumb_name = "press-thumb.png"
+    PilImage.new("RGB", (24, 18), color=(20, 120, 200)).save(IMAGES_DIR / press_thumb_name)
     mold_payload = payload("TWD1-260721101")
     mold_payload["height_mm"] = "1"
     mold_payload["width_mm"] = "20"
     mold_payload["thickness_mm"] = "5"
     order_id, order_no = repo.create_order(mold_payload)
     cutter_order_id, cutter_order_no = repo.create_order(payload("TWD1-260721102"))
-    press_order_id, press_order_no = repo.create_order(payload("TWD1-260721103"))
+    press_payload = payload("TWD1-260721103")
+    press_payload["image_paths_json"] = dumps_json([press_thumb_name])
+    press_order_id, press_order_no = repo.create_order(press_payload)
     press_sort_order_id, press_sort_order_no = repo.create_order(payload("TWD1-260721099"))
     crystal_order_id, crystal_order_no = repo.create_order(payload("TWD1-260721105"))
     packaging_order_id, packaging_order_no = repo.create_order(payload("TWD1-260721106"))
@@ -249,6 +256,8 @@ with TestClient(app) as client:
     press_sheet = load_workbook(press_workbook_path).active
     assert press_sheet.cell(row=1, column=5).value == "\u5458\u5de5"
     assert press_sheet.cell(row=1, column=7).value == "\u53c2\u8003\u6570\u91cf"
+    assert press_sheet.cell(row=1, column=12).value == "\u4ea7\u54c1\u7f29\u7565\u56fe"
+    assert len(getattr(press_sheet, "_images", [])) == 2
     assert press_sheet.cell(row=2, column=1).value == press_order_no
     assert {press_sheet.cell(row=row_index, column=5).value for row_index in (2, 3)} == {"\u5f90\u5c71\u7acb", "\u5218\u9053\u6797"}
     assert press_sheet.cell(row=2, column=6).value == 60
@@ -424,6 +433,7 @@ with TestClient(app) as client:
     assert packaging_sheet.cell(row=1, column=7).value == "\u53c2\u8003\u6570\u91cf"
     assert packaging_sheet.cell(row=1, column=9).value == "\u91d1\u989d"
     assert packaging_sheet.cell(row=1, column=10).value == "\u62a5\u5230\u65f6\u95f4"
+    assert packaging_sheet.cell(row=1, column=11).value == "\u4ea7\u54c1\u7f29\u7565\u56fe"
     assert packaging_sheet.cell(row=2, column=1).value == packaging_order_no
     list_page = client.get("/workshop/mold")
     assert 'type="date"' in list_page.text
