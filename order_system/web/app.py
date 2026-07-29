@@ -62,7 +62,7 @@ WORKSHOP_DEPARTMENTS = {
         "tooling": True,
         "mold": True,
         "materials": ["\u950c", "\u94c1", "\u94dc"],
-        "specs": ["2D", "3D", "2D+2D", "2D+3D", "3D+3D"],
+        "specs": ["2D", "3D", "2D+2D", "2D+3D", "3D+3D", "2D+\u80cc\u5b57", "3D+\u80cc\u5b57", "\u80cc\u5b57"],
     },
     "cutter": {
         "name": "\u5207\u5200",
@@ -70,7 +70,7 @@ WORKSHOP_DEPARTMENTS = {
         "default_password": "888888",
         "tooling": True,
         "cutter": True,
-        "notes": ["\u5185\u52071\u652f", "\u54ac\u677f", "\u8df3\u6b65"],
+        "notes": ["\u65e0", "\u5185\u52071\u652f", "\u54ac\u677f", "\u8df3\u6b65"],
     },
     "press": {
         "name": "\u51b2\u538b",
@@ -239,6 +239,20 @@ def parse_price_tiers(form: Any) -> list[dict[str, float]]:
 
 def format_price_tiers(tiers: list[dict[str, float]]) -> str:
     return "、".join(f"{item['quantity']:g}×{item['unit_price']:g}" for item in tiers) if tiers else "空"
+
+
+def format_receivable_export_quantity(row: dict[str, Any]) -> str | int | float:
+    tiers = price_tiers_from_json(row.get("price_tiers_json"))
+    if tiers:
+        return "+".join(f"{item['quantity']:g}" for item in tiers)
+    return row.get("quantity") or 0
+
+
+def format_receivable_export_unit_price(row: dict[str, Any]) -> str | int | float:
+    tiers = price_tiers_from_json(row.get("price_tiers_json"))
+    if tiers:
+        return "/".join(f"{item['unit_price']:g}" for item in tiers)
+    return row.get("unit_price") or 0
 
 OPTION_ALIASES = {
     "UV\u5370\u5237": "UV",
@@ -1882,10 +1896,10 @@ async def finance_receivables_export(request: Request):
     data = [[
         row["order_no"], row.get("customer_name") or "", row.get("bi_no") or "",
         row.get("production_no") or "", row.get("product_name") or "",
-        row.get("quantity") or 0,
-        row.get("quantity_unit") or "", "多单价" if row.get("multi_price") else row.get("unit_price") or 0,
+        format_receivable_export_quantity(row),
+        row.get("quantity_unit") or "", format_receivable_export_unit_price(row),
         row.get("extra_fee") or 0, row.get("amount") or 0,
-        row.get("order_date") or "", "已收款" if row.get("paid_status") else "未收款",
+        row.get("order_date") or "", "\u5df2\u6536\u6b3e" if row.get("paid_status") else "\u672a\u6536\u6b3e",
     ] for row in rows]
     await run_in_threadpool(
         repo.audit, user, "finance.receivables.export", str(len(rows)), client_ip(request)

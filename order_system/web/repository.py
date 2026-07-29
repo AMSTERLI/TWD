@@ -1320,14 +1320,15 @@ class Repository:
                 if department_key == "mold":
                     if material not in {"\u950c", "\u94c1", "\u94dc"}:
                         raise ValueError(f"订单 {order_no} 请选择材质")
-                    if spec not in {"2D", "3D", "2D+2D", "2D+3D", "3D+3D"}:
+                    if spec not in {"2D", "3D", "2D+2D", "2D+3D", "3D+3D", "2D+\u80cc\u5b57", "3D+\u80cc\u5b57", "\u80cc\u5b57"}:
                         raise ValueError(f"订单 {order_no} 请选择规格")
                     note_text = ""
                 elif department_key == "cutter":
                     material = ""
                     spec = ""
-                    if note_text not in {"\u5185\u52071\u652f", "\u54ac\u677f", "\u8df3\u6b65"}:
-                        raise ValueError(f"订单 {order_no} 请选择备注")
+                    note_text = note_text or "\u65e0"
+                    if len(note_text) > 50:
+                        raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u5907\u6ce8\u4e0d\u80fd\u8d85\u8fc7 50 \u4e2a\u5b57")
                 record_type = "rework" if record_type == "rework" else "normal"
             else:
                 material = ""

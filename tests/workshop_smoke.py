@@ -138,9 +138,10 @@ with TestClient(app) as client:
 
     mold = client.get("/workshop/mold")
     assert mold.status_code == 200 and "data-workshop-scan" in mold.text
+    assert "2D+\u80cc\u5b57" in mold.text and "3D+\u80cc\u5b57" in mold.text and ">\u80cc\u5b57<" in mold.text
     report = client.post(
         "/workshop/mold",
-        data={"csrf": csrf(mold.text), "order_no": [order_no], "material": ["锌"], "size_text": ["50MM"], "spec": ["2D"], "quantity": ["2"], "unit_price": ["10.5"], "record_type": ["normal"]},
+        data={"csrf": csrf(mold.text), "order_no": [order_no], "material": ["锌"], "size_text": ["50MM"], "spec": ["2D+\u80cc\u5b57"], "quantity": ["2"], "unit_price": ["10.5"], "record_type": ["normal"]},
         follow_redirects=False,
     )
     assert report.status_code == 303
@@ -150,7 +151,7 @@ with TestClient(app) as client:
     assert records[0]["quantity"] == 2
     assert records[0]["material"] == "锌"
     assert records[0]["size_text"] == "50MM"
-    assert records[0]["spec"] == "2D"
+    assert records[0]["spec"] == "2D+\u80cc\u5b57"
     assert records[0]["record_type"] == "normal"
     assert abs(records[0]["unit_price"] - 10.5) < 1e-9
     cutter_unlock = client.post(
@@ -161,9 +162,11 @@ with TestClient(app) as client:
     assert cutter_unlock.status_code == 303 and cutter_unlock.headers["location"] == "/workshop/cutter"
     cutter = client.get("/workshop/cutter")
     assert cutter.status_code == 200 and "data-workshop-scan" in cutter.text
+    assert 'name="note_text" value="\u65e0"' in cutter.text and 'list="cutter-note-options"' in cutter.text
+    assert '<option value="\u5185\u52071\u652f"></option>' in cutter.text
     cutter_report = client.post(
         "/workshop/cutter",
-        data={"csrf": csrf(cutter.text), "order_no": [cutter_order_no], "size_text": ["35MM"], "note_text": ["\u5185\u52071\u652f"], "quantity": ["1"], "unit_price": ["8.8"], "record_type": ["normal"]},
+        data={"csrf": csrf(cutter.text), "order_no": [cutter_order_no], "size_text": ["35MM"], "note_text": ["\u7279\u6b8a\u5907\u6ce8"], "quantity": ["1"], "unit_price": ["8.8"], "record_type": ["normal"]},
         follow_redirects=False,
     )
     assert cutter_report.status_code == 303
@@ -172,13 +175,13 @@ with TestClient(app) as client:
     assert cutter_records[0]["department_name"] == "\u5207\u5200"
     assert cutter_records[0]["quantity"] == 1
     assert cutter_records[0]["size_text"] == "35MM"
-    assert cutter_records[0]["note_text"] == "\u5185\u52071\u652f"
+    assert cutter_records[0]["note_text"] == "\u7279\u6b8a\u5907\u6ce8"
     assert cutter_records[0]["record_type"] == "normal"
     assert abs(cutter_records[0]["unit_price"] - 8.8) < 1e-9
     cutter_list = client.get("/workshop/cutter")
     assert cutter_list.status_code == 200 and cutter_order_no in cutter_list.text
     assert "&#23610;&#23544;" in cutter_list.text and "&#22791;&#27880;" in cutter_list.text
-    assert "35MM" in cutter_list.text and "\u5185\u52071\u652f" in cutter_list.text and "&#27491;&#24120;" in cutter_list.text
+    assert "35MM" in cutter_list.text and "\u7279\u6b8a\u5907\u6ce8" in cutter_list.text and "&#27491;&#24120;" in cutter_list.text
     assert 'data-delete-url="/workshop/cutter/records/' not in cutter_list.text
     assert 'data-workshop-quantity-url="/workshop/cutter/records/' in cutter_list.text
     assert "data-selected-amount-total" in cutter_list.text and 'data-amount="8.80"' in cutter_list.text
@@ -459,7 +462,7 @@ with TestClient(app) as client:
     assert abs(history.json()["record"]["unit_price"] - 10.5) < 1e-9
     assert history.json()["record"]["material"] == "锌"
     assert history.json()["record"]["size_text"] == "\u9ad81\u5bbd20\u539a5"
-    assert history.json()["record"]["spec"] == "2D"
+    assert history.json()["record"]["spec"] == "2D+\u80cc\u5b57"
     quantity_request = client.post(
         f"/workshop/mold/records/{records[0]['id']}/quantity/request",
         data={"csrf": csrf(list_page.text), "quantity": "5", "unit_price": "12.5", "reason": "漏扫数量"},
@@ -593,8 +596,8 @@ with TestClient(app) as client:
     assert sheet.max_column == 7
     assert not any("\u51fa\u8d27" in str(value) or "鍑鸿揣" in str(value) for value in headers)
     assert sheet.cell(row=2, column=1).value == cutter_order_no
+    assert sheet.cell(row=2, column=3).value == "\u7279\u6b8a\u5907\u6ce8"
     assert sheet.cell(row=2, column=2).value == "35MM"
-    assert sheet.cell(row=2, column=3).value == "\u5185\u52071\u652f"
     assert sheet.cell(row=2, column=5).value == 8.8
 
     page = client.get("/")

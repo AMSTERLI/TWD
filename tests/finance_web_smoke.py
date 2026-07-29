@@ -261,6 +261,13 @@ with TestClient(app) as client:
     assert "spreadsheetml.sheet" in income_export.headers["content-type"]
     strings = xlsx_strings(income_export.content)
     assert new_order in strings and "莱威尔" in strings and old_order not in strings
+    multi_price_export = client.post(
+        "/finance/receivables/export",
+        data={"csrf": token, "selected_ids": "1"},
+    )
+    assert multi_price_export.status_code == 200
+    strings = xlsx_strings(multi_price_export.content)
+    assert old_order in strings and "20+30" in strings and "2/3" in strings
 
     payable_export = client.post(
         "/finance/payables/export",
