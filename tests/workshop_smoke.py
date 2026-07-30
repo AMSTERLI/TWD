@@ -69,6 +69,12 @@ def assert_workshop_detail_pdf_only(html: str, order_id: int, hidden_unit_price:
     assert "&#36710;&#38388;&#25253;&#21040;&#35760;&#24405;" not in html
     assert "外发记录" not in html
 
+static_js = Path("order_system/web/static/app.js").read_text(encoding="utf-8")
+assert "????????" not in static_js
+assert "以下订单已录入，普通单不允许重复录入" in static_js
+assert "确认继续保存吗" in static_js
+
+
 
 with TestClient(app) as client:
     repo.create_user("admin", "admin-pass-123", "admin")
