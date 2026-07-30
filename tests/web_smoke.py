@@ -41,6 +41,7 @@ with TestClient(app) as client:
     assert response.status_code == 303
     form_page = client.get("/orders/new")
     assert form_page.status_code == 200
+    assert 'name="plating" value="\u94f6"' in form_page.text
     preview = client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=2")
     assert preview.status_code == 200 and preview.json()["order_no"] == "TWD2-260715001"
     preview_again = client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=2")
