@@ -663,9 +663,6 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       const moldFeeInput = row.querySelector('[name="mold_fee"]');
       if (moldFeeInput) moldFeeInput.value = moldFeeInput.dataset.defaultValue || "0";
       row.querySelectorAll("select").forEach(select => select.selectedIndex = 0);
-      const noteInput = row.querySelector('[name="note_text"]');
-      const notePreset = row.querySelector("[data-note-preset]");
-      if (noteInput && notePreset) noteInput.value = notePreset.value || "";
       applyCurrentEmployee(row, true);
       row.dataset.existingWorkshopRecord = "0";
       row.dataset.existingWorkshopOrderNo = "";
@@ -687,13 +684,6 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     }
   });
   section.addEventListener("change", event => {
-    if (event.target.matches("[data-note-preset]")) {
-      const row = event.target.closest("tr");
-      const noteInput = row?.querySelector('[name="note_text"]');
-      if (noteInput) noteInput.value = event.target.value || "";
-      noteInput?.focus();
-      return;
-    }
     if (!event.target.matches("[data-workshop-order]")) return;
     const row = event.target.closest("tr");
     if (row) loadWorkshopHistory(row);

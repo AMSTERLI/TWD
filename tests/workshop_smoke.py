@@ -162,12 +162,13 @@ with TestClient(app) as client:
     assert cutter_unlock.status_code == 303 and cutter_unlock.headers["location"] == "/workshop/cutter"
     cutter = client.get("/workshop/cutter")
     assert cutter.status_code == 200 and "data-workshop-scan" in cutter.text
-    assert 'name="note_text" value="\u65e0"' in cutter.text and 'data-note-preset' in cutter.text
-    assert '<option value="\u5185\u52071\u652f">\u5185\u52071\u652f</option>' in cutter.text
+    assert '<select name="note_text" required>' in cutter.text and 'data-note-preset' not in cutter.text
+    assert '<option value="\u65e0">\u65e0</option>' in cutter.text
     assert '<option value="\u7279\u6b8a">\u7279\u6b8a</option>' in cutter.text
+    assert "\u5185\u52071\u652f" not in cutter.text
     cutter_report = client.post(
         "/workshop/cutter",
-        data={"csrf": csrf(cutter.text), "order_no": [cutter_order_no], "size_text": ["35MM"], "note_text": ["\u7279\u6b8a\u5907\u6ce8"], "quantity": ["1"], "unit_price": ["8.8"], "record_type": ["normal"]},
+        data={"csrf": csrf(cutter.text), "order_no": [cutter_order_no], "size_text": ["35MM"], "note_text": ["\u7279\u6b8a"], "quantity": ["1"], "unit_price": ["8.8"], "record_type": ["normal"]},
         follow_redirects=False,
     )
     assert cutter_report.status_code == 303
@@ -176,13 +177,13 @@ with TestClient(app) as client:
     assert cutter_records[0]["department_name"] == "\u5207\u5200"
     assert cutter_records[0]["quantity"] == 1
     assert cutter_records[0]["size_text"] == "35MM"
-    assert cutter_records[0]["note_text"] == "\u7279\u6b8a\u5907\u6ce8"
+    assert cutter_records[0]["note_text"] == "\u7279\u6b8a"
     assert cutter_records[0]["record_type"] == "normal"
     assert abs(cutter_records[0]["unit_price"] - 8.8) < 1e-9
     cutter_list = client.get("/workshop/cutter")
     assert cutter_list.status_code == 200 and cutter_order_no in cutter_list.text
     assert "&#23610;&#23544;" in cutter_list.text and "&#22791;&#27880;" in cutter_list.text
-    assert "35MM" in cutter_list.text and "\u7279\u6b8a\u5907\u6ce8" in cutter_list.text and "&#27491;&#24120;" in cutter_list.text
+    assert "35MM" in cutter_list.text and "\u7279\u6b8a" in cutter_list.text and "&#27491;&#24120;" in cutter_list.text
     assert 'data-delete-url="/workshop/cutter/records/' not in cutter_list.text
     assert 'data-workshop-quantity-url="/workshop/cutter/records/' in cutter_list.text
     assert "data-selected-amount-total" in cutter_list.text and 'data-amount="8.80"' in cutter_list.text
@@ -597,7 +598,7 @@ with TestClient(app) as client:
     assert sheet.max_column == 7
     assert not any("\u51fa\u8d27" in str(value) or "鍑鸿揣" in str(value) for value in headers)
     assert sheet.cell(row=2, column=1).value == cutter_order_no
-    assert sheet.cell(row=2, column=3).value == "\u7279\u6b8a\u5907\u6ce8"
+    assert sheet.cell(row=2, column=3).value == "\u7279\u6b8a"
     assert sheet.cell(row=2, column=2).value == "35MM"
     assert sheet.cell(row=2, column=5).value == 8.8
 
