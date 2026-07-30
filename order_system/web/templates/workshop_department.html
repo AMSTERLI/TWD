@@ -46,7 +46,7 @@
               <td><select name="spec" required>{% for item in department.specs %}<option value="{{ item }}">{{ item }}</option>{% endfor %}</select></td>
               {% elif department.cutter %}
               <td><input type="text" name="size_text" maxlength="50" autocomplete="off" inputmode="text"></td>
-              <td><input type="text" name="note_text" value="{{ department.notes[0] }}" maxlength="50" list="cutter-note-options" autocomplete="off" required></td>
+              <td><div class="inline-fields"><select data-note-preset>{% for item in department.notes %}<option value="{{ item }}">{{ item }}</option>{% endfor %}</select><input type="text" name="note_text" value="{{ department.notes[0] }}" maxlength="50" autocomplete="off" required></div></td>
               {% endif %}
               <td><input type="{% if department.piecework %}text{% else %}number{% endif %}" name="quantity" step="1" min="1" value="1" required{% if department.piecework %} inputmode="numeric" pattern="[0-9]*" data-touch-number data-touch-integer="1"{% endif %}></td>
               {% if not department.quantity_only %}<td><input type="{% if department.piecework %}text{% else %}number{% endif %}" name="unit_price" step="0.0001" min="0" value="0"{% if department.piecework %} inputmode="decimal" data-touch-number data-touch-scale="4"{% endif %}></td>{% endif %}
@@ -57,7 +57,6 @@
           </tbody>
         </table>
       </div>
-{% if department.cutter %}<datalist id="cutter-note-options">{% for item in department.notes %}<option value="{{ item }}"></option>{% endfor %}</datalist>{% endif %}
       <template data-workshop-row-template>
         <tr>
           {% if department.piecework %}<td><input type="hidden" name="employee_name" data-workshop-employee><span class="employee-selection" data-workshop-employee-label></span></td>{% endif %}
@@ -68,7 +67,7 @@
           <td><select name="spec" required>{% for item in department.specs %}<option value="{{ item }}">{{ item }}</option>{% endfor %}</select></td>
           {% elif department.cutter %}
           <td><input type="text" name="size_text" maxlength="50" autocomplete="off" inputmode="text"></td>
-          <td><input type="text" name="note_text" value="{{ department.notes[0] }}" maxlength="50" list="cutter-note-options" autocomplete="off" required></td>
+          <td><div class="inline-fields"><select data-note-preset>{% for item in department.notes %}<option value="{{ item }}">{{ item }}</option>{% endfor %}</select><input type="text" name="note_text" value="{{ department.notes[0] }}" maxlength="50" autocomplete="off" required></div></td>
           {% endif %}
           <td><input type="{% if department.piecework %}text{% else %}number{% endif %}" name="quantity" step="1" min="1" value="1" required{% if department.piecework %} inputmode="numeric" pattern="[0-9]*" data-touch-number data-touch-integer="1"{% endif %}></td>
           {% if not department.quantity_only %}<td><input type="{% if department.piecework %}text{% else %}number{% endif %}" name="unit_price" step="0.0001" min="0" value="0"{% if department.piecework %} inputmode="decimal" data-touch-number data-touch-scale="4"{% endif %}></td>{% endif %}

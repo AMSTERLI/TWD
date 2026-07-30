@@ -162,9 +162,9 @@ with TestClient(app) as client:
     assert cutter_unlock.status_code == 303 and cutter_unlock.headers["location"] == "/workshop/cutter"
     cutter = client.get("/workshop/cutter")
     assert cutter.status_code == 200 and "data-workshop-scan" in cutter.text
-    assert 'name="note_text" value="\u65e0"' in cutter.text and 'list="cutter-note-options"' in cutter.text
-    assert '<option value="\u5185\u52071\u652f"></option>' in cutter.text
-    assert '<option value="\u7279\u6b8a"></option>' in cutter.text
+    assert 'name="note_text" value="\u65e0"' in cutter.text and 'data-note-preset' in cutter.text
+    assert '<option value="\u5185\u52071\u652f">\u5185\u52071\u652f</option>' in cutter.text
+    assert '<option value="\u7279\u6b8a">\u7279\u6b8a</option>' in cutter.text
     cutter_report = client.post(
         "/workshop/cutter",
         data={"csrf": csrf(cutter.text), "order_no": [cutter_order_no], "size_text": ["35MM"], "note_text": ["\u7279\u6b8a\u5907\u6ce8"], "quantity": ["1"], "unit_price": ["8.8"], "record_type": ["normal"]},
