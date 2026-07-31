@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ department.name }} - &#36710;&#38388;{% endblock %}
-{% block body_class %}{% if department.piecework %}workshop-press-page{% endif %}{% endblock %}
+{% block body_class %}{% if department.piecework %}workshop-press-page{% endif %} workshop-department-{{ department.key }}{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>

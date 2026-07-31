@@ -1,7 +1,7 @@
 ORDER_TYPES = ["\u65b0\u8ba2\u5355", "\u6837\u54c1\u5355", "\u91cd\u505a\u5355", "\u6253\u6837\u4e0b\u5355", "\u590d\u8ba2\u5355", "\u8d60\u505a\u5355"]
 QUANTITY_UNITS = ["\u4e2a", "\u5957"]
 BASE_MATERIALS = ["\u9752\u94dc\u54ac\u677f", "\u94dc", "\u94c1\u8d28", "\u950c\u5408\u91d1", "\u4f4e\u6e29\u950c\u5408\u91d1", "\u94dd", "\u4e0d\u9508\u94a2"]
-SURFACE_CRAFTS = ["\u70e4\u6f06", "\u73d0\u7405", "UV", "\u5e73\u5370", "\u956d\u96d5"]
+SURFACE_CRAFTS = ["\u70e4\u6f06", "\u73d0\u7405", "UV", "\u5e73\u5370", "\u956d\u96d5", "\u8272\u818f"]
 MATERIALS = BASE_MATERIALS + [
     f"{material}  {craft}"
     for material in BASE_MATERIALS

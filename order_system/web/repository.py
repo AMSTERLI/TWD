@@ -587,7 +587,14 @@ class Repository:
             raise ValueError("补数数量必须大于 0")
         payload = {column: source[column] for column in ORDER_COLUMNS}
         prefix_no = int(payload.get("customer_code") or payload.get("order_prefix_no") or 1)
-        payload["order_no"] = str(source["order_no"] or "")
+        source_order_no = str(source["order_no"] or "")
+        for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+            candidate_order_no = f"{letter}{source_order_no}"
+            if not conn.execute("SELECT 1 FROM orders WHERE order_no = ?", (candidate_order_no,)).fetchone():
+                payload["order_no"] = candidate_order_no
+                break
+        else:
+            raise ValueError("该订单补数单号已用尽 A-Z")
         payload["order_type"] = f"补数单（{request_row['requester_name']}）"
         payload["quantity"] = quantity
         payload["spare_quantity"] = 0
@@ -1451,6 +1458,7 @@ class Repository:
                 placeholders = ", ".join("?" for _ in chunk)
                 rows.extend(conn.execute(
                     f"""SELECT w.*, o.product_name, o.customer_name, o.image_paths_json,
+                               o.width_mm, o.height_mm, o.thickness_mm, o.diameter_mm,
                                CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
                         FROM workshop_records w
                         LEFT JOIN orders o ON o.id = w.order_id

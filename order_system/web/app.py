@@ -106,7 +106,7 @@ WORKSHOP_DEPARTMENTS = {
         "mold_fee_input": True,
     },
     "painting": {
-        "name": "\u70e4\u6f06",
+        "name": "\u4e0a\u8272",
         "password_env": "TWD_WORKSHOP_PAINTING_PASSWORD",
         "default_password": "kaoqi888",
         "employees": ["\u5218\u8fdb", "\u9ec4\u4e09\u679a", "\u5468\u6625\u71d5", "\u519c\u91d1\u7ea2", "\u519c\u8273\u7ea2", "\u9648\u7eaf\u82f1", "\u6881\u5f66", "\u6768\u7ea2\u82f1", "\u5f90\u53cb\u4e3d"],
@@ -451,6 +451,28 @@ def first_order_image_path(row: dict[str, Any]) -> Path | None:
         if image_path.is_file():
             return image_path
     return None
+
+
+def order_size_text(row: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for label, key in (("\u9ad8", "height_mm"), ("\u5bbd", "width_mm"), ("\u539a", "thickness_mm"), ("\u76f4\u5f84", "diameter_mm")):
+        value = str(row.get(key) or "").strip()
+        if value:
+            parts.append(f"{label}{value}")
+    return "".join(parts)
+
+
+def export_with_images(
+    sheet_name: str,
+    headers: list[str],
+    rows: list[list[Any]],
+    source_rows: list[dict[str, Any]],
+    prefix: str,
+) -> Response:
+    image_headers = [*headers, "\u4ea7\u54c1\u7f29\u7565\u56fe"]
+    image_rows = [[*row, ""] for row in rows]
+    thumbnail_paths = [first_order_image_path(row) for row in source_rows]
+    return excel_response_with_thumbnails(sheet_name, image_headers, image_rows, thumbnail_paths, prefix)
 
 
 async def save_image_upload(upload: UploadFile, *, preview: bool = False) -> str:
@@ -1549,7 +1571,6 @@ async def workshop_department_export(request: Request, department_key: str):
     rows = await run_in_threadpool(repo.workshop_record_rows, await selected_workshop_record_ids(form, department_key), department_key)
     if not rows:
         return Response("请至少选择一条车间记录", status_code=400)
-    thumbnail_paths: list[Path | None] | None = None
     if department.get("mold"):
         data = [[
             row.get("order_no") or "",
@@ -1579,6 +1600,7 @@ async def workshop_department_export(request: Request, department_key: str):
                 row.get("order_no") or "",
                 row.get("product_name") or "",
                 row.get("customer_name") or "",
+                *([order_size_text(row)] if department_key in {"press", "diecast", "painting"} else []),
                 row.get("department_name") or "",
                 row.get("operator_name") or "",
                 row.get("quantity") or 1,
@@ -1587,15 +1609,14 @@ async def workshop_department_export(request: Request, department_key: str):
                 row.get("mold_fee") or 0,
                 row.get("amount") or 0,
                 beijing_time(row.get("reported_at") or ""),
-                "",
             ] for row in rows]
-            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u5355\u4ef7", department.get("mold_fee_label") or "\u88c5\u6a21\u8d39", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4", "\u4ea7\u54c1\u7f29\u7565\u56fe"]
-            thumbnail_paths = [first_order_image_path(row) for row in rows]
+            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", *(["\u5c3a\u5bf8"] if department_key in {"press", "diecast", "painting"} else []), "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u5355\u4ef7", department.get("mold_fee_label") or "\u88c5\u6a21\u8d39", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
         else:
             data = [[
                 row.get("order_no") or "",
                 row.get("product_name") or "",
                 row.get("customer_name") or "",
+                *([order_size_text(row)] if department_key in {"press", "diecast", "painting"} else []),
                 row.get("department_name") or "",
                 row.get("operator_name") or "",
                 row.get("quantity") or 1,
@@ -1603,10 +1624,8 @@ async def workshop_department_export(request: Request, department_key: str):
                 row.get("unit_price") or 0,
                 row.get("amount") or 0,
                 beijing_time(row.get("reported_at") or ""),
-                "",
             ] for row in rows]
-            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u5355\u4ef7", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4", "\u4ea7\u54c1\u7f29\u7565\u56fe"]
-            thumbnail_paths = [first_order_image_path(row) for row in rows]
+            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", *(["\u5c3a\u5bf8"] if department_key in {"press", "diecast", "painting"} else []), "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u5355\u4ef7", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
     elif department.get("quantity_only"):
         data = [[
             row.get("order_no") or "",
@@ -1631,20 +1650,12 @@ async def workshop_department_export(request: Request, department_key: str):
     await run_in_threadpool(
         repo.audit, user, "workshop.export", f"{department_key}:{len(rows)}", client_ip(request)
     )
-    if thumbnail_paths is not None:
-        return await run_in_threadpool(
-            excel_response_with_thumbnails,
-            department["name"],
-            headers,
-            data,
-            thumbnail_paths,
-            f"workshop_{department_key}",
-        )
     return await run_in_threadpool(
-        excel_response,
+        export_with_images,
         department["name"],
         headers,
         data,
+        rows,
         f"workshop_{department_key}",
     )
 
