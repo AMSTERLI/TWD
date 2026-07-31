@@ -410,6 +410,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   const isTooling = section.dataset.tooling === "1";
   const employeeButtons = [...section.querySelectorAll("[data-employee-value]")];
   const singleOptionPicker = section.dataset.singleOption === "1";
+  const specialEmployee = section.dataset.specialEmployee || "";
   const historyChecks = new WeakMap();
   const scanAdvanceTimers = new WeakMap();
   const scanStartTimes = new WeakMap();
@@ -474,6 +475,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       if (row) {
         row.dataset.existingWorkshopRecord = "0";
         row.dataset.existingWorkshopOrderNo = "";
+        row.dataset.existingWorkshopOperator = "";
       }
       return null;
     }
@@ -487,11 +489,13 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       if (!record) {
         row.dataset.existingWorkshopRecord = "0";
         row.dataset.existingWorkshopOrderNo = "";
+        row.dataset.existingWorkshopOperator = "";
         return null;
       }
       const hasExistingRecord = record.existing_workshop_record !== false;
       row.dataset.existingWorkshopRecord = hasExistingRecord ? "1" : "0";
       row.dataset.existingWorkshopOrderNo = hasExistingRecord ? orderNo : "";
+      row.dataset.existingWorkshopOperator = hasExistingRecord ? (record.operator_name || "") : "";
       const priceInput = row.querySelector('[name="unit_price"]');
       if (priceInput && hasExistingRecord) priceInput.value = cleanNumber(record.unit_price);
       const quantityInput = row.querySelector('[name="quantity"]');
@@ -502,11 +506,13 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       if (sizeInput && record.size_text) sizeInput.value = record.size_text;
       const specInput = row.querySelector('[name="spec"]');
       if (specInput && record.spec) specInput.value = record.spec;
+      applySpecialEmployee(row);
       return hasExistingRecord ? orderNo : null;
     } catch (error) {
       console.warn("Failed to load workshop history", error);
       row.dataset.existingWorkshopRecord = "0";
       row.dataset.existingWorkshopOrderNo = "";
+      row.dataset.existingWorkshopOperator = "";
       return null;
     }
   }
@@ -515,6 +521,37 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     if (!row) return;
     clearTimeout(historyChecks.get(row));
     historyChecks.set(row, setTimeout(() => loadWorkshopHistory(row), 200));
+  }
+
+  function currentEmployeeValues(row = null) {
+    const value = row?.querySelector("[data-workshop-employee]")?.value || currentEmployee();
+    return value.split(/[,/\s]+/).map(item => item.trim()).filter(Boolean);
+  }
+
+  function hasSameExistingOperator(row) {
+    const existing = (row?.dataset.existingWorkshopOperator || "").split(/[,/\s]+/).map(item => item.trim()).filter(Boolean);
+    const current = currentEmployeeValues(row);
+    if (!existing.length || !current.length) return true;
+    return current.some(item => existing.includes(item));
+  }
+
+  function applySpecialEmployee(row) {
+    if (!row || !specialEmployee) return;
+    const isSpecial = currentEmployeeValues(row).length === 1 && currentEmployeeValues(row)[0] === specialEmployee;
+    const unitPrice = row.querySelector('[name="unit_price"]');
+    const moldFee = row.querySelector('[name="mold_fee"]');
+    const note = row.querySelector("[data-special-note]");
+    if (unitPrice) {
+      if (isSpecial) unitPrice.value = "0";
+      unitPrice.readOnly = isSpecial;
+      unitPrice.closest("td")?.classList.toggle("muted", isSpecial);
+    }
+    if (moldFee) {
+      if (isSpecial) moldFee.value = "0";
+      moldFee.readOnly = isSpecial;
+      moldFee.closest("td")?.toggleAttribute("hidden", isSpecial);
+    }
+    note?.closest("td")?.toggleAttribute("hidden", !isSpecial);
   }
 
   function currentEmployee() {
@@ -541,6 +578,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     input.value = currentEmployee();
     const label = row?.querySelector("[data-workshop-employee-label]");
     if (label) label.textContent = input.value.split(",").filter(Boolean).join(" / ");
+    applySpecialEmployee(row);
   }
 
   function addRow(focus = true) {
@@ -617,13 +655,13 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   employeeButtons.forEach(button => button.addEventListener("click", () => {
     if (singleOptionPicker && !button.classList.contains("active")) employeeButtons.forEach(item => item.classList.remove("active"));
     button.classList.toggle("active");
-    rows.querySelectorAll("tr").forEach(row => applyCurrentEmployee(row, true));
+    rows.querySelectorAll("tr").forEach(row => { applyCurrentEmployee(row, true); applySpecialEmployee(row); });
     const emptyRows = [...rows.querySelectorAll("tr")].filter(row => !row.querySelector("[data-workshop-order]")?.value.trim());
     const target = emptyRows[0]?.querySelector("[data-workshop-order]") || rows.querySelector("[data-workshop-order]");
     target?.focus();
     focusEnd(target);
   }));
-  rows.querySelectorAll("tr").forEach(row => applyCurrentEmployee(row, true));
+  rows.querySelectorAll("tr").forEach(row => { applyCurrentEmployee(row, true); applySpecialEmployee(row); });
   addButton?.addEventListener("click", () => addRow());
   batchPriceButton?.addEventListener("click", () => {
     const value = window.prompt("\u8bf7\u8f93\u5165\u65b0\u7684\u52a0\u5de5\u5355\u4ef7");
@@ -640,7 +678,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     }
     activeRows.forEach(row => {
       const input = row.querySelector('[name="unit_price"]');
-      if (input) input.value = cleaned;
+      if (input && !input.readOnly) input.value = cleaned;
     });
   });
   section.addEventListener("click", event => {
@@ -666,8 +704,10 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       if (moldFeeInput) moldFeeInput.value = moldFeeInput.dataset.defaultValue || "0";
       row.querySelectorAll("select").forEach(select => select.selectedIndex = 0);
       applyCurrentEmployee(row, true);
+      applySpecialEmployee(row);
       row.dataset.existingWorkshopRecord = "0";
       row.dataset.existingWorkshopOrderNo = "";
+      row.dataset.existingWorkshopOperator = "";
       row.dataset.historyKey = "";
       row.dataset.autoAdvancedFor = "";
       row.querySelector("[data-workshop-order]")?.focus();
@@ -709,15 +749,15 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     const duplicates = [];
     for (const row of activeRows) {
       const existingOrderNo = await loadWorkshopHistory(row);
-      const duplicateBlocked = isTooling ? (existingOrderNo && !isReworkRow(row)) : existingOrderNo;
+      const duplicateBlocked = isTooling ? (existingOrderNo && !isReworkRow(row)) : (existingOrderNo && hasSameExistingOperator(row));
       if (duplicateBlocked && !duplicates.includes(existingOrderNo)) duplicates.push(existingOrderNo);
     }
     if (duplicates.length) {
       if (isTooling) {
-        window.alert(`以下订单已录入，普通单不允许重复录入：${duplicates.join("、")}。请使用重做单。`);
+        window.alert(`\u4ee5\u4e0b\u8ba2\u5355\u5df2\u5f55\u5165\uff0c\u666e\u901a\u5355\u4e0d\u5141\u8bb8\u91cd\u590d\u5f55\u5165\uff1a${duplicates.join("\u3001")}\u3002\u8bf7\u4f7f\u7528\u91cd\u505a\u5355\u3002`);
         return;
       }
-      if (!window.confirm(`以下订单已录入：${duplicates.join("、")}。确认继续保存吗？`)) return;
+      if (!window.confirm(`\u4ee5\u4e0b\u8ba2\u5355\u5df2\u5f55\u5165\uff1a${duplicates.join("\u3001")}\u3002\u786e\u8ba4\u7ee7\u7eed\u4fdd\u5b58\u5417\uff1f`)) return;
     }
     event.target.submit();
   });

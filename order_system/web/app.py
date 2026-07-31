@@ -105,6 +105,8 @@ WORKSHOP_DEPARTMENTS = {
         "mold_fee": True,
         "mold_fee_label": "\u6253\u6837\u8d39",
         "mold_fee_input": True,
+        "special_employee": "\u6bdb\u536b\u5175",
+        "notes": ["\u53cc\u9762", "\u5f27\u5ea6", "\u53cc\u9762\u5f27\u5ea6"],
     },
     "painting": {
         "name": "\u4e0a\u8272",
@@ -1347,6 +1349,7 @@ def workshop_department(name: str) -> dict[str, Any] | None:
         "tooling": bool(department.get("tooling")),
         "cutter": bool(department.get("cutter")),
         "notes": list(department.get("notes") or []),
+        "special_employee": str(department.get("special_employee") or ""),
         "mold": bool(department.get("mold")),
         "materials": list(department.get("materials") or []),
         "specs": list(department.get("specs") or []),
@@ -1607,10 +1610,10 @@ async def workshop_department_export(request: Request, department_key: str):
             data = [[
                 row.get("order_no") or "",
                 row.get("product_name") or "",
-                row.get("customer_name") or "",
-                *([order_size_text(row)] if department_key in {"press", "diecast", "painting"} else []),
+                *([order_size_text(row)] if department_key in {"press", "diecast", "painting", "polishing"} else []),
                 row.get("department_name") or "",
                 row.get("operator_name") or "",
+                *([row.get("note_text") or ""] if department_key == "polishing" else []),
                 row.get("quantity") or 1,
                 row.get("reference_quantity") or 0,
                 row.get("unit_price") or 0,
@@ -1618,43 +1621,41 @@ async def workshop_department_export(request: Request, department_key: str):
                 row.get("amount") or 0,
                 beijing_time(row.get("reported_at") or ""),
             ] for row in rows]
-            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", *(["\u5c3a\u5bf8"] if department_key in {"press", "diecast", "painting"} else []), "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u5355\u4ef7", department.get("mold_fee_label") or "\u88c5\u6a21\u8d39", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
+            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", *(["\u5c3a\u5bf8"] if department_key in {"press", "diecast", "painting", "polishing"} else []), "\u90e8\u95e8", "\u5458\u5de5", *(["\u5907\u6ce8"] if department_key == "polishing" else []), "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u5355\u4ef7", department.get("mold_fee_label") or "\u88c5\u6a21\u8d39", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
         else:
             data = [[
                 row.get("order_no") or "",
                 row.get("product_name") or "",
-                row.get("customer_name") or "",
-                *([order_size_text(row)] if department_key in {"press", "diecast", "painting"} else []),
+                *([order_size_text(row)] if department_key in {"press", "diecast", "painting", "polishing"} else []),
                 row.get("department_name") or "",
                 row.get("operator_name") or "",
+                *([row.get("note_text") or ""] if department_key == "polishing" else []),
                 row.get("quantity") or 1,
                 row.get("reference_quantity") or 0,
                 row.get("unit_price") or 0,
                 row.get("amount") or 0,
                 beijing_time(row.get("reported_at") or ""),
             ] for row in rows]
-            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", *(["\u5c3a\u5bf8"] if department_key in {"press", "diecast", "painting"} else []), "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u5355\u4ef7", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
+            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", *(["\u5c3a\u5bf8"] if department_key in {"press", "diecast", "painting", "polishing"} else []), "\u90e8\u95e8", "\u5458\u5de5", *(["\u5907\u6ce8"] if department_key == "polishing" else []), "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u5355\u4ef7", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
     elif department.get("quantity_only"):
         data = [[
             row.get("order_no") or "",
             row.get("product_name") or "",
-            row.get("customer_name") or "",
             row.get("department_name") or "",
             row.get("quantity") or 1,
             beijing_time(row.get("reported_at") or ""),
         ] for row in rows]
-        headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u6570\u91cf", "\u62a5\u5230\u65f6\u95f4"]
+        headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u90e8\u95e8", "\u6570\u91cf", "\u62a5\u5230\u65f6\u95f4"]
     else:
         data = [[
             row.get("order_no") or "",
             row.get("product_name") or "",
-            row.get("customer_name") or "",
             row.get("department_name") or "",
             row.get("quantity") or 1,
             row.get("unit_price") or 0,
             beijing_time(row.get("reported_at") or ""),
         ] for row in rows]
-        headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5ba2\u6237", "\u90e8\u95e8", "\u6570\u91cf", "\u5355\u4ef7", "\u62a5\u5230\u65f6\u95f4"]
+        headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u90e8\u95e8", "\u6570\u91cf", "\u5355\u4ef7", "\u62a5\u5230\u65f6\u95f4"]
     await run_in_threadpool(
         repo.audit, user, "workshop.export", f"{department_key}:{len(rows)}", client_ip(request)
     )

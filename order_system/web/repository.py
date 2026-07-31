@@ -1198,6 +1198,7 @@ class Repository:
                         """SELECT MAX(id) AS id, MAX(order_id) AS order_id, order_no, department_key,
                                   MAX(department_name) AS department_name, SUM(COALESCE(quantity, 1)) AS quantity,
                                   MAX(unit_price) AS unit_price, SUM(COALESCE(mold_fee, 0)) AS mold_fee,
+                                  GROUP_CONCAT(DISTINCT operator_name) AS operator_name,
                                   MAX(shipped_status) AS shipped_status, MAX(material) AS material, MAX(size_text) AS size_text, MAX(spec) AS spec,
                                   MAX(note_text) AS note_text,
                                   MAX(record_type) AS record_type, MAX(reported_at) AS reported_at
@@ -1211,7 +1212,7 @@ class Repository:
             else:
                 row = conn.execute(
                     """SELECT id, order_id, order_no, department_key, department_name, quantity, unit_price, mold_fee,
-                              shipped_status, material, size_text, spec, note_text, record_type, reported_at
+                              operator_name, shipped_status, material, size_text, spec, note_text, record_type, reported_at
                        FROM workshop_records
                        WHERE department_key = ? AND order_no = ?
                        ORDER BY reported_at DESC, id DESC
@@ -1226,6 +1227,7 @@ class Repository:
             "department_name": "",
             "unit_price": 0,
             "mold_fee": 0,
+            "operator_name": "",
             "shipped_status": 0,
             "reported_at": "",
         }
@@ -1312,6 +1314,8 @@ class Repository:
                 allowed_employees = piecework_employees[department_key]
                 if not employee_names or any(item not in allowed_employees for item in employee_names):
                     raise ValueError(f"\u8ba2\u5355 {order_no} \u8bf7\u9009\u62e9{department_name}\u5458\u5de5")
+                if department_key == "polishing" and "\u6bdb\u536b\u5175" in employee_names and employee_names != ["\u6bdb\u536b\u5175"]:
+                    raise ValueError(f"\u8ba2\u5355 {order_no} \u6bdb\u536b\u5175\u9700\u8981\u5355\u72ec\u5f55\u5165")
                 if department_key in dropdown_fee_departments:
                     if mold_fee < 0:
                         raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u88c5\u6a21\u8d39\u4e0d\u80fd\u5c0f\u4e8e 0")
@@ -1327,6 +1331,14 @@ class Repository:
             spec = str(row.get("spec") or "").strip()
             note_text = str(row.get("note_text") or "").strip()
             record_type = str(row.get("record_type") or "normal").strip()
+            if department_key == "polishing":
+                if employee_names == ["\u6bdb\u536b\u5175"]:
+                    unit_price = 0.0
+                    mold_fee = 0.0
+                    if note_text not in {"\u53cc\u9762", "\u5f27\u5ea6", "\u53cc\u9762\u5f27\u5ea6"}:
+                        note_text = "\u53cc\u9762"
+                else:
+                    note_text = ""
             if department_key in tooling_departments:
                 if len(size_text) > 50:
                     raise ValueError(f"订单 {order_no} 的尺寸不能超过 50 个字")
@@ -1347,7 +1359,8 @@ class Repository:
                 material = ""
                 size_text = ""
                 spec = ""
-                note_text = ""
+                if department_key != "polishing":
+                    note_text = ""
                 record_type = "normal"
             clean_rows.append({
                 "order_no": order_no,
