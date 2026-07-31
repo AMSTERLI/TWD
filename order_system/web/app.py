@@ -87,6 +87,7 @@ WORKSHOP_DEPARTMENTS = {
         "password_env": "TWD_WORKSHOP_CRYSTAL_PASSWORD",
         "default_password": "jingmian888",
         "quantity_only": True,
+        "process_options": ["\u73bb\u7483", "\u78c1\u94c1", "\u914d\u4ef6"],
     },
     "packaging": {
         "name": "\u5305\u88c5",
@@ -128,6 +129,7 @@ WORKSHOP_DEPARTMENTS = {
         "mold_fee_options": ["0", "4", "5", "6", "7", "8"],
     },
 }
+WORKSHOP_PASSWORD_DEPARTMENTS = {"mold", "cutter"}
 
 
 @asynccontextmanager
@@ -1348,6 +1350,8 @@ def workshop_department(name: str) -> dict[str, Any] | None:
         "mold": bool(department.get("mold")),
         "materials": list(department.get("materials") or []),
         "specs": list(department.get("specs") or []),
+        "process_options": list(department.get("process_options") or []),
+        "requires_password": str(name or "").strip() in WORKSHOP_PASSWORD_DEPARTMENTS,
     }
 
 
@@ -1360,6 +1364,8 @@ def workshop_department_password(name: str) -> str:
 def workshop_unlocked(request: Request, department_key: str) -> bool:
     user = current_user(request)
     if user and user.get("role") == "admin":
+        return True
+    if str(department_key or "").strip() not in WORKSHOP_PASSWORD_DEPARTMENTS:
         return True
     return request.session.get(f"workshop:{department_key}:unlocked") is True
 
@@ -1408,6 +1414,8 @@ async def workshop_unlock(request: Request, department_key: str):
     department = workshop_department(department_key)
     if not department:
         return Response(status_code=404)
+    if not department.get("requires_password"):
+        return RedirectResponse(f"/workshop/{department_key}", status_code=303)
     form = await request.form()
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
@@ -1709,6 +1717,8 @@ async def workshop_department_submit(request: Request, department_key: str):
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
     employee_names = form.getlist("employee_name")
+    if not employee_names and form.get("employee_name") is not None:
+        employee_names = [str(form.get("employee_name") or "")]
     materials = form.getlist("material")
     size_texts = form.getlist("size_text")
     specs = form.getlist("spec")

@@ -409,6 +409,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   const isMold = section.dataset.mold === "1";
   const isTooling = section.dataset.tooling === "1";
   const employeeButtons = [...section.querySelectorAll("[data-employee-value]")];
+  const singleOptionPicker = section.dataset.singleOption === "1";
   const historyChecks = new WeakMap();
   const scanAdvanceTimers = new WeakMap();
   const scanStartTimes = new WeakMap();
@@ -614,6 +615,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     }
   });
   employeeButtons.forEach(button => button.addEventListener("click", () => {
+    if (singleOptionPicker && !button.classList.contains("active")) employeeButtons.forEach(item => item.classList.remove("active"));
     button.classList.toggle("active");
     rows.querySelectorAll("tr").forEach(row => applyCurrentEmployee(row, true));
     const emptyRows = [...rows.querySelectorAll("tr")].filter(row => !row.querySelector("[data-workshop-order]")?.value.trim());
