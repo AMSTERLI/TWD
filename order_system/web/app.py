@@ -106,7 +106,7 @@ WORKSHOP_DEPARTMENTS = {
         "mold_fee_label": "\u6253\u6837\u8d39",
         "mold_fee_input": True,
         "special_employee": "\u6bdb\u536b\u5175",
-        "notes": ["\u53cc\u9762", "\u5f27\u5ea6", "\u53cc\u9762\u5f27\u5ea6"],
+        "notes": ["\u65e0", "\u53cc\u9762", "\u5f27\u5ea6", "\u53cc\u9762\u5f27\u5ea6"],
     },
     "painting": {
         "name": "\u4e0a\u8272",

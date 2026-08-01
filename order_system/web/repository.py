@@ -1335,8 +1335,8 @@ class Repository:
                 if employee_names == ["\u6bdb\u536b\u5175"]:
                     unit_price = 0.0
                     mold_fee = 0.0
-                    if note_text not in {"\u53cc\u9762", "\u5f27\u5ea6", "\u53cc\u9762\u5f27\u5ea6"}:
-                        note_text = "\u53cc\u9762"
+                    if note_text not in {"\u65e0", "\u53cc\u9762", "\u5f27\u5ea6", "\u53cc\u9762\u5f27\u5ea6"}:
+                        note_text = "\u65e0"
                 else:
                     note_text = ""
             if department_key in tooling_departments:
