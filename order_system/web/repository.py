@@ -13,7 +13,8 @@ from order_system.database import Database
 from .security import hash_password, verify_password
 
 
-REQUIRED_WEB_PROCESSES = ["冲压", "上色", "印刷/UV"]
+REQUIRED_WEB_PROCESSES = ["\u51b2\u538b", "\u4e0a\u8272", "\u5370\u5237/UV", "\u6bdb\u8fb9"]
+REQUIRED_WEB_FACTORIES = [("\u6bdb\u8fb9", "\u6797\u4e16\u57f9")]
 
 ORDER_COLUMNS = [
     "order_type", "salesman", "order_no", "product_name", "order_date",
