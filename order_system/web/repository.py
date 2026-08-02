@@ -264,6 +264,17 @@ class Repository:
                 "INSERT OR IGNORE INTO outsource_processes (process_name) VALUES (?)",
                 [(name,) for name in REQUIRED_WEB_PROCESSES],
             )
+            conn.executemany(
+                """
+                INSERT INTO outsource_factories (process_name, factory_name)
+                SELECT ?, ?
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM outsource_factories
+                    WHERE process_name = ? AND factory_name = ?
+                )
+                """,
+                [(process, factory, process, factory) for process, factory in REQUIRED_WEB_FACTORIES],
+            )
         with sqlite3.connect(self.db_path, timeout=10) as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
