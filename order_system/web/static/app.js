@@ -865,6 +865,7 @@ if (outsourceBatch) {
   const orderLookupUrl = outsourceBatch.dataset.orderLookupUrl || "";
   const orderLookupTimers = new WeakMap();
   const duplicateScanTimers = new WeakMap();
+  let resubmittingAfterLookup = false;
 
   const numberValue = (row, name) => Number(row.querySelector(`[name="${name}"]`)?.value || 0);
   const cleanNumber = (value, digits = 6) => Number(value.toFixed(digits)).toString();
@@ -1135,7 +1136,11 @@ if (outsourceBatch) {
       showOrderNoEnd(orderInput);
     } else addOutsourceRow(true);
   });
-  outsourceBatch.addEventListener("submit", event => {
+  outsourceBatch.addEventListener("submit", async event => {
+    if (resubmittingAfterLookup) {
+      resubmittingAfterLookup = false;
+      return;
+    }
     const process = processSelect.value;
     const activeRows = [...rows.querySelectorAll("tr")].filter(row => row.querySelector("[name=order_no]").value.trim());
     if (!activeRows.length) {
@@ -1143,6 +1148,8 @@ if (outsourceBatch) {
       alert("请至少扫描或输入一个订单号");
       return;
     }
+    event.preventDefault();
+    await Promise.all(activeRows.map(row => fillOrderRow(row)));
     for (const row of activeRows) {
       const orderNo = row.querySelector("[name=order_no]").value.trim();
       const quantity = numberValue(row, "product_quantity") + numberValue(row, "spare_quantity");
@@ -1152,11 +1159,12 @@ if (outsourceBatch) {
       if (process === "上色" && numberValue(row, "color_count") <= 0) message = `订单 ${orderNo} 必须填写大于 0 的颜色数量`;
       if (process === "印刷/UV" && !row.querySelector("[name=plate_fee]").value.trim()) message = `订单 ${orderNo} 必须填写版费`;
       if (message) {
-        event.preventDefault();
         alert(message);
         return;
       }
     }
+    resubmittingAfterLookup = true;
+    outsourceBatch.requestSubmit(event.submitter);
   });
   outsourceBatch.addEventListener("focusin", event => {
     if (event.target.matches("[name=order_no]")) showOrderNoEnd(event.target);

@@ -22,6 +22,7 @@ DIE_CAST = "\u538b\u94f8"
 PUNCH = "\u51b2\u538b"
 COLORING = "\u4e0a\u8272"
 PIN = "\u710a\u9488"
+LASER = "\u956d\u96d5"
 
 
 def token(html: str) -> str:
@@ -207,6 +208,14 @@ with TestClient(app) as client:
     )[0]
     uv_blank = repo.legacy.get_outsource_record(uv_blank_id)
     assert uv_blank["amount"] == 1002
+
+    laser_id = repo.create_outsource_batch(
+        {"process_name": LASER, "factory_name": "\u5f20\u5c55\u5c71", "outsource_date": "2026-07-15", "paid_status": 0},
+        [{"order_no": first_no, "unit_price": 0.5}],
+    )[0]
+    laser = repo.legacy.get_outsource_record(laser_id)
+    assert laser["product_quantity"] == 107 and laser["spare_quantity"] == 0
+    assert laser["quantity"] == 107 and laser["amount"] == 53.5
 
     assert client.post(f"/outsource/{punch_id}/paid", data={"csrf": token(page.text), "paid": "1"}).status_code == 404
     refreshed = client.get("/outsource")

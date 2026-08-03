@@ -1830,7 +1830,7 @@ class Repository:
         with self.connect(write=True) as conn:
             for row, order_no in zip(rows, normalized):
                 order = conn.execute(
-                    "SELECT id, order_no FROM orders WHERE order_no = ? ORDER BY id DESC LIMIT 1",
+                    "SELECT id, order_no, quantity, spare_quantity FROM orders WHERE order_no = ? ORDER BY id DESC LIMIT 1",
                     (order_no,),
                 ).fetchone()
                 if not order:
@@ -1839,8 +1839,14 @@ class Repository:
                 product_quantity = float(row.get("product_quantity") or 0)
                 spare_quantity = float(row.get("spare_quantity") or 0)
                 unit_price = float(row.get("unit_price") or 0)
+                if min(product_quantity, spare_quantity, unit_price) < 0:
+                    raise ValueError(f"订单 {order_no} 的数量和加工单价必须为非负数，合计数量须大于 0")
                 quantity = product_quantity + spare_quantity
-                if min(product_quantity, spare_quantity, unit_price) < 0 or quantity <= 0:
+                if quantity <= 0:
+                    product_quantity = float(order["quantity"] or 0) + float(order["spare_quantity"] or 0)
+                    spare_quantity = 0.0
+                    quantity = product_quantity
+                if quantity <= 0:
                     raise ValueError(f"订单 {order_no} 的数量和加工单价必须为非负数，合计数量须大于 0")
 
                 processing_fee = 0.0
