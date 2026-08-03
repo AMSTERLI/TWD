@@ -129,6 +129,7 @@ DEFAULT_OUTSOURCE_PROCESSES = [
     "电镀电泳",
     "焊针",
     "毛边",
+    "镭雕",
     "抛光",
     "上色",
     "树脂",
@@ -141,6 +142,7 @@ DEFAULT_OUTSOURCE_FACTORIES = [
     ("\u4e0a\u8272", "\u9ec4\u5c0f\u4e91"),
     ("\u710a\u9488", "\u79e6\u6c38\u548c"),
     ("\u6bdb\u8fb9", "\u6797\u4e16\u57f9"),
+    ("\u956d\u96d5", "\u5f20\u5c55\u5c71"),
 ]
 
 
