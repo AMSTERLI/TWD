@@ -61,6 +61,9 @@ with TestClient(app) as client:
     assert "data-outsource-batch" in page.text
     assert "data-outsource-receive" in page.text
     assert "data-order-lookup-url" in page.text and "data-outsource-orders-json" not in page.text
+    assert 'name="width_mm" step="any"' in page.text
+    static_js = Path("order_system/web/static/app.js").read_text(encoding="utf-8")
+    assert "input.disabled = !active" in static_js
     lookup = client.get(f"/outsource/order-lookup?order_no={first_no}")
     assert lookup.status_code == 200
     lookup_order = lookup.json()["order"]

@@ -937,7 +937,11 @@ if (outsourceBatch) {
     const process = processSelect.value;
     updateFactoryOptions();
     outsourceBatch.querySelectorAll("[data-process-only]").forEach(element => {
-      element.hidden = element.dataset.processOnly !== process;
+      const active = element.dataset.processOnly === process;
+      element.hidden = !active;
+      element.querySelectorAll("input, select, textarea").forEach(input => {
+        input.disabled = !active;
+      });
     });
     if (process === "冲压") {
       processHelp.textContent = "材料单价 =（长+3）×（宽+3）×厚度×密度×重量；金额 = 总数量×（加工单价+材料单价）+加工费。";
