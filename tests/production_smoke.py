@@ -114,7 +114,7 @@ with TestClient(app) as client:
     approved = repo.list_edit_requests("approved")[0]
     new_order = repo.get_order(int(approved["created_order_id"]))
     original = repo.get_order(first_id)
-    assert new_order["order_no"] == original["order_no"]
+    assert new_order["order_no"] == "A1-260720901"
     assert new_order["order_type"] == "\u8865\u6570\u5355\uff08\u9ec4\u519b\u56fd\uff09"
     assert new_order["quantity"] == 25 and new_order["spare_quantity"] == 0
     assert new_order["global_note"] == "\u8865\u6570\u539f\u56e0\uff1a\u5ba2\u6237\u8981\u6c42\u8865\u53d1"
@@ -129,5 +129,24 @@ with TestClient(app) as client:
     approved_page = client.get("/messages?status=approved")
     assert approved_page.status_code == 200
     assert "\u7ba1\u7406\u5458" in approved_page.text and "\u67e5\u770b\u8865\u6570\u5355" in approved_page.text
+    second_request = client.post(
+        f"/orders/{first_id}/replenishment-request",
+        data={"csrf": csrf(approved_page.text), "quantity": "10", "reason": "\u518d\u8865\u4e00\u6279"},
+        follow_redirects=False,
+    )
+    assert second_request.status_code == 303
+    logout(client)
+
+    login(client, "admin", "admin-pass-123")
+    pending_messages = client.get("/messages")
+    second_review = client.post(
+        "/messages/2/review",
+        data={"csrf": csrf(pending_messages.text), "decision": "approve", "review_note": "\u540c\u610f"},
+        follow_redirects=False,
+    )
+    assert second_review.status_code == 303
+    second_approved = [item for item in repo.list_edit_requests("approved") if item["id"] == 2][0]
+    second_new_order = repo.get_order(int(second_approved["created_order_id"]))
+    assert second_new_order["order_no"] == "B1-260720901"
 
 print(f"production smoke ok: {root}")

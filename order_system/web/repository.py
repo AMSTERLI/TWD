@@ -600,8 +600,9 @@ class Repository:
         payload = {column: source[column] for column in ORDER_COLUMNS}
         prefix_no = int(payload.get("customer_code") or payload.get("order_prefix_no") or 1)
         source_order_no = str(source["order_no"] or "")
+        replenishment_base_no = source_order_no[3:] if source_order_no.upper().startswith("TWD") else source_order_no
         for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-            candidate_order_no = f"{letter}{source_order_no}"
+            candidate_order_no = f"{letter}{replenishment_base_no}"
             if not conn.execute("SELECT 1 FROM orders WHERE order_no = ?", (candidate_order_no,)).fetchone():
                 payload["order_no"] = candidate_order_no
                 break
