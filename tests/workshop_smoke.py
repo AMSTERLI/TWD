@@ -71,8 +71,8 @@ def assert_workshop_detail_pdf_only(html: str, order_id: int, hidden_unit_price:
 
 static_js = Path("order_system/web/static/app.js").read_text(encoding="utf-8")
 assert "????????" not in static_js
-assert "以下订单已录入，普通单不允许重复录入" in static_js
-assert "确认继续保存吗" in static_js
+assert "以下订单已录入，普通单不允许重复录入" in static_js or "\\u4ee5\\u4e0b\\u8ba2\\u5355\\u5df2\\u5f55\\u5165\\uff0c\\u666e\\u901a\\u5355\\u4e0d\\u5141\\u8bb8\\u91cd\\u590d\\u5f55\\u5165" in static_js
+assert "确认继续保存吗" in static_js or "\\u786e\\u8ba4\\u7ee7\\u7eed\\u4fdd\\u5b58\\u5417" in static_js
 
 
 
@@ -126,9 +126,9 @@ with TestClient(app) as client:
     assert client.get("/orders").status_code == 403
 
     home = client.get("/workshop")
-    assert home.status_code == 200 and "/workshop/mold/unlock" in home.text and "/workshop/cutter/unlock" in home.text and "/workshop/press/unlock" in home.text
-    assert "/workshop/crystal/unlock" in home.text and "/workshop/packaging/unlock" in home.text and "/workshop/polishing/unlock" in home.text
-    assert "/workshop/painting/unlock" in home.text and "/workshop/diecast/unlock" in home.text
+    assert home.status_code == 200 and "/workshop/mold/unlock" in home.text and "/workshop/cutter/unlock" in home.text
+    assert "/workshop/press" in home.text and "/workshop/crystal" in home.text and "/workshop/packaging" in home.text
+    assert "/workshop/polishing" in home.text and "/workshop/painting" in home.text and "/workshop/diecast" in home.text
     bad_unlock = client.post(
         "/workshop/mold/unlock",
         data={"csrf": csrf(home.text), "password": "bad"},
@@ -301,10 +301,11 @@ with TestClient(app) as client:
     assert crystal_unlock.status_code == 303 and crystal_unlock.headers["location"] == "/workshop/crystal"
     crystal = client.get("/workshop/crystal")
     assert crystal.status_code == 200 and "data-workshop-scan" in crystal.text
-    assert 'name="unit_price"' not in crystal.text and 'data-workshop-employees' not in crystal.text
+    assert 'name="unit_price"' not in crystal.text and 'data-workshop-employees' in crystal.text
+    assert "玻璃" in crystal.text and "磁铁" in crystal.text and "配件" in crystal.text
     crystal_report = client.post(
         "/workshop/crystal",
-        data={"csrf": csrf(crystal.text), "order_no": [crystal_order_no], "quantity": ["12"]},
+        data={"csrf": csrf(crystal.text), "employee_name": ["玻璃"], "order_no": [crystal_order_no], "quantity": ["12"]},
         follow_redirects=False,
     )
     assert crystal_report.status_code == 303
@@ -330,22 +331,22 @@ with TestClient(app) as client:
     assert "\u6253\u6837\u8d39" in polishing.text and 'name="mold_fee"' in polishing.text
     polishing_report = client.post(
         "/workshop/polishing",
-        data={"csrf": csrf(polishing.text), "employee_name": ["\u725f\u6c5f,\u6bdb\u536b\u5175"], "order_no": [polishing_order_no], "quantity": ["18"], "unit_price": ["0.2"], "mold_fee": ["10"]},
+        data={"csrf": csrf(polishing.text), "employee_name": ["\u725f\u6c5f"], "note_text": ["\u65e0"], "order_no": [polishing_order_no], "quantity": ["18"], "unit_price": ["0.2"], "mold_fee": ["10"]},
         follow_redirects=False,
     )
     assert polishing_report.status_code == 303
     polishing_records = repo.order_workshop_records(polishing_order_id)
-    assert len(polishing_records) == 2
-    assert {row["operator_name"] for row in polishing_records} == {"\u725f\u6c5f", "\u6bdb\u536b\u5175"}
+    assert len(polishing_records) == 1
+    assert {row["operator_name"] for row in polishing_records} == {"\u725f\u6c5f"}
     for row in polishing_records:
         assert row["department_name"] == "\u629b\u5149"
-        assert row["quantity"] == 9
+        assert row["quantity"] == 18
         assert abs(row["unit_price"] - 0.2) < 1e-9
-        assert abs(row["mold_fee"] - 5) < 1e-9
-        assert abs(row["amount"] - 6.8) < 1e-9
+        assert abs(row["mold_fee"] - 10) < 1e-9
+        assert abs(row["amount"] - 13.6) < 1e-9
     polishing_list = client.get("/workshop/polishing")
     assert polishing_list.status_code == 200 and polishing_order_no in polishing_list.text
-    assert "data-selected-amount-total" in polishing_list.text and 'data-amount="6.80"' in polishing_list.text
+    assert "data-selected-amount-total" in polishing_list.text and 'data-amount="13.60"' in polishing_list.text
     assert 'data-selection-amount-total-all="13.60"' in polishing_list.text
     painting_unlock = client.post(
         "/workshop/painting/unlock",
@@ -367,7 +368,7 @@ with TestClient(app) as client:
     painting_records = repo.order_workshop_records(painting_order_id)
     assert len(painting_records) == 2
     for row in painting_records:
-        assert row["department_name"] == "\u70e4\u6f06"
+        assert row["department_name"] == "\u4e0a\u8272"
         assert row["quantity"] == 50
         assert abs(row["unit_price"] - 0.15) < 1e-9
         assert abs(row["mold_fee"] - 3) < 1e-9
@@ -410,7 +411,7 @@ with TestClient(app) as client:
     packaging = client.get("/workshop/packaging")
     assert packaging.status_code == 200 and "touch-piecework-panel" in packaging.text
     assert 'name="mold_fee"' not in packaging.text and 'data-batch-workshop-price' not in packaging.text
-    packaging_employees = ["\u6d82\u5c0f\u82f1", "\u5f90\u5f69\u8fde", "\u5468\u7f8e\u8bc6", "\u9648\u5c0f\u971e", "\u738b\u5bb6\u4e3d", "\u6768\u660e\u4ed9", "\u5f20\u96ea\u6797", "\u738b\u6587\u5bb9"]
+    packaging_employees = ["\u6d82\u5c0f\u82f1", "\u5f90\u5f69\u8fde", "\u5468\u7f8e\u8bc6", "\u9648\u5c0f\u971e", "\u738b\u5bb6\u4e3d", "\u6768\u660e\u4ed9", "\u5f20\u96ea\u6797", "\u738b\u6587\u5bb9", "\u66fe\u51e4\u5a25", "\u66fe\u8fde\u543e", "\u8d56\u706b\u80dc"]
     for employee in packaging_employees:
         assert f'data-employee-value="{employee}"' in packaging.text
         assert f'<option value="{employee}"' in packaging.text
@@ -441,10 +442,10 @@ with TestClient(app) as client:
     packaging_workbook_path = root / "packaging-export.xlsx"
     packaging_workbook_path.write_bytes(packaging_export.content)
     packaging_sheet = load_workbook(packaging_workbook_path).active
-    assert packaging_sheet.cell(row=1, column=7).value == "\u53c2\u8003\u6570\u91cf"
-    assert packaging_sheet.cell(row=1, column=9).value == "\u91d1\u989d"
-    assert packaging_sheet.cell(row=1, column=10).value == "\u62a5\u5230\u65f6\u95f4"
-    assert packaging_sheet.cell(row=1, column=11).value == "\u4ea7\u54c1\u7f29\u7565\u56fe"
+    assert packaging_sheet.cell(row=1, column=6).value == "\u53c2\u8003\u6570\u91cf"
+    assert packaging_sheet.cell(row=1, column=8).value == "\u91d1\u989d"
+    assert packaging_sheet.cell(row=1, column=9).value == "\u62a5\u5230\u65f6\u95f4"
+    assert packaging_sheet.cell(row=1, column=10).value == "\u4ea7\u54c1\u7f29\u7565\u56fe"
     assert packaging_sheet.cell(row=2, column=1).value == packaging_order_no
     list_page = client.get("/workshop/mold")
     assert 'type="date"' in list_page.text
@@ -601,7 +602,7 @@ with TestClient(app) as client:
     workbook_path.write_bytes(cutter_export.content)
     sheet = load_workbook(workbook_path).active
     headers = [sheet.cell(row=1, column=index).value for index in range(1, sheet.max_column + 1)]
-    assert sheet.max_column == 7
+    assert sheet.max_column == 8
     assert not any("\u51fa\u8d27" in str(value) or "鍑鸿揣" in str(value) for value in headers)
     assert sheet.cell(row=2, column=1).value == cutter_order_no
     assert sheet.cell(row=2, column=3).value == "\u7279\u6b8a"

@@ -90,7 +90,7 @@
         <td><input type="checkbox" name="selected_ids" value="{{ row.id }}" data-select-item aria-label="选择外发记录 {{ row.order_no }}"></td>
         <td><a href="/orders/{{ row.order_id }}">{{ row.order_no }}</a></td><td>{{ row.product_name or '-' }}</td><td>{{ row.process_name }}</td><td>{{ row.factory_name }}</td>
         <td>{{ row.product_quantity or 0 }} / {{ row.spare_quantity or 0 }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td>
-        <td>{% if row.process_name == '冲压' %}加工费 {{ '%.2f'|format(row.processing_fee or 0) }}；材料 {{ '%.6f'|format(row.material_unit_price or 0) }}{% elif row.process_name == '上色' %}{{ row.color_count or 0 }} 色{% elif row.process_name == '印刷/UV' %}版费 {{ '%.2f'|format(row.plate_fee or 0) }}{% else %}-{% endif %}</td>
+        <td>{% if row.process_name == '冲压' %}加工费 {{ '%.2f'|format(row.processing_fee or 0) }}；材料 {{ '%.6f'|format(row.material_unit_price or 0) }}{% elif row.process_name == '上色' %}{{ row.color_count or 0 }} 色{% elif row.process_name == '印刷/UV' %}版费 {{ '%.2f'|format(row.plate_fee or 0) }}{% elif row.process_name == '低温锌合金' %}模具费 {{ '%.2f'|format(row.mold_fee or 0) }}{% else %}-{% endif %}</td>
         <td>{{ '¥ %.2f'|format(row.amount) if row.amount is not none else '-' }}</td><td>{{ row.outsource_date or '-' }}</td>
         <td><span class="badge {{ 'ok' if row.paid_status else 'warn' }}">{{ '已付款' if row.paid_status else '未付款' }}</span></td>
       </tr>{% else %}<tr><td colspan="11" class="muted">暂无匹配的加工厂付款记录</td></tr>{% endfor %}

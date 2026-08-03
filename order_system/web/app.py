@@ -93,7 +93,7 @@ WORKSHOP_DEPARTMENTS = {
         "name": "\u5305\u88c5",
         "password_env": "TWD_WORKSHOP_PACKAGING_PASSWORD",
         "default_password": "baozhuang888",
-        "employees": ["\u6d82\u5c0f\u82f1", "\u5f90\u5f69\u8fde", "\u5468\u7f8e\u8bc6", "\u9648\u5c0f\u971e", "\u738b\u5bb6\u4e3d", "\u6768\u660e\u4ed9", "\u5f20\u96ea\u6797", "\u738b\u6587\u5bb9"],
+        "employees": ["\u6d82\u5c0f\u82f1", "\u5f90\u5f69\u8fde", "\u5468\u7f8e\u8bc6", "\u9648\u5c0f\u971e", "\u738b\u5bb6\u4e3d", "\u6768\u660e\u4ed9", "\u5f20\u96ea\u6797", "\u738b\u6587\u5bb9", "\u66fe\u51e4\u5a25", "\u66fe\u8fde\u543e", "\u8d56\u706b\u80dc"],
         "piecework": True,
     },
     "polishing": {
@@ -750,6 +750,7 @@ def outsource_edit_payload(form: Any) -> dict[str, Any]:
     material_unit_price = 0.0
     color_count = None
     plate_fee = 0.0
+    mold_fee = 0.0
     amount: float | None
     if process_name == "冲压":
         processing_fee = as_float(form.get("processing_fee"))
@@ -772,6 +773,11 @@ def outsource_edit_payload(form: Any) -> dict[str, Any]:
         if plate_fee < 0:
             raise ValueError("版费不能为负数")
         amount = quantity * unit_price + plate_fee
+    elif process_name == "\u4f4e\u6e29\u950c\u5408\u91d1":
+        mold_fee = as_float(form.get("mold_fee"))
+        if mold_fee < 0:
+            raise ValueError("\u6a21\u5177\u8d39\u4e0d\u80fd\u4e3a\u8d1f\u6570")
+        amount = quantity * unit_price + mold_fee
     else:
         amount = quantity * unit_price
 
@@ -792,6 +798,7 @@ def outsource_edit_payload(form: Any) -> dict[str, Any]:
         "material_unit_price": material_unit_price,
         "color_count": color_count,
         "plate_fee": plate_fee,
+        "mold_fee": mold_fee,
         "outsource_date": str(form.get("outsource_date") or date.today().isoformat()).strip(),
         "remark": str(form.get("remark") or "").strip(),
         "amount": amount,
@@ -1978,7 +1985,7 @@ async def finance_payables_export(request: Request):
         row.get("length_mm") or 0, row.get("width_mm") or 0, row.get("thickness_mm") or 0,
         row.get("density") or 0, row.get("weight") or 0,
         row.get("material_unit_price") or 0, row.get("color_count"),
-        row.get("plate_fee") or 0, row.get("amount"),
+        row.get("plate_fee") or 0, row.get("mold_fee") or 0, row.get("amount"),
         row.get("outsource_date") or "", "已付款" if row.get("paid_status") else "未付款",
         row.get("remark") or "",
     ] for row in rows]
@@ -1990,7 +1997,7 @@ async def finance_payables_export(request: Request):
         "加工厂付款",
         ["订单号", "产品", "工艺", "加工厂", "产品数量", "备品数量", "合计数量", "加工单价",
          "加工费", "长mm", "宽mm", "厚mm", "密度", "重量", "材料单价", "颜色数量",
-         "版费", "金额", "外发日期", "付款状态", "备注"],
+         "版费", "模具费", "金额", "外发日期", "付款状态", "备注"],
         data,
         "payables",
     )
@@ -2194,6 +2201,7 @@ async def create_outsource(request: Request):
     weights = form.getlist("weight")
     color_counts = form.getlist("color_count")
     plate_fees = form.getlist("plate_fee")
+    mold_fees = form.getlist("mold_fee")
     manual_amounts = form.getlist("manual_amount")
     flag_types = form.getlist("flag_type")
     remarks = form.getlist("remark")
@@ -2221,6 +2229,7 @@ async def create_outsource(request: Request):
             "weight": as_float(item(weights, index), 0.0055),
             "color_count": str(item(color_counts, index)).strip(),
             "plate_fee": as_float(item(plate_fees, index)),
+            "mold_fee": as_float(item(mold_fees, index)),
             "manual_amount": as_float(manual_amount) if manual_amount else None,
             "remark": str(item(remarks, index)).strip(),
             "remake_flag": int(flag_type == "remake"),
@@ -2239,6 +2248,7 @@ async def create_outsource(request: Request):
         "material_unit_price": 0,
         "color_count": None,
         "plate_fee": 0,
+        "mold_fee": 0,
         "paid_status": 0,
     }
     try:

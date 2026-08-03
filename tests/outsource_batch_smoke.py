@@ -23,6 +23,7 @@ PUNCH = "\u51b2\u538b"
 COLORING = "\u4e0a\u8272"
 PIN = "\u710a\u9488"
 LASER = "\u956d\u96d5"
+LOW_ZINC = "\u4f4e\u6e29\u950c\u5408\u91d1"
 
 
 def token(html: str) -> str:
@@ -47,6 +48,7 @@ with TestClient(app) as client:
     repo.create_user("admin", "test-password", "admin")
     repo.legacy.add_outsource_factory(DIE_CAST, "batch-factory")
     repo.legacy.add_outsource_factory(COLORING, "color-factory")
+    repo.legacy.add_outsource_factory(LOW_ZINC, "low-zinc-factory")
     first_no = repo.create_order(order_payload("batch-one"))[1]
     second_no = repo.create_order(order_payload("batch-two"))[1]
 
@@ -62,6 +64,7 @@ with TestClient(app) as client:
     assert "data-outsource-receive" in page.text
     assert "data-order-lookup-url" in page.text and "data-outsource-orders-json" not in page.text
     assert 'name="width_mm" step="any"' in page.text
+    assert "模具费" in page.text
     static_js = Path("order_system/web/static/app.js").read_text(encoding="utf-8")
     assert "input.disabled = !active" in static_js
     lookup = client.get(f"/outsource/order-lookup?order_no={first_no}")
@@ -219,6 +222,13 @@ with TestClient(app) as client:
     laser = repo.legacy.get_outsource_record(laser_id)
     assert laser["product_quantity"] == 107 and laser["spare_quantity"] == 0
     assert laser["quantity"] == 107 and laser["amount"] == 53.5
+
+    low_zinc_id = repo.create_outsource_batch(
+        {"process_name": LOW_ZINC, "factory_name": "low-zinc-factory", "outsource_date": "2026-07-15", "paid_status": 0},
+        [{"order_no": second_no, "product_quantity": 10, "spare_quantity": 2, "unit_price": 1.5, "mold_fee": 8}],
+    )[0]
+    low_zinc = repo.legacy.get_outsource_record(low_zinc_id)
+    assert low_zinc["mold_fee"] == 8 and low_zinc["amount"] == 26
 
     assert client.post(f"/outsource/{punch_id}/paid", data={"csrf": token(page.text), "paid": "1"}).status_code == 404
     refreshed = client.get("/outsource")

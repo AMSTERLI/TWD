@@ -897,6 +897,8 @@ if (outsourceBatch) {
       amount = quantity * unitPrice * numberValue(row, "color_count");
     } else if (process === "印刷/UV") {
       amount += numberValue(row, "plate_fee");
+    } else if (process === "低温锌合金") {
+      amount += numberValue(row, "mold_fee");
     }
     if (!amountInput || amountInput.dataset.manualLocked === "1") return;
     if (!process) {
@@ -949,6 +951,8 @@ if (outsourceBatch) {
       processHelp.textContent = "金额 =（产品数量 + 备品数量）× 加工单价 × 颜色数量。";
     } else if (process === "印刷/UV") {
       processHelp.textContent = "总金额 =（产品数量 + 备品数量）× 单价 + 版费。";
+    } else if (process === "低温锌合金") {
+      processHelp.textContent = "总金额 =（产品数量 + 备品数量）× 单价 + 模具费。";
     } else if (process) {
       processHelp.textContent = "金额 =（产品数量+备品数量）×加工单价。";
     } else {

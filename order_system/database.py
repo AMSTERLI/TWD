@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS outsource_records (
     material_unit_price REAL NOT NULL DEFAULT 0,
     color_count INTEGER,
     plate_fee REAL NOT NULL DEFAULT 0,
+    mold_fee REAL NOT NULL DEFAULT 0,
     outsource_date TEXT,
     remark TEXT,
     amount REAL,
@@ -192,6 +193,7 @@ class Database:
             self._ensure_column(conn, "outsource_records", "material_unit_price", "REAL NOT NULL DEFAULT 0")
             self._ensure_column(conn, "outsource_records", "color_count", "INTEGER")
             self._ensure_column(conn, "outsource_records", "plate_fee", "REAL NOT NULL DEFAULT 0")
+            self._ensure_column(conn, "outsource_records", "mold_fee", "REAL NOT NULL DEFAULT 0")
             self._ensure_column(conn, "outsource_records", "outsource_date", "TEXT")
             self._ensure_column(conn, "outsource_records", "remark", "TEXT")
             self._ensure_column(conn, "outsource_records", "amount", "REAL")
@@ -748,6 +750,7 @@ class Database:
             "material_unit_price",
             "color_count",
             "plate_fee",
+            "mold_fee",
             "outsource_date",
             "remark",
             "amount",
@@ -797,6 +800,7 @@ class Database:
             r.material_unit_price,
             r.color_count,
             r.plate_fee,
+            r.mold_fee,
             r.outsource_date,
             r.remark,
             r.amount,
@@ -905,6 +909,7 @@ class Database:
             "material_unit_price",
             "color_count",
             "plate_fee",
+            "mold_fee",
             "outsource_date",
             "remark",
             "amount",
