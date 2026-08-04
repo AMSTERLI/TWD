@@ -411,6 +411,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   const employeeButtons = [...section.querySelectorAll("[data-employee-value]")];
   const singleOptionPicker = section.dataset.singleOption === "1";
   const specialEmployee = section.dataset.specialEmployee || "";
+  const singleEmployeePicker = Boolean(specialEmployee);
   const historyChecks = new WeakMap();
   const scanAdvanceTimers = new WeakMap();
   const scanStartTimes = new WeakMap();
@@ -541,6 +542,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     const unitPrice = row.querySelector('[name="unit_price"]');
     const moldFee = row.querySelector('[name="mold_fee"]');
     const note = row.querySelector("[data-special-note]");
+    section.querySelectorAll("[data-special-note-header]").forEach(header => header.hidden = !isSpecial);
     if (unitPrice) {
       if (isSpecial) unitPrice.value = "0";
       unitPrice.readOnly = isSpecial;
@@ -653,8 +655,12 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     }
   });
   employeeButtons.forEach(button => button.addEventListener("click", () => {
-    if (singleOptionPicker && !button.classList.contains("active")) employeeButtons.forEach(item => item.classList.remove("active"));
-    button.classList.toggle("active");
+    if (singleOptionPicker || singleEmployeePicker) {
+      employeeButtons.forEach(item => item.classList.remove("active"));
+      button.classList.add("active");
+    } else {
+      button.classList.toggle("active");
+    }
     rows.querySelectorAll("tr").forEach(row => { applyCurrentEmployee(row, true); applySpecialEmployee(row); });
     const emptyRows = [...rows.querySelectorAll("tr")].filter(row => !row.querySelector("[data-workshop-order]")?.value.trim());
     const target = emptyRows[0]?.querySelector("[data-workshop-order]") || rows.querySelector("[data-workshop-order]");

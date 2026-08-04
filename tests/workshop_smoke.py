@@ -329,6 +329,12 @@ with TestClient(app) as client:
     assert "\u725f\u6c5f" in polishing.text and "\u6bdb\u536b\u5175" in polishing.text
     assert 'employee-button active' not in polishing.text
     assert "\u6253\u6837\u8d39" in polishing.text and 'name="mold_fee"' in polishing.text
+    assert "data-special-note-header" in polishing.text
+    static_css = Path("order_system/web/static/app.css").read_text(encoding="utf-8")
+    assert ".workshop-department-polishing .piecework-table table" in static_css
+    assert ".employee-selection:empty::before" in static_css
+    static_js = Path("order_system/web/static/app.js").read_text(encoding="utf-8")
+    assert "singleEmployeePicker" in static_js and "[data-special-note-header]" in static_js
     polishing_report = client.post(
         "/workshop/polishing",
         data={"csrf": csrf(polishing.text), "employee_name": ["\u725f\u6c5f"], "note_text": ["\u65e0"], "order_no": [polishing_order_no], "quantity": ["18"], "unit_price": ["0.2"], "mold_fee": ["10"]},

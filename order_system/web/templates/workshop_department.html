@@ -27,7 +27,7 @@
           <thead>
             <tr>
               {% if department.piecework or department.process_options %}<th>{% if department.process_options %}&#24037;&#33402;{% else %}&#21592;&#24037;{% endif %}</th>{% endif %}
-              {% if department.key == 'polishing' %}<th>&#22791;&#27880;</th>{% endif %}
+              {% if department.key == 'polishing' %}<th data-special-note-header>&#22791;&#27880;</th>{% endif %}
               <th>&#35746;&#21333;&#21495;</th>
               {% if department.mold %}<th>&#26448;&#36136;</th><th>&#23610;&#23544; mm</th><th>&#35268;&#26684;</th>{% elif department.cutter %}<th>&#23610;&#23544; mm</th><th>&#22791;&#27880;</th>{% endif %}
               <th>{% if department.piecework %}&#20135;&#21697;&#25968;&#37327;{% else %}&#25968;&#37327;{% endif %}</th>
