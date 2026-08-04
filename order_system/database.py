@@ -136,6 +136,7 @@ DEFAULT_OUTSOURCE_PROCESSES = [
     "树脂",
     "包装",
     "印刷/UV",
+    "皮革",
 ]
 
 DEFAULT_OUTSOURCE_FACTORIES = [
@@ -144,6 +145,7 @@ DEFAULT_OUTSOURCE_FACTORIES = [
     ("\u710a\u9488", "\u79e6\u6c38\u548c"),
     ("\u6bdb\u8fb9", "\u6797\u4e16\u57f9"),
     ("\u956d\u96d5", "\u5f20\u5c55\u5c71"),
+    ("\u76ae\u9769", "\u8001\u96f7"),
 ]
 
 

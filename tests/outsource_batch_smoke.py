@@ -24,6 +24,8 @@ COLORING = "\u4e0a\u8272"
 PIN = "\u710a\u9488"
 LASER = "\u956d\u96d5"
 LOW_ZINC = "\u4f4e\u6e29\u950c\u5408\u91d1"
+LEATHER = "\u76ae\u9769"
+LAO_LEI = "\u8001\u96f7"
 
 
 def token(html: str) -> str:
@@ -58,6 +60,8 @@ with TestClient(app) as client:
     })
     pin_factories = {item["factory_name"] for item in repo.factories(PIN)}
     assert "\u79e6\u6c38\u548c" in pin_factories
+    leather_factories = {item["factory_name"] for item in repo.factories(LEATHER)}
+    assert LAO_LEI in leather_factories
     page = client.get("/outsource")
     assert page.status_code == 200
     assert "data-outsource-batch" in page.text
@@ -149,8 +153,15 @@ with TestClient(app) as client:
     assert len(repo.outsource_records()["rows"]) == before
 
     process_names = {item["process_name"] for item in repo.processes()}
-    assert {PUNCH, COLORING, "印刷/UV"}.issubset(process_names)
+    assert {PUNCH, COLORING, "印刷/UV", LEATHER}.issubset(process_names)
     assert "UV" not in process_names and "印刷" not in process_names
+
+    leather_id = repo.create_outsource_batch(
+        {"process_name": LEATHER, "factory_name": LAO_LEI, "outsource_date": "2026-07-15", "paid_status": 0},
+        [{"order_no": first_no, "product_quantity": 10, "spare_quantity": 2, "unit_price": 1.25}],
+    )[0]
+    leather = repo.legacy.get_outsource_record(leather_id)
+    assert leather["factory_name"] == LAO_LEI and leather["amount"] == 15
 
     punch_id = repo.create_outsource_batch(
         {"process_name": PUNCH, "factory_name": "punch-factory", "outsource_date": "2026-07-15", "paid_status": 0},
