@@ -1,3 +1,7 @@
+function cleanWorkshopOrderNo(value) {
+  return String(value || "").replace(/\s+/g, "").trim();
+}
+
 document.addEventListener("click", (event) => {
   if (event.target.matches("[data-nav-toggle]")) {
     document.querySelector("[data-nav]")?.classList.toggle("open");
@@ -471,7 +475,8 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
 
   async function loadWorkshopHistory(row) {
     const input = row?.querySelector("[data-workshop-order]");
-    const orderNo = input?.value.trim() || "";
+    const orderNo = cleanWorkshopOrderNo(input?.value);
+    if (input && input.value !== orderNo) input.value = orderNo;
     if (!row || !historyUrl || !orderNo) {
       if (row) {
         row.dataset.existingWorkshopRecord = "0";
@@ -604,7 +609,8 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   function scheduleScanAdvance(input) {
     const row = input.closest("tr");
     if (!row) return;
-    const orderNo = input.value.trim();
+    const orderNo = cleanWorkshopOrderNo(input.value);
+    if (input.value !== orderNo) input.value = orderNo;
     if (!orderNo) {
       scanStartTimes.delete(input);
       row.dataset.autoAdvancedFor = "";
@@ -613,7 +619,8 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     if (!scanStartTimes.has(input) || orderNo.length <= 1) scanStartTimes.set(input, Date.now());
     clearTimeout(scanAdvanceTimers.get(input));
     scanAdvanceTimers.set(input, setTimeout(() => {
-      const current = input.value.trim();
+      const current = cleanWorkshopOrderNo(input.value);
+      if (input.value !== current) input.value = current;
       const elapsed = Date.now() - (scanStartTimes.get(input) || Date.now());
       if (current.length < 8 || row.dataset.autoAdvancedFor === current || elapsed > 1200) return;
       row.dataset.autoAdvancedFor = current;
@@ -662,7 +669,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       button.classList.toggle("active");
     }
     rows.querySelectorAll("tr").forEach(row => { applyCurrentEmployee(row, true); applySpecialEmployee(row); });
-    const emptyRows = [...rows.querySelectorAll("tr")].filter(row => !row.querySelector("[data-workshop-order]")?.value.trim());
+    const emptyRows = [...rows.querySelectorAll("tr")].filter(row => !cleanWorkshopOrderNo(row.querySelector("[data-workshop-order]")?.value));
     const target = emptyRows[0]?.querySelector("[data-workshop-order]") || rows.querySelector("[data-workshop-order]");
     target?.focus();
     focusEnd(target);
@@ -677,7 +684,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
       window.alert("\u8bf7\u8f93\u5165\u6709\u6548\u7684\u52a0\u5de5\u5355\u4ef7\uff0c\u6700\u591a 4 \u4f4d\u5c0f\u6570");
       return;
     }
-    const activeRows = [...rows.querySelectorAll("tr")].filter(row => row.querySelector("[data-workshop-order]")?.value.trim());
+    const activeRows = [...rows.querySelectorAll("tr")].filter(row => cleanWorkshopOrderNo(row.querySelector("[data-workshop-order]")?.value));
     if (!activeRows.length) {
       window.alert("\u8bf7\u5148\u5f55\u5165\u8ba2\u5355\u53f7");
       return;
@@ -725,7 +732,9 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     if (row) {
       row.dataset.historyKey = "";
       row.dataset.existingWorkshopRecord = "0";
-      if (row.dataset.autoAdvancedFor && row.dataset.autoAdvancedFor !== event.target.value.trim()) row.dataset.autoAdvancedFor = "";
+      const cleanedOrderNo = cleanWorkshopOrderNo(event.target.value);
+      if (event.target.value !== cleanedOrderNo) event.target.value = cleanedOrderNo;
+      if (row.dataset.autoAdvancedFor && row.dataset.autoAdvancedFor !== cleanedOrderNo) row.dataset.autoAdvancedFor = "";
       focusEnd(event.target);
       scheduleWorkshopHistory(row);
       scheduleScanAdvance(event.target);
@@ -739,9 +748,11 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   section.addEventListener("keydown", event => {
     if (event.key !== "Enter" || !event.target.matches("[data-workshop-order]")) return;
     event.preventDefault();
-    if (!event.target.value.trim()) return;
+    const cleanedOrderNo = cleanWorkshopOrderNo(event.target.value);
+    if (event.target.value !== cleanedOrderNo) event.target.value = cleanedOrderNo;
+    if (!cleanedOrderNo) return;
     const row = event.target.closest("tr");
-    row.dataset.autoAdvancedFor = event.target.value.trim();
+    row.dataset.autoAdvancedFor = cleanedOrderNo;
     loadWorkshopHistory(row);
     focusNextWorkshopRow(row);
   });
@@ -749,8 +760,13 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
     const submitter = event.submitter || document.activeElement;
     const action = submitter?.getAttribute?.("formaction") || "";
     if (action.endsWith("/ship")) return;
-    const activeRows = [...rows.querySelectorAll("tr")].filter(row => row.querySelector("[data-workshop-order]")?.value.trim());
+    const activeRows = [...rows.querySelectorAll("tr")].filter(row => cleanWorkshopOrderNo(row.querySelector("[data-workshop-order]")?.value));
     if (!activeRows.length) return;
+    activeRows.forEach(row => {
+      const input = row.querySelector("[data-workshop-order]");
+      const cleanedOrderNo = cleanWorkshopOrderNo(input?.value);
+      if (input && input.value !== cleanedOrderNo) input.value = cleanedOrderNo;
+    });
     event.preventDefault();
     const duplicates = [];
     for (const row of activeRows) {
@@ -1138,7 +1154,9 @@ if (outsourceBatch) {
   outsourceBatch.addEventListener("keydown", event => {
     if (event.key !== "Enter" || !event.target.matches("[data-scan-order]")) return;
     event.preventDefault();
-    if (!event.target.value.trim()) return;
+    const cleanedOrderNo = cleanWorkshopOrderNo(event.target.value);
+    if (event.target.value !== cleanedOrderNo) event.target.value = cleanedOrderNo;
+    if (!cleanedOrderNo) return;
     const row = event.target.closest("tr");
     showOrderNoEnd(event.target);
     fillOrderRow(row);
@@ -1228,7 +1246,9 @@ document.querySelectorAll("[data-outsource-receive]").forEach(form => {
   form.addEventListener("keydown", event => {
     if (event.key !== "Enter" || !event.target.matches("[data-receive-order]")) return;
     event.preventDefault();
-    if (!event.target.value.trim()) return;
+    const cleanedOrderNo = cleanWorkshopOrderNo(event.target.value);
+    if (event.target.value !== cleanedOrderNo) event.target.value = cleanedOrderNo;
+    if (!cleanedOrderNo) return;
     const row = event.target.closest("tr");
     const next = row.nextElementSibling;
     if (next) {

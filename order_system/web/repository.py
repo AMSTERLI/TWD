@@ -34,6 +34,10 @@ ORDER_COLUMNS = [
 
 
 
+def normalize_scanned_order_no(value: Any) -> str:
+    return re.sub(r"\s+", "", str(value or "")).strip()
+
+
 def price_tiers_from_json(value: Any) -> list[dict[str, float]]:
     try:
         raw_items = json.loads(str(value or "[]"))
@@ -1183,7 +1187,7 @@ class Repository:
 
     def latest_workshop_record_for_order(self, department_key: str, order_no: str) -> dict[str, Any] | None:
         department_key = str(department_key or "").strip()
-        order_no = str(order_no or "").strip()
+        order_no = normalize_scanned_order_no(order_no)
         if not department_key or not order_no:
             return None
         with self.connect() as conn:
@@ -1295,7 +1299,7 @@ class Repository:
         multiplier_fee_departments = {"painting"}
         clean_rows: list[dict[str, Any]] = []
         for row in rows:
-            order_no = str(row.get("order_no") or "").strip()
+            order_no = normalize_scanned_order_no(row.get("order_no"))
             if not order_no:
                 continue
             try:

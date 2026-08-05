@@ -88,6 +88,7 @@ with TestClient(app) as client:
     mold_payload["thickness_mm"] = "5"
     order_id, order_no = repo.create_order(mold_payload)
     cutter_order_id, cutter_order_no = repo.create_order(payload("TWD1-260721102"))
+    spaced_cutter_order_id, spaced_cutter_order_no = repo.create_order(payload("TWD1-260721110"))
     press_payload = payload("TWD1-260721103")
     press_payload["image_paths_json"] = dumps_json([press_thumb_name])
     press_order_id, press_order_no = repo.create_order(press_payload)
@@ -186,6 +187,17 @@ with TestClient(app) as client:
     assert cutter_records[0]["note_text"] == "\u7279\u6b8a"
     assert cutter_records[0]["record_type"] == "normal"
     assert abs(cutter_records[0]["unit_price"] - 8.8) < 1e-9
+    spaced_cutter_report = client.post(
+        "/workshop/cutter",
+        data={"csrf": csrf(client.get("/workshop/cutter").text), "order_no": ["TWD1 - 260721 110"], "size_text": ["28MM"], "note_text": ["\u65e0"], "quantity": ["1"], "unit_price": ["6.6"], "record_type": ["normal"]},
+        follow_redirects=False,
+    )
+    assert spaced_cutter_report.status_code == 303
+    spaced_cutter_records = repo.order_workshop_records(spaced_cutter_order_id)
+    assert len(spaced_cutter_records) == 1
+    assert spaced_cutter_records[0]["order_no"] == spaced_cutter_order_no
+    spaced_history = client.get("/workshop/cutter/history?order_no=TWD1%20-%20260721%20110")
+    assert spaced_history.status_code == 200 and spaced_history.json()["record"]["order_no"] == spaced_cutter_order_no
     cutter_list = client.get("/workshop/cutter")
     assert cutter_list.status_code == 200 and cutter_order_no in cutter_list.text
     assert "&#23610;&#23544;" in cutter_list.text and "&#22791;&#27880;" in cutter_list.text
@@ -193,7 +205,7 @@ with TestClient(app) as client:
     assert 'data-delete-url="/workshop/cutter/records/' not in cutter_list.text
     assert 'data-workshop-quantity-url="/workshop/cutter/records/' in cutter_list.text
     assert "data-selected-amount-total" in cutter_list.text and 'data-amount="8.80"' in cutter_list.text
-    assert 'data-selection-amount-total-all="8.80"' in cutter_list.text
+    assert 'data-selection-amount-total-all="15.40"' in cutter_list.text
     press_unlock = client.post(
         "/workshop/press/unlock",
         data={"csrf": csrf(home.text), "password": "press-pass-123"},

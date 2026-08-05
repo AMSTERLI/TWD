@@ -43,3 +43,5 @@
 .workshop-selection-toolbar{margin:12px 0 10px}.workshop-selection-toolbar .primary{min-width:112px}.batch-table [name="size_text"]{width:180px;min-width:180px}
 
 .workshop-record-list{margin-bottom:18px}.workshop-record-list>.panel{margin-bottom:0}.workshop-record-list table a{font-weight:700}.batch-table [name="size_text"]{width:180px;min-width:180px}
+
+.alert.error{border-width:2px;font-weight:800}.workshop-form-error{position:sticky;top:76px;z-index:18;margin-bottom:12px;font-size:18px;box-shadow:0 10px 26px rgba(180,35,24,.18)}.workshop-form-error::before{content:'!';display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-right:8px;border-radius:50%;background:var(--danger);color:#fff;font-weight:900}
