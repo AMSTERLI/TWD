@@ -2096,7 +2096,8 @@ async def finance_workshop_reports_export(request: Request):
     columns = selected_workshop_report_columns(form)
     headers, data, include_image = workshop_report_export_payload(rows, columns)
     department_name = workshop_report_department_name(department_key)
-    filename_base = f"{department_name}{employee_name or '\u5168\u90e8\u5458\u5de5'}"
+    employee_label = employee_name or "\\u5168\\u90e8\\u5458\\u5de5"
+    filename_base = f"{department_name}{employee_label}"
     await run_in_threadpool(
         repo.audit, user, "finance.workshop_reports.export", f"{department_key or 'all'}:{employee_name or 'all'}:{len(rows)}", client_ip(request)
     )
