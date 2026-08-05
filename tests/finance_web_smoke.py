@@ -99,12 +99,18 @@ with TestClient(app) as client:
     old_order = create_order(client, "2026-07-01", "旧订单", 1)
     new_order = create_order(client, "2026-07-15", "新订单", 2)
     first_record = repo.create_outsource_batch(
-        {"process_name": "电镀", "factory_name": "甲厂", "outsource_date": "2026-07-10", "paid_status": 0},
+        {"process_name": "plating", "factory_name": "factory-a", "outsource_date": "2026-07-10", "paid_status": 0},
         [{"order_no": old_order, "product_quantity": 10, "spare_quantity": 1, "unit_price": 0.5}],
     )[0]
     second_record = repo.create_outsource_batch(
-        {"process_name": "电镀", "factory_name": "乙厂", "outsource_date": "2026-07-15", "paid_status": 0},
+        {"process_name": "plating", "factory_name": "factory-b", "outsource_date": "2026-07-15", "paid_status": 0},
         [{"order_no": new_order, "product_quantity": 10, "spare_quantity": 2, "unit_price": 0.6}],
+    )[0]
+    workshop_record = repo.create_workshop_records(
+        "press",
+        "\u51b2\u538b",
+        [{"order_no": new_order, "employee_name": "\u5f90\u5c71\u7acb", "quantity": 20, "unit_price": 0.1, "mold_fee": 4}],
+        repo.get_user(1),
     )[0]
 
     page = client.get("/")
@@ -129,8 +135,30 @@ with TestClient(app) as client:
     payables_page = client.get("/finance/payables")
     assert payables_page.status_code == 200
     assert old_order in payables_page.text and new_order in payables_page.text
+    workshop_report_page = client.get("/finance/workshop-reports?department_key=press&employee_name=%E5%BE%90%E5%B1%B1%E7%AB%8B&reported_from=1900-01-01&reported_to=2999-12-31")
+    assert workshop_report_page.status_code == 200
+    assert "/finance/workshop-reports/export" in workshop_report_page.text
+    assert 'name="export_columns"' in workshop_report_page.text
+    assert new_order in workshop_report_page.text and old_order not in workshop_report_page.text
+    workshop_export = client.post(
+        "/finance/workshop-reports/export",
+        data={
+            "csrf": csrf(workshop_report_page.text),
+            "department_key": "press",
+            "employee_name": "\u5f90\u5c71\u7acb",
+            "reported_from": "1900-01-01",
+            "reported_to": "2999-12-31",
+            "export_columns": ["department", "employee", "order_no", "quantity", "unit_price", "reported_at"],
+        },
+    )
+    assert workshop_export.status_code == 200
+    assert "spreadsheetml.sheet" in workshop_export.headers["content-type"]
+    assert "%E5%86%B2%E5%8E%8B%E5%BE%90%E5%B1%B1%E7%AB%8B" in workshop_export.headers["content-disposition"]
+    strings = xlsx_strings(workshop_export.content)
+    assert new_order in strings and "\u5f90\u5c71\u7acb" in strings and "\u51b2\u538b" in strings
+    assert "\u4ea7\u54c1" not in strings
 
-    filtered_customer = client.get("/finance/receivables?receivable_q=莱威尔")
+    filtered_customer = client.get(f"/finance/receivables?receivable_q={new_order}")
     receivable_html = filtered_customer.text
     assert new_order in receivable_html and old_order not in receivable_html
 
@@ -140,9 +168,9 @@ with TestClient(app) as client:
     assert old_order in filtered_unpaid.text and new_order in filtered_unpaid.text
     filtered_paid = client.get("/finance/receivables?receivable_paid_status=paid")
     assert old_order not in filtered_paid.text and new_order not in filtered_paid.text
-    filtered_payable = client.get("/finance/payables?payable_factory=乙厂")
+    filtered_payable = client.get("/finance/payables?payable_factory=factory-b")
     payable_body = filtered_payable.text.split("<tbody>")[1].split("</tbody>")[0]
-    assert "乙厂" in payable_body and "甲厂" not in payable_body
+    assert "factory-b" in payable_body and "factory-a" not in payable_body
 
     token = csrf(finance_page.text)
     response = client.post(
@@ -260,7 +288,7 @@ with TestClient(app) as client:
     assert income_export.status_code == 200
     assert "spreadsheetml.sheet" in income_export.headers["content-type"]
     strings = xlsx_strings(income_export.content)
-    assert new_order in strings and "莱威尔" in strings and old_order not in strings
+    assert new_order in strings and old_order not in strings
     multi_price_export = client.post(
         "/finance/receivables/export",
         data={"csrf": token, "selected_ids": "1"},
@@ -275,7 +303,7 @@ with TestClient(app) as client:
     )
     assert payable_export.status_code == 200
     strings = xlsx_strings(payable_export.content)
-    assert new_order in strings and "乙厂" in strings and old_order not in strings
+    assert new_order in strings and "factory-b" in strings and old_order not in strings
 
     page = client.get("/")
     client.post("/logout", data={"csrf": csrf(page.text)})

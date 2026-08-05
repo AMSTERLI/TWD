@@ -10,6 +10,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from typing import Any
 from uuid import uuid4
+from urllib.parse import quote
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -478,6 +479,154 @@ def export_with_images(
     thumbnail_paths = [first_order_image_path(row) for row in source_rows]
     return excel_response_with_thumbnails(sheet_name, image_headers, image_rows, thumbnail_paths, prefix)
 
+
+WORKSHOP_REPORT_DEFAULT_COLUMNS = ["department", "employee", "order_no", "product", "size", "quantity", "unit_price", "amount", "reported_at"]
+WORKSHOP_REPORT_COLUMN_LABELS = {
+    "department": "\u90e8\u95e8",
+    "employee": "\u5458\u5de5",
+    "order_no": "\u8ba2\u5355\u53f7",
+    "product": "\u4ea7\u54c1",
+    "size": "\u5c3a\u5bf8",
+    "quantity": "\u6570\u91cf",
+    "reference_quantity": "\u53c2\u8003\u6570\u91cf",
+    "unit_price": "\u5355\u4ef7",
+    "mold_fee": "\u88c5\u6a21/\u6253\u6837\u8d39",
+    "amount": "\u91d1\u989d",
+    "order_type": "\u8ba2\u5355\u7c7b\u522b",
+    "note": "\u5907\u6ce8",
+    "reported_at": "\u5f55\u5165\u65f6\u95f4",
+    "product_image": "\u4ea7\u54c1\u7f29\u7565\u56fe",
+}
+
+
+def workshop_report_departments() -> list[dict[str, Any]]:
+    return [
+        {"key": key, "name": str(department.get("name") or key), "employees": list(department.get("employees") or [])}
+        for key, department in WORKSHOP_DEPARTMENTS.items()
+        if department.get("piecework")
+    ]
+
+
+def workshop_report_employee_options(department_key: str = "") -> list[str]:
+    departments = workshop_report_departments()
+    if department_key:
+        for department in departments:
+            if department["key"] == department_key:
+                return list(department["employees"])
+        return []
+    names: list[str] = []
+    for department in departments:
+        for employee in department["employees"]:
+            if employee not in names:
+                names.append(employee)
+    return names
+
+
+def workshop_report_department_name(department_key: str = "") -> str:
+    for department in workshop_report_departments():
+        if department["key"] == department_key:
+            return str(department["name"])
+    return "\u5168\u90e8\u90e8\u95e8"
+
+
+def selected_workshop_report_columns(form: Any) -> list[str]:
+    allowed = set(WORKSHOP_REPORT_COLUMN_LABELS)
+    columns = [str(item or "").strip() for item in form.getlist("export_columns")]
+    columns = [item for item in columns if item in allowed]
+    if not columns:
+        columns = WORKSHOP_REPORT_DEFAULT_COLUMNS.copy()
+    return list(dict.fromkeys(columns))
+
+
+def workshop_report_cell(row: dict[str, Any], column: str) -> Any:
+    if column == "department":
+        return row.get("department_name") or ""
+    if column == "employee":
+        return row.get("operator_name") or ""
+    if column == "order_no":
+        return row.get("order_no") or ""
+    if column == "product":
+        return row.get("product_name") or ""
+    if column == "size":
+        return row.get("size_text") or order_size_text(row)
+    if column == "quantity":
+        return row.get("quantity") or 0
+    if column == "reference_quantity":
+        return row.get("reference_quantity") or 0
+    if column == "unit_price":
+        return row.get("unit_price") or 0
+    if column == "mold_fee":
+        return row.get("mold_fee") or 0
+    if column == "amount":
+        return row.get("amount") or 0
+    if column == "order_type":
+        return "\u91cd\u505a" if row.get("record_type") == "rework" else "\u6b63\u5e38"
+    if column == "note":
+        return row.get("note_text") or ""
+    if column == "reported_at":
+        return beijing_time(row.get("reported_at") or "")
+    return ""
+
+
+def workshop_report_export_payload(rows: list[dict[str, Any]], columns: list[str]) -> tuple[list[str], list[list[Any]], bool]:
+    include_image = "product_image" in columns
+    data_columns = [column for column in columns if column != "product_image"]
+    headers = [WORKSHOP_REPORT_COLUMN_LABELS[column] for column in data_columns]
+    data = [[workshop_report_cell(row, column) for column in data_columns] for row in rows]
+    return headers, data, include_image
+
+
+def safe_download_filename(value: str) -> str:
+    cleaned = "".join(ch for ch in str(value or "") if ch not in '\\/?:*"<>|').strip().replace(" ", "")
+    return cleaned or "workshop_report"
+
+
+def excel_response_with_filename(
+    sheet_name: str,
+    headers: list[str],
+    rows: list[list[Any]],
+    source_rows: list[dict[str, Any]],
+    filename_base: str,
+    include_image: bool = False,
+) -> Response:
+    target = TMP_DIR / f"{uuid4().hex}.xlsx"
+    final_headers = [*headers, WORKSHOP_REPORT_COLUMN_LABELS["product_image"]] if include_image else headers
+    final_rows = [[*row, ""] for row in rows] if include_image else rows
+    try:
+        export_rows_to_excel(target, sheet_name, final_headers, final_rows)
+        if include_image:
+            from openpyxl import load_workbook
+            from openpyxl.drawing.image import Image as ExcelImage
+
+            workbook = load_workbook(target)
+            sheet = workbook.active
+            image_column = len(final_headers)
+            sheet.column_dimensions[_excel_column_name(image_column)].width = 14
+            for row_index, image_path in enumerate([first_order_image_path(row) for row in source_rows], start=2):
+                if not image_path or not image_path.is_file():
+                    continue
+                try:
+                    image = ExcelImage(str(image_path))
+                except Exception:
+                    continue
+                max_width = 72
+                max_height = 54
+                scale = min(max_width / max(image.width, 1), max_height / max(image.height, 1), 1)
+                image.width = int(image.width * scale)
+                image.height = int(image.height * scale)
+                sheet.row_dimensions[row_index].height = 45
+                sheet.add_image(image, f"{_excel_column_name(image_column)}{row_index}")
+            workbook.save(target)
+        content = target.read_bytes()
+    finally:
+        target.unlink(missing_ok=True)
+    filename = f"{safe_download_filename(filename_base)}_{date.today().strftime('%Y%m%d')}.xlsx"
+    fallback = "workshop_report_" + date.today().strftime("%Y%m%d") + ".xlsx"
+    return Response(
+        content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(filename)}"},
+    )
 
 async def save_image_upload(upload: UploadFile, *, preview: bool = False) -> str:
     if not upload.filename:
@@ -1856,6 +2005,110 @@ def finance_payables(
         ),
     )
 
+
+@app.get("/finance/workshop-reports", response_class=HTMLResponse)
+def finance_workshop_reports(
+    request: Request,
+    department_key: str = "",
+    employee_name: str = "",
+    reported_from: str = "",
+    reported_to: str = "",
+    report_page: int = 1,
+):
+    _, denied = require_page(request, {"finance"})
+    if denied:
+        return denied
+    department_key = str(department_key or "").strip()
+    valid_departments = {item["key"] for item in workshop_report_departments()}
+    if department_key not in valid_departments:
+        department_key = ""
+    if not reported_from and not reported_to:
+        reported_from = date.today().isoformat()
+        reported_to = date.today().isoformat()
+    result = repo.workshop_records(
+        "", department_key, report_page, reported_from=reported_from, reported_to=reported_to, employee_name=employee_name
+    )
+    return templates.TemplateResponse(
+        request,
+        "finance.html",
+        page_context(
+            request,
+            active_finance_page="workshop_reports",
+            receivables=None,
+            payables=None,
+            factories=[],
+            report=result,
+            report_departments=workshop_report_departments(),
+            report_employee_options=workshop_report_employee_options(department_key),
+            report_column_labels=WORKSHOP_REPORT_COLUMN_LABELS,
+            report_default_columns=WORKSHOP_REPORT_DEFAULT_COLUMNS,
+            department_key=department_key,
+            employee_name=employee_name,
+            reported_from=reported_from,
+            reported_to=reported_to,
+            receivable_q="",
+            receivable_date_from="",
+            receivable_date_to="",
+            receivable_paid_status="",
+            payable_q="",
+            payable_factory="",
+            payable_date_from="",
+            payable_date_to="",
+        ),
+    )
+
+
+@app.post("/finance/workshop-reports/export")
+async def finance_workshop_reports_export(request: Request):
+    user, denied = require_page(request, {"finance"})
+    if denied:
+        return denied
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    department_key = str(form.get("department_key") or "").strip()
+    valid_departments = {item["key"] for item in workshop_report_departments()}
+    if department_key not in valid_departments:
+        department_key = ""
+    reported_from = str(form.get("reported_from") or "").strip()
+    reported_to = str(form.get("reported_to") or "").strip()
+    if not reported_from and not reported_to:
+        today = date.today().isoformat()
+        reported_from = today
+        reported_to = today
+    employee_name = str(form.get("employee_name") or "").strip()
+    matched = await run_in_threadpool(
+        repo.workshop_records,
+        "",
+        department_key,
+        1,
+        BULK_MATCHING_LIMIT,
+        reported_from,
+        reported_to,
+        employee_name,
+    )
+    ids = [int(row["id"]) for row in matched["rows"]]
+    rows = await run_in_threadpool(repo.workshop_record_rows, ids, department_key)
+    if employee_name:
+        rows = [row for row in rows if str(row.get("operator_name") or "") == employee_name]
+    if not rows:
+        return Response("\u8bf7\u5148\u67e5\u8be2\u5230\u9700\u8981\u5bfc\u51fa\u7684\u8f66\u95f4\u8bb0\u5f55", status_code=400)
+    columns = selected_workshop_report_columns(form)
+    headers, data, include_image = workshop_report_export_payload(rows, columns)
+    department_name = workshop_report_department_name(department_key)
+    filename_base = f"{department_name}{employee_name or '\u5168\u90e8\u5458\u5de5'}"
+    await run_in_threadpool(
+        repo.audit, user, "finance.workshop_reports.export", f"{department_key or 'all'}:{employee_name or 'all'}:{len(rows)}", client_ip(request)
+    )
+    return await run_in_threadpool(
+        excel_response_with_filename,
+        "\u8f66\u95f4\u62a5\u8868",
+        headers,
+        data,
+        rows,
+        filename_base,
+        include_image,
+    )
 
 @app.post("/finance/receivables/status")
 async def finance_receivables_status(request: Request):

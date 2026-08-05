@@ -5,6 +5,7 @@
 <nav class="subnav" aria-label="财务子页面">
   <a class="button {{ 'primary' if active_finance_page == 'receivables' else '' }}" href="/finance/receivables">客户收款</a>
   <a class="button {{ 'primary' if active_finance_page == 'payables' else '' }}" href="/finance/payables">加工厂付款</a>
+  <a class="button {{ 'primary' if active_finance_page == 'workshop_reports' else '' }}" href="/finance/workshop-reports">&#36710;&#38388;&#25253;&#34920;</a>
 </nav>
 
 {% if active_finance_page == 'receivables' %}
@@ -60,6 +61,45 @@
 </section>
 {% endif %}
 
+{% if active_finance_page == 'workshop_reports' %}
+<section class="finance-section" id="workshop-reports">
+  <div class="section-title"><div><h2>&#36710;&#38388;&#25253;&#34920;</h2><p>&#25353;&#37096;&#38376;&#12289;&#21592;&#24037;&#21644;&#24405;&#20837;&#26085;&#26399;&#26597;&#35810;&#35745;&#20214;&#35760;&#24405;</p></div></div>
+  <form class="filterbar" method="get" action="/finance/workshop-reports">
+    <label>&#37096;&#38376;<select name="department_key"><option value="">&#20840;&#37096;&#37096;&#38376;</option>{% for item in report_departments %}<option value="{{ item.key }}"{% if department_key == item.key %} selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+    <label>&#21592;&#24037;<select name="employee_name"><option value="">&#20840;&#37096;&#21592;&#24037;</option>{% for employee in report_employee_options %}<option value="{{ employee }}"{% if employee_name == employee %} selected{% endif %}>{{ employee }}</option>{% endfor %}</select></label>
+    <label>&#24405;&#20837;&#26085;&#26399;&#20174;<input type="date" name="reported_from" value="{{ reported_from }}"></label>
+    <label>&#33267;<input type="date" name="reported_to" value="{{ reported_to }}"></label>
+    <div class="filter-actions"><button class="primary">&#26597;&#35810;&#25253;&#34920;</button><a class="button" href="/finance/workshop-reports">&#20170;&#26085;</a></div>
+  </form>
+  <form method="post" action="/finance/workshop-reports/export" class="panel workshop-report-export">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="department_key" value="{{ department_key }}">
+    <input type="hidden" name="employee_name" value="{{ employee_name }}">
+    <input type="hidden" name="reported_from" value="{{ reported_from }}">
+    <input type="hidden" name="reported_to" value="{{ reported_to }}">
+    <div class="export-head"><div><h3>&#23548;&#20986;&#36873;&#39033;</h3><p>&#36873;&#25321;&#34920;&#26684;&#38656;&#35201;&#21253;&#21547;&#30340;&#20449;&#24687;</p></div><button class="button primary">&#23548;&#20986;&#34920;&#26684;</button></div>
+    <div class="export-options">
+      {% for key, label in report_column_labels.items() %}<label class="check"><input type="checkbox" name="export_columns" value="{{ key }}"{% if key in report_default_columns %} checked{% endif %}> {{ label }}</label>{% endfor %}
+    </div>
+  </form>
+  <div class="section-title"><div><h2>&#26597;&#35810;&#32467;&#26524;</h2><p>&#20849; {{ report.total }} &#26465;</p></div></div>
+  <div class="panel table-wrap"><table>
+    <thead><tr><th>&#37096;&#38376;</th><th>&#21592;&#24037;</th><th>&#35746;&#21333;&#21495;</th><th>&#20135;&#21697;</th><th>&#23610;&#23544;</th><th>&#25968;&#37327;</th><th>&#21333;&#20215;</th><th>&#37329;&#39069;</th><th>&#24405;&#20837;&#26102;&#38388;</th></tr></thead>
+    <tbody>
+    {% for row in report.rows %}<tr>
+      <td>{{ row.department_name }}</td><td>{{ row.operator_name or '-' }}</td><td><a href="/orders/{{ row.order_id }}">{{ row.order_no }}</a></td><td>{{ row.product_name or '-' }}</td>
+      <td>{% if row.height_mm or row.width_mm or row.thickness_mm or row.diameter_mm %}{% if row.height_mm %}&#39640;{{ row.height_mm }}{% endif %}{% if row.width_mm %}&#23485;{{ row.width_mm }}{% endif %}{% if row.thickness_mm %}&#21402;{{ row.thickness_mm }}{% endif %}{% if row.diameter_mm %}&#30452;&#24452;{{ row.diameter_mm }}{% endif %}{% else %}{{ row.size_text or '-' }}{% endif %}</td>
+      <td>{{ row.quantity }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td><td>{{ '%.2f'|format(row.amount or 0) }}</td><td>{{ row.reported_at|beijing_time }}</td>
+    </tr>{% else %}<tr><td colspan="9" class="muted">&#26242;&#26080;&#21305;&#37197;&#30340;&#36710;&#38388;&#35760;&#24405;</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% if report.pages > 1 %}<nav class="pager">
+    {% if report.page > 1 %}<a href="?department_key={{ department_key|urlencode }}&employee_name={{ employee_name|urlencode }}&reported_from={{ reported_from }}&reported_to={{ reported_to }}&report_page={{ report.page - 1 }}">&#19978;&#19968;&#39029;</a>{% endif %}
+    <span>&#31532; {{ report.page }} / {{ report.pages }} &#39029;&#65292;&#20849; {{ report.total }} &#26465;</span>
+    {% if report.page < report.pages %}<a href="?department_key={{ department_key|urlencode }}&employee_name={{ employee_name|urlencode }}&reported_from={{ reported_from }}&reported_to={{ reported_to }}&report_page={{ report.page + 1 }}">&#19979;&#19968;&#39029;</a>{% endif %}
+  </nav>{% endif %}
+</section>
+{% endif %}
 {% if active_finance_page == 'payables' %}
 <section class="finance-section" id="payables">
   <div class="section-title"><div><h2>加工厂付款</h2><p>共 {{ payables.total }} 条，财务可查看全部外发记录</p></div></div>
