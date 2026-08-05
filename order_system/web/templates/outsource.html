@@ -24,6 +24,7 @@
 {% macro receive_row() %}
 <tr>
   <td><input name="receive_order_no" list="order-number-list" autocomplete="off" data-receive-order placeholder="扫描或手动输入"></td>
+  <td><select name="receive_factory_name" required><option value="">请选择加工厂</option>{% for item in factories %}<option value="{{ item.factory_name }}">{{ item.factory_name }}</option>{% endfor %}</select></td>
   <td><button type="button" class="small danger-button" data-remove-receive-row>删除</button></td>
 </tr>
 {% endmacro %}
@@ -54,9 +55,9 @@
 <details class="panel create-panel"><summary>＋ 批量收货</summary>
 <form method="post" action="/outsource/receive" class="padded" data-outsource-receive>
   <input type="hidden" name="csrf" value="{{ csrf }}">
-  <div class="scan-tip"><strong>扫码收货</strong><span>扫描外发订单号后按回车，系统会将最新一条未收货外发记录标记为已收货。</span></div>
-  <div class="table-wrap batch-table"><table>
-    <thead><tr><th>订单号</th><th></th></tr></thead>
+  <div class="scan-tip"><strong>扫码收货</strong><span>扫描外发订单号后按回车，请选择加工厂，系统会将对应加工厂最新一条未收货外发记录标记为已收货。</span></div>
+  <div class="table-wrap batch-table receive-table"><table>
+    <thead><tr><th>订单号</th><th>加工厂</th><th></th></tr></thead>
     <tbody data-receive-rows>{{ receive_row() }}</tbody>
   </table></div>
   <template data-receive-row-template>{{ receive_row() }}</template>

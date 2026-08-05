@@ -1746,34 +1746,54 @@ class Repository:
                 changed += int(cursor.rowcount)
         return changed
 
-    def receive_outsource_orders(self, order_nos: list[str], received_date: str) -> list[str]:
-        normalized: list[str] = []
-        for order_no in order_nos:
-            value = str(order_no or "").strip()
-            if value and value not in normalized:
-                normalized.append(value)
+    def receive_outsource_orders(self, rows: list[dict[str, Any]], received_date: str) -> list[str]:
+        normalized: list[dict[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for row in rows:
+            order_no = normalize_scanned_order_no(row.get("order_no"))
+            factory_name = str(row.get("factory_name") or "").strip()
+            if not order_no and not factory_name:
+                continue
+            if not order_no:
+                raise ValueError("请填写收货订单号")
+            if not factory_name:
+                raise ValueError(f"订单 {order_no} 请选择加工厂")
+            key = (order_no, factory_name)
+            if key not in seen:
+                seen.add(key)
+                normalized.append({"order_no": order_no, "factory_name": factory_name})
         if not normalized:
             raise ValueError("请至少扫描一个订单")
         received_date = str(received_date or "").strip()
         received: list[str] = []
         with self.connect(write=True) as conn:
-            for order_no in normalized:
+            for item in normalized:
+                order_no = item["order_no"]
+                factory_name = item["factory_name"]
                 row = conn.execute(
-                    """SELECT id, order_no FROM outsource_records
-                       WHERE order_no = ? AND COALESCE(received_status, 0) = 0
+                    """SELECT id, order_no, factory_name FROM outsource_records
+                       WHERE order_no = ? AND factory_name = ? AND COALESCE(received_status, 0) = 0
                        ORDER BY outsource_date DESC, created_at DESC, id DESC
                        LIMIT 1""",
-                    (order_no,),
+                    (order_no, factory_name),
                 ).fetchone()
                 if not row:
-                    existing = conn.execute(
+                    existing_factory = conn.execute(
+                        """SELECT id FROM outsource_records
+                           WHERE order_no = ? AND factory_name = ?
+                           ORDER BY outsource_date DESC, created_at DESC, id DESC LIMIT 1""",
+                        (order_no, factory_name),
+                    ).fetchone()
+                    if existing_factory:
+                        raise ValueError(f"订单 {order_no} 在 {factory_name} 已收货")
+                    existing_order = conn.execute(
                         """SELECT id FROM outsource_records
                            WHERE order_no = ?
                            ORDER BY outsource_date DESC, created_at DESC, id DESC LIMIT 1""",
                         (order_no,),
                     ).fetchone()
-                    if existing:
-                        raise ValueError(f"订单 {order_no} 已收货")
+                    if existing_order:
+                        raise ValueError(f"订单 {order_no} 在 {factory_name} 没有未收货外发记录")
                     raise ValueError(f"订单 {order_no} 尚无外发记录")
                 conn.execute(
                     """UPDATE outsource_records
@@ -1781,7 +1801,7 @@ class Repository:
                        WHERE id = ?""",
                     (received_date, int(row["id"])),
                 )
-                received.append(str(row["order_no"]))
+                received.append(f"{row['order_no']}:{row['factory_name']}")
         return received
 
     def finance_factory_names(self) -> list[str]:

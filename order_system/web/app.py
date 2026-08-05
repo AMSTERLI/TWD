@@ -2145,10 +2145,18 @@ async def receive_outsource(request: Request):
     form = await request.form()
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
-    order_nos = [str(item or "").strip() for item in form.getlist("receive_order_no")]
+    order_nos = form.getlist("receive_order_no")
+    factory_names = form.getlist("receive_factory_name")
+    receive_rows = [
+        {
+            "order_no": order_no,
+            "factory_name": factory_names[index] if index < len(factory_names) else "",
+        }
+        for index, order_no in enumerate(order_nos)
+    ]
     received_date = datetime.now(timezone.utc).isoformat(timespec="seconds")
     try:
-        received_nos = await run_in_threadpool(repo.receive_outsource_orders, order_nos, received_date)
+        received_nos = await run_in_threadpool(repo.receive_outsource_orders, receive_rows, received_date)
         await run_in_threadpool(
             repo.audit,
             user,

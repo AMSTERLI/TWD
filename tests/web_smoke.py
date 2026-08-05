@@ -164,6 +164,50 @@ with TestClient(app) as client:
     assert client.get("/finance").status_code == 200
     outsource_page = client.get("/outsource")
     assert outsource_page.status_code == 200
+    assert 'name="receive_factory_name"' in outsource_page.text
+    assert "receive-table" in outsource_page.text
+    assert "<th>\u52a0\u5de5\u5382</th>" in outsource_page.text
+    first_outsource = repo.create_outsource_batch(
+        {"process_name": "\u956d\u96d5", "factory_name": "\u5f20\u5c55\u5c71", "outsource_date": "2026-07-18", "paid_status": 0},
+        [{"order_no": "TWD1-260715001", "product_quantity": 5, "spare_quantity": 0, "unit_price": 1}],
+    )[0]
+    second_outsource = repo.create_outsource_batch(
+        {"process_name": "\u76ae\u9769", "factory_name": "\u8001\u96f7", "outsource_date": "2026-07-19", "paid_status": 0},
+        [{"order_no": "TWD1-260715001", "product_quantity": 6, "spare_quantity": 0, "unit_price": 1}],
+    )[0]
+    receive_first = client.post(
+        "/outsource/receive",
+        data={
+            "csrf": csrf(outsource_page.text),
+            "receive_order_no": ["TWD1 - 260715 001"],
+            "receive_factory_name": ["\u5f20\u5c55\u5c71"],
+        },
+        follow_redirects=False,
+    )
+    assert receive_first.status_code == 303
+    assert repo.get_outsource_record(first_outsource)["received_status"] == 1
+    assert repo.get_outsource_record(second_outsource)["received_status"] == 0
+    receive_again = client.post(
+        "/outsource/receive",
+        data={
+            "csrf": csrf(client.get("/outsource").text),
+            "receive_order_no": ["TWD1-260715001"],
+            "receive_factory_name": ["\u5f20\u5c55\u5c71"],
+        },
+        follow_redirects=False,
+    )
+    assert receive_again.status_code == 422
+    receive_second = client.post(
+        "/outsource/receive",
+        data={
+            "csrf": csrf(client.get("/outsource").text),
+            "receive_order_no": ["TWD1-260715001"],
+            "receive_factory_name": ["\u8001\u96f7"],
+        },
+        follow_redirects=False,
+    )
+    assert receive_second.status_code == 303
+    assert repo.get_outsource_record(second_outsource)["received_status"] == 1
     assert client.get("/orders/1/pdf").status_code == 200
 
 print(f"web smoke ok: {root}")

@@ -1261,7 +1261,7 @@ document.querySelectorAll("[data-outsource-receive]").forEach(form => {
     if (event.target.matches("[data-receive-order]")) showEnd(event.target);
   });
   form.addEventListener("submit", event => {
-    const activeRows = [...rows.querySelectorAll("tr")].filter(row => row.querySelector("[data-receive-order]")?.value.trim());
+    const activeRows = [...rows.querySelectorAll("tr")].filter(row => cleanWorkshopOrderNo(row.querySelector("[data-receive-order]")?.value));
     if (!activeRows.length) {
       event.preventDefault();
       alert("请至少扫描或输入一个订单号");
@@ -1269,13 +1269,22 @@ document.querySelectorAll("[data-outsource-receive]").forEach(form => {
     }
     const seen = new Set();
     for (const row of activeRows) {
-      const orderNo = row.querySelector("[data-receive-order]").value.trim();
-      if (seen.has(orderNo)) {
+      const orderInput = row.querySelector("[data-receive-order]");
+      const orderNo = cleanWorkshopOrderNo(orderInput?.value);
+      if (orderInput && orderInput.value !== orderNo) orderInput.value = orderNo;
+      const factoryName = row.querySelector("[name=receive_factory_name]")?.value.trim() || "";
+      if (!factoryName) {
         event.preventDefault();
-        alert(`${orderNo} 已在本次收货批量录入中出现过。`);
+        alert(`订单 ${orderNo} 请选择加工厂。`);
         return;
       }
-      seen.add(orderNo);
+      const key = `${orderNo}|${factoryName}`;
+      if (seen.has(key)) {
+        event.preventDefault();
+        alert(`${orderNo} / ${factoryName} 已在本次收货批量录入中出现过。`);
+        return;
+      }
+      seen.add(key);
     }
   });
   const first = rows.querySelector("[data-receive-order]");
