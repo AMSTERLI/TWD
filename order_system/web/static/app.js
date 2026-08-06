@@ -1477,7 +1477,7 @@ if (contextRows.length) {
   const menu = document.createElement("div");
   menu.className = "admin-context-menu";
   menu.hidden = true;
-  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-workshop-quantity>申请改数量/金额</button><button type="button" data-context-stash>暂存</button><button type="button" data-context-replenish>申请补数</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-delete>删除</button>';
+  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-workshop-edit>\u4fee\u6539\u8ba1\u4ef6</button><button type="button" data-context-workshop-quantity>申请改数量/金额</button><button type="button" data-context-stash>暂存</button><button type="button" data-context-replenish>申请补数</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-delete>删除</button>';
   document.body.appendChild(menu);
   let activeRow = null;
 
@@ -1489,6 +1489,7 @@ if (contextRows.length) {
   function refreshContextButtons() {
     menu.querySelector("[data-context-edit]").hidden = !activeRow?.dataset.editUrl;
     menu.querySelector("[data-context-request]").hidden = !activeRow?.dataset.requestEditUrl;
+    menu.querySelector("[data-context-workshop-edit]").hidden = !activeRow?.dataset.workshopEditUrl;
     menu.querySelector("[data-context-workshop-quantity]").hidden = !activeRow?.dataset.workshopQuantityUrl;
     menu.querySelector("[data-context-stash]").hidden = !activeRow?.dataset.stashId;
     menu.querySelector("[data-context-replenish]").hidden = !activeRow?.dataset.replenishmentUrl;
@@ -1515,6 +1516,50 @@ if (contextRows.length) {
   menu.querySelector("[data-context-request]").addEventListener("click", () => {
     if (!activeRow?.dataset.requestEditUrl) return;
     window.location.href = activeRow.dataset.requestEditUrl;
+  });
+  menu.querySelector("[data-context-workshop-edit]").addEventListener("click", () => {
+    if (!activeRow?.dataset.workshopEditUrl) return;
+    const label = activeRow.dataset.recordLabel || "\u8f66\u95f4\u8bb0\u5f55";
+    const currentQuantity = activeRow.dataset.workshopQuantity || "1";
+    const rawQuantity = window.prompt("\u8bf7\u8f93\u5165" + label + "\u7684\u65b0\u6570\u91cf", currentQuantity);
+    if (rawQuantity === null) return;
+    const quantity = rawQuantity.trim();
+    if (!/^\d+(?:\.\d{1,4})?$/.test(quantity) || Number(quantity) <= 0) {
+      window.alert("\u6570\u91cf\u5fc5\u987b\u662f\u5927\u4e8e 0 \u7684\u6570\u5b57\uff0c\u6700\u591a 4 \u4f4d\u5c0f\u6570");
+      return;
+    }
+    let unitPrice = activeRow.dataset.workshopUnitPrice || "0";
+    if (activeRow.dataset.workshopHasUnitPrice === "1") {
+      const rawUnitPrice = window.prompt("\u8bf7\u8f93\u5165" + label + "\u7684\u65b0\u5355\u4ef7/\u91d1\u989d", unitPrice);
+      if (rawUnitPrice === null) return;
+      unitPrice = rawUnitPrice.trim();
+      if (!/^\d+(?:\.\d{1,4})?$/.test(unitPrice)) {
+        window.alert("\u5355\u4ef7/\u91d1\u989d\u5fc5\u987b\u662f\u5927\u4e8e\u7b49\u4e8e 0 \u7684\u6570\u5b57\uff0c\u6700\u591a 4 \u4f4d\u5c0f\u6570");
+        return;
+      }
+    }
+    let moldFee = activeRow.dataset.workshopMoldFee || "0";
+    if (activeRow.dataset.workshopHasMoldFee === "1") {
+      const rawMoldFee = window.prompt("\u8bf7\u8f93\u5165" + label + "\u7684\u65b0\u88c5\u6a21/\u6253\u6837\u8d39", moldFee);
+      if (rawMoldFee === null) return;
+      moldFee = rawMoldFee.trim();
+      if (!/^\d+(?:\.\d{1,4})?$/.test(moldFee)) {
+        window.alert("\u88c5\u6a21/\u6253\u6837\u8d39\u5fc5\u987b\u662f\u5927\u4e8e\u7b49\u4e8e 0 \u7684\u6570\u5b57\uff0c\u6700\u591a 4 \u4f4d\u5c0f\u6570");
+        return;
+      }
+    }
+    const form = document.createElement("form");
+    form.method = "post";
+    form.action = activeRow.dataset.workshopEditUrl;
+    for (const [name, value] of [["csrf", activeRow.dataset.csrf || ""], ["quantity", quantity], ["unit_price", unitPrice], ["mold_fee", moldFee]]) {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = name;
+      input.value = value;
+      form.appendChild(input);
+    }
+    document.body.appendChild(form);
+    form.submit();
   });
   menu.querySelector("[data-context-workshop-quantity]").addEventListener("click", () => {
     if (!activeRow?.dataset.workshopQuantityUrl) return;

@@ -1680,6 +1680,44 @@ async def workshop_record_delete(request: Request, department_key: str, record_i
     return RedirectResponse(f"/workshop/{department_key}", status_code=303)
 
 
+@app.post("/workshop/{department_key}/records/{record_id}/update")
+async def workshop_record_update(request: Request, department_key: str, record_id: int):
+    user, denied = require_page(request, {"admin"})
+    if denied:
+        return denied
+    department = workshop_department(department_key)
+    if not department:
+        return Response(status_code=404)
+    if not workshop_unlocked(request, department_key):
+        return RedirectResponse("/workshop", status_code=303)
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    try:
+        order_no = await run_in_threadpool(
+            repo.update_workshop_record_values,
+            record_id,
+            department_key,
+            as_float(form.get("quantity"), 1.0),
+            as_float(form.get("unit_price")),
+            as_float(form.get("mold_fee")),
+        )
+        await run_in_threadpool(
+            repo.audit,
+            user,
+            "workshop.update",
+            f"{department_key}:{record_id}:{order_no}",
+            client_ip(request),
+        )
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "error.html",
+            page_context(request, status=400, message=str(exc)),
+            status_code=400,
+        )
+    return RedirectResponse(f"/workshop/{department_key}", status_code=303)
+
 @app.post("/workshop/{department_key}/records/{record_id}/quantity-request")
 @app.post("/workshop/{department_key}/records/{record_id}/quantity/request")
 async def workshop_record_quantity_request(request: Request, department_key: str, record_id: int):

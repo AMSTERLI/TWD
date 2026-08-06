@@ -547,9 +547,33 @@ with TestClient(app) as client:
     admin_mold_detail = client.get(f"/orders/{order_id}")
     assert admin_mold_detail.status_code == 200
     assert "\u523b\u6a21&#65288;" not in admin_mold_detail.text
+    admin_press_list = client.get("/workshop/press")
+    assert admin_press_list.status_code == 200
+    assert 'data-workshop-edit-url="/workshop/press/records/' in admin_press_list.text
+    admin_press_update = client.post(
+        f"/workshop/press/records/{press_records[0]['id']}/update",
+        data={"csrf": csrf(admin_press_list.text), "quantity": "40", "unit_price": "0.3", "mold_fee": "2"},
+        follow_redirects=False,
+    )
+    assert admin_press_update.status_code == 303
+    updated_press_record = next(row for row in repo.order_workshop_records(press_order_id) if row["id"] == press_records[0]["id"])
+    assert updated_press_record["quantity"] == 40
+    assert abs(updated_press_record["unit_price"] - 0.3) < 1e-9
+    assert abs(updated_press_record["mold_fee"] - 2) < 1e-9
+    assert abs(updated_press_record["amount"] - 14) < 1e-9
     admin_mold_list = client.get("/workshop/mold")
     assert 'data-delete-url="/workshop/mold/records/' in admin_mold_list.text
+    assert 'data-workshop-edit-url="/workshop/mold/records/' in admin_mold_list.text
     assert 'data-csrf="' in admin_mold_list.text
+    admin_mold_update = client.post(
+        f"/workshop/mold/records/{records[1]['id']}/update",
+        data={"csrf": csrf(admin_mold_list.text), "quantity": "4", "unit_price": "30", "mold_fee": "0"},
+        follow_redirects=False,
+    )
+    assert admin_mold_update.status_code == 303
+    updated_mold_record = next(row for row in repo.order_workshop_records(order_id) if row["id"] == records[1]["id"])
+    assert updated_mold_record["quantity"] == 4
+    assert abs(updated_mold_record["unit_price"] - 30) < 1e-9
     admin_delete = client.post(
         f"/workshop/mold/records/{records[1]['id']}/delete",
         data={"csrf": csrf(admin_mold_list.text)},

@@ -1275,6 +1275,39 @@ class Repository:
             conn.execute("DELETE FROM workshop_records WHERE id = ?", (int(record_id),))
             return str(row["order_no"])
 
+    def update_workshop_record_values(
+        self,
+        record_id: int,
+        department_key: str,
+        quantity: float,
+        unit_price: float,
+        mold_fee: float,
+    ) -> str:
+        department_key = str(department_key or "").strip()
+        quantity = float(quantity or 0)
+        unit_price = float(unit_price or 0)
+        mold_fee = float(mold_fee or 0)
+        if quantity <= 0:
+            raise ValueError("\u6570\u91cf\u5fc5\u987b\u5927\u4e8e 0")
+        if unit_price < 0:
+            raise ValueError("\u5355\u4ef7\u4e0d\u80fd\u5c0f\u4e8e 0")
+        if mold_fee < 0:
+            raise ValueError("\u88c5\u6a21/\u6253\u6837\u8d39\u4e0d\u80fd\u5c0f\u4e8e 0")
+        with self.connect(write=True) as conn:
+            row = conn.execute(
+                """SELECT order_no FROM workshop_records
+                   WHERE id = ? AND (? = '' OR department_key = ?)""",
+                (int(record_id), department_key, department_key),
+            ).fetchone()
+            if not row:
+                raise ValueError("\u8f66\u95f4\u8bb0\u5f55\u4e0d\u5b58\u5728")
+            conn.execute(
+                """UPDATE workshop_records
+                   SET quantity = ?, unit_price = ?, mold_fee = ?
+                   WHERE id = ?""",
+                (quantity, unit_price, mold_fee, int(record_id)),
+            )
+            return str(row["order_no"])
     def create_workshop_records(
         self,
         department_key: str,
