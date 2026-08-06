@@ -138,6 +138,7 @@ DEFAULT_OUTSOURCE_PROCESSES = [
     "印刷/UV",
     "皮革",
     "\u78e8\u77f3",
+    "\u8f66\u7ec7\u5e26",
 ]
 
 DEFAULT_OUTSOURCE_FACTORIES = [
@@ -941,7 +942,19 @@ class Database:
                 """
                 SELECT id, process_name, created_at
                 FROM outsource_processes
-                ORDER BY id ASC
+                ORDER BY CASE process_name
+                    WHEN '冲压' THEN 1
+                    WHEN '上色' THEN 2
+                    WHEN '毛边' THEN 3
+                    WHEN '包装' THEN 4
+                    WHEN '印刷/UV' THEN 5
+                    WHEN 'UV' THEN 5
+                    WHEN '车织带' THEN 6
+                    WHEN '镭雕' THEN 7
+                    WHEN '树脂' THEN 8
+                    WHEN '低温锌合金' THEN 9
+                    ELSE 1000 + id
+                END, id ASC
                 """
             ).fetchall()
         return [dict(row) for row in rows]
@@ -1003,7 +1016,19 @@ class Database:
                 SELECT id, process_name, factory_name, created_at
                 FROM outsource_factories
                 WHERE (? = '' OR process_name = ?)
-                ORDER BY process_name ASC, id ASC
+                ORDER BY CASE process_name
+                    WHEN '冲压' THEN 1
+                    WHEN '上色' THEN 2
+                    WHEN '毛边' THEN 3
+                    WHEN '包装' THEN 4
+                    WHEN '印刷/UV' THEN 5
+                    WHEN 'UV' THEN 5
+                    WHEN '车织带' THEN 6
+                    WHEN '镭雕' THEN 7
+                    WHEN '树脂' THEN 8
+                    WHEN '低温锌合金' THEN 9
+                    ELSE 1000 + id
+                END, process_name ASC, id ASC
                 """,
                 (normalized_process_name, normalized_process_name),
             ).fetchall()

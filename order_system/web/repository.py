@@ -13,7 +13,7 @@ from order_system.database import Database
 from .security import hash_password, verify_password
 
 
-REQUIRED_WEB_PROCESSES = ["\u51b2\u538b", "\u4e0a\u8272", "\u5370\u5237/UV", "\u6bdb\u8fb9", "\u956d\u96d5", "\u76ae\u9769"]
+REQUIRED_WEB_PROCESSES = ["\u51b2\u538b", "\u4e0a\u8272", "\u6bdb\u8fb9", "\u5305\u88c5", "\u5370\u5237/UV", "\u8f66\u7ec7\u5e26", "\u956d\u96d5", "\u6811\u8102", "\u4f4e\u6e29\u950c\u5408\u91d1", "\u76ae\u9769", "\u78e8\u77f3"]
 REQUIRED_WEB_FACTORIES = [("\u6bdb\u8fb9", "\u6797\u4e16\u57f9"), ("\u956d\u96d5", "\u5f20\u5c55\u5c71"), ("\u76ae\u9769", "\u8001\u96f7")]
 
 ORDER_COLUMNS = [

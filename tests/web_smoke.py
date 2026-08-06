@@ -164,6 +164,9 @@ with TestClient(app) as client:
     assert client.get("/finance").status_code == 200
     outsource_page = client.get("/outsource")
     assert outsource_page.status_code == 200
+    process_names = [item["process_name"] for item in repo.processes()]
+    expected_process_order = ["\u51b2\u538b", "\u4e0a\u8272", "\u6bdb\u8fb9", "\u5305\u88c5", "\u5370\u5237/UV", "\u8f66\u7ec7\u5e26", "\u956d\u96d5", "\u6811\u8102", "\u4f4e\u6e29\u950c\u5408\u91d1"]
+    assert process_names[:len(expected_process_order)] == expected_process_order
     assert 'name="receive_factory_name"' in outsource_page.text
     assert "receive-table" in outsource_page.text
     assert "<th>\u52a0\u5de5\u5382</th>" in outsource_page.text
