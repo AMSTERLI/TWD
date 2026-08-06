@@ -1601,7 +1601,7 @@ class Repository:
             mode_price = modes[operator_name]
             unit_price = float(row.get("unit_price") or 0)
             row["unit_price_mode"] = mode_price
-            row["unit_price_anomaly"] = 1 if unit_price > mode_price else 0
+            row["unit_price_anomaly"] = 1 if unit_price > mode_price * 3 else 0
         return rows
 
     def order_workshop_records(self, order_id: int) -> list[dict[str, Any]]:

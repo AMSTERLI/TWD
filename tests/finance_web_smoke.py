@@ -119,7 +119,7 @@ with TestClient(app) as client:
         "\u51b2\u538b",
         [
             {"order_no": mode_order, "employee_name": "\u5f90\u5c71\u7acb", "quantity": 10, "unit_price": 0.1, "mold_fee": 0},
-            {"order_no": anomaly_order, "employee_name": "\u5f90\u5c71\u7acb", "quantity": 10, "unit_price": 0.3, "mold_fee": 0},
+            {"order_no": anomaly_order, "employee_name": "\u5f90\u5c71\u7acb", "quantity": 10, "unit_price": 0.31, "mold_fee": 0},
         ],
         repo.get_user(1),
     )
