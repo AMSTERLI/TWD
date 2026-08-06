@@ -167,6 +167,28 @@ with TestClient(app) as client:
     assert 'name="receive_factory_name"' in outsource_page.text
     assert "receive-table" in outsource_page.text
     assert "<th>\u52a0\u5de5\u5382</th>" in outsource_page.text
+    assert "\u78e8\u77f3" in outsource_page.text and "\u6bdb\u536b\u5175" in outsource_page.text
+    stone_outsource = client.post(
+        "/outsource",
+        data={
+            "csrf": csrf(outsource_page.text),
+            "process_name": "\u78e8\u77f3",
+            "factory_name": "\u6bdb\u536b\u5175",
+            "outsource_date": "2026-07-20",
+            "order_no": ["TWD1-260715001"],
+            "product_quantity": ["10"],
+            "spare_quantity": ["2"],
+            "unit_price": ["0.3"],
+            "manual_amount": [""],
+            "flag_type": [""],
+            "remark": [""],
+        },
+        follow_redirects=False,
+    )
+    assert stone_outsource.status_code == 303, stone_outsource.text
+    stone_rows = [row for row in repo.outsource_records("TWD1-260715001", 1, 100)["rows"] if row["process_name"] == "\u78e8\u77f3"]
+    assert stone_rows and stone_rows[0]["factory_name"] == "\u6bdb\u536b\u5175"
+    assert abs(stone_rows[0]["amount"] - 3.6) < 1e-9
     first_outsource = repo.create_outsource_batch(
         {"process_name": "\u956d\u96d5", "factory_name": "\u5f20\u5c55\u5c71", "outsource_date": "2026-07-18", "paid_status": 0},
         [{"order_no": "TWD1-260715001", "product_quantity": 5, "spare_quantity": 0, "unit_price": 1}],

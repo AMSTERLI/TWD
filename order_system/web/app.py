@@ -101,12 +101,11 @@ WORKSHOP_DEPARTMENTS = {
         "name": "\u629b\u5149",
         "password_env": "TWD_WORKSHOP_POLISHING_PASSWORD",
         "default_password": "paoguang888",
-        "employees": ["\u725f\u6c5f", "\u6bdb\u536b\u5175"],
+        "employees": ["\u725f\u6c5f"],
         "piecework": True,
         "mold_fee": True,
         "mold_fee_label": "\u6253\u6837\u8d39",
         "mold_fee_input": True,
-        "special_employee": "\u6bdb\u536b\u5175",
         "notes": ["\u65e0", "\u53cc\u9762", "\u5f27\u5ea6", "\u53cc\u9762\u5f27\u5ea6"],
     },
     "painting": {

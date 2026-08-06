@@ -338,10 +338,10 @@ with TestClient(app) as client:
     polishing = client.get("/workshop/polishing")
     assert polishing.status_code == 200 and "touch-piecework-panel" in polishing.text
     assert 'name="unit_price"' in polishing.text and 'data-workshop-employees' in polishing.text
-    assert "\u725f\u6c5f" in polishing.text and "\u6bdb\u536b\u5175" in polishing.text
+    assert "\u725f\u6c5f" in polishing.text and "\u6bdb\u536b\u5175" not in polishing.text
     assert 'employee-button active' not in polishing.text
     assert "\u6253\u6837\u8d39" in polishing.text and 'name="mold_fee"' in polishing.text
-    assert "data-special-note-header" in polishing.text
+    assert "data-special-note-header" not in polishing.text
     static_css = Path("order_system/web/static/app.css").read_text(encoding="utf-8")
     assert ".workshop-department-polishing .piecework-table table" in static_css
     assert ".employee-selection:empty::before" in static_css
