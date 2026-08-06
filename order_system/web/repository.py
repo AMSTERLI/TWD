@@ -1505,7 +1505,8 @@ class Repository:
                     ORDER BY w.reported_at DESC, w.id DESC LIMIT ? OFFSET ?""",
                 (*args, page_size, offset),
             ).fetchall()
-        return {"rows": [dict(row) for row in rows], "total": total, "amount_total": amount_total, "page": page,
+        result_rows = self._mark_workshop_unit_price_anomalies([dict(row) for row in rows])
+        return {"rows": result_rows, "total": total, "amount_total": amount_total, "page": page,
                 "pages": max(1, (total + page_size - 1) // page_size)}
 
     def workshop_record_rows(self, record_ids: list[int], department_key: str = "") -> list[dict[str, Any]]:
@@ -1526,7 +1527,7 @@ class Repository:
                         WHERE w.id IN ({placeholders}) AND (? = '' OR w.department_key = ?)""",
                     (*chunk, department_key, department_key),
                 ).fetchall())
-        result_rows = [dict(row) for row in rows]
+        result_rows = self._mark_workshop_unit_price_anomalies([dict(row) for row in rows])
         reference_quantities: dict[str, float] = {}
         order_nos = sorted({str(row.get("order_no") or "").strip() for row in result_rows if str(row.get("order_no") or "").strip()})
         if order_nos:
@@ -1552,6 +1553,51 @@ class Repository:
             int(item.get("id") or 0),
         ))
         return result_rows
+
+    def _mark_workshop_unit_price_anomalies(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        excluded_departments = {"mold", "cutter", "polishing"}
+        names = sorted({
+            str(row.get("operator_name") or "").strip()
+            for row in rows
+            if str(row.get("operator_name") or "").strip()
+            and str(row.get("department_key") or "").strip() not in excluded_departments
+        })
+        for row in rows:
+            row["unit_price_mode"] = None
+            row["unit_price_anomaly"] = 0
+        if not names:
+            return rows
+        modes: dict[str, float] = {}
+        with self.connect() as conn:
+            for start in range(0, len(names), 500):
+                chunk = names[start:start + 500]
+                placeholders = ", ".join("?" for _ in chunk)
+                mode_rows = conn.execute(
+                    f"""SELECT operator_name, unit_price, COUNT(*) AS price_count
+                        FROM workshop_records
+                        WHERE operator_name IN ({placeholders})
+                          AND operator_name <> ''
+                          AND department_key NOT IN ('mold', 'cutter', 'polishing')
+                          AND unit_price IS NOT NULL
+                        GROUP BY operator_name, unit_price
+                        ORDER BY operator_name ASC, price_count DESC, unit_price ASC""",
+                    chunk,
+                ).fetchall()
+                for mode_row in mode_rows:
+                    operator = str(mode_row["operator_name"])
+                    if operator not in modes:
+                        modes[operator] = float(mode_row["unit_price"] or 0)
+        for row in rows:
+            operator_name = str(row.get("operator_name") or "").strip()
+            department_key = str(row.get("department_key") or "").strip()
+            if department_key in excluded_departments or operator_name not in modes:
+                continue
+            mode_price = modes[operator_name]
+            unit_price = float(row.get("unit_price") or 0)
+            row["unit_price_mode"] = mode_price
+            row["unit_price_anomaly"] = 1 if unit_price > mode_price else 0
+        return rows
+
     def order_workshop_records(self, order_id: int) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(

@@ -249,6 +249,20 @@ with TestClient(app) as client:
     assert "&#37329;&#39069;" in press_list.text and "9.30" in press_list.text
     assert 'data-selection-amount-total-all="18.60"' in press_list.text
     assert 'data-workshop-quantity-url="/workshop/press/records/' not in press_list.text
+    _, press_mode_order_no = repo.create_order(payload("TWD1-260721121"))
+    _, press_anomaly_order_no = repo.create_order(payload("TWD1-260721122"))
+    repo.create_workshop_records(
+        "press",
+        "\u51b2\u538b",
+        [
+            {"order_no": press_mode_order_no, "employee_name": "\u5f90\u5c71\u7acb", "quantity": 10, "unit_price": 0.08, "mold_fee": 0},
+            {"order_no": press_anomaly_order_no, "employee_name": "\u5f90\u5c71\u7acb", "quantity": 10, "unit_price": 0.12, "mold_fee": 0},
+        ],
+        repo.get_user(2),
+    )
+    press_list_with_anomaly = client.get("/workshop/press")
+    assert press_list_with_anomaly.status_code == 200
+    assert "unit-price-anomaly" in press_list_with_anomaly.text and press_anomaly_order_no in press_list_with_anomaly.text
     press_filtered = client.get("/workshop/press?employee_name=%E5%BE%90%E5%B1%B1%E7%AB%8B")
     assert press_filtered.status_code == 200 and press_order_no in press_filtered.text and ">\u5f90\u5c71\u7acb<" in press_filtered.text
     press_filtered_second = client.get("/workshop/press?employee_name=%E5%88%98%E9%81%93%E6%9E%97")
@@ -366,6 +380,15 @@ with TestClient(app) as client:
     assert polishing_list.status_code == 200 and polishing_order_no in polishing_list.text
     assert "data-selected-amount-total" in polishing_list.text and 'data-amount="13.60"' in polishing_list.text
     assert 'data-selection-amount-total-all="13.60"' in polishing_list.text
+    _, polishing_anomaly_order_no = repo.create_order(payload("TWD1-260721123"))
+    repo.create_workshop_records(
+        "polishing",
+        "\u629b\u5149",
+        [{"order_no": polishing_anomaly_order_no, "employee_name": "\u725f\u6c5f", "quantity": 10, "unit_price": 99, "mold_fee": 0}],
+        repo.get_user(2),
+    )
+    polishing_list_without_anomaly = client.get("/workshop/polishing")
+    assert polishing_list_without_anomaly.status_code == 200 and "unit-price-anomaly" not in polishing_list_without_anomaly.text
     painting_unlock = client.post(
         "/workshop/painting/unlock",
         data={"csrf": csrf(home.text), "password": "painting-pass-123"},

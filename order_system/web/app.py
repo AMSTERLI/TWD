@@ -489,6 +489,7 @@ WORKSHOP_REPORT_COLUMN_LABELS = {
     "quantity": "\u6570\u91cf",
     "reference_quantity": "\u53c2\u8003\u6570\u91cf",
     "unit_price": "\u5355\u4ef7",
+    "unit_price_anomaly": "\u5355\u4ef7\u5f02\u5e38",
     "mold_fee": "\u88c5\u6a21/\u6253\u6837\u8d39",
     "amount": "\u91d1\u989d",
     "order_type": "\u8ba2\u5355\u7c7b\u522b",
@@ -554,6 +555,8 @@ def workshop_report_cell(row: dict[str, Any], column: str) -> Any:
         return row.get("reference_quantity") or 0
     if column == "unit_price":
         return row.get("unit_price") or 0
+    if column == "unit_price_anomaly":
+        return "是" if row.get("unit_price_anomaly") else "否"
     if column == "mold_fee":
         return row.get("mold_fee") or 0
     if column == "amount":

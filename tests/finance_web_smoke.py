@@ -112,6 +112,17 @@ with TestClient(app) as client:
         [{"order_no": new_order, "employee_name": "\u5f90\u5c71\u7acb", "quantity": 20, "unit_price": 0.1, "mold_fee": 4}],
         repo.get_user(1),
     )[0]
+    mode_order = create_order(client, "2026-07-16", "\u4f17\u6570\u5355", 3)
+    anomaly_order = create_order(client, "2026-07-17", "\u5f02\u5e38\u5355", 4)
+    repo.create_workshop_records(
+        "press",
+        "\u51b2\u538b",
+        [
+            {"order_no": mode_order, "employee_name": "\u5f90\u5c71\u7acb", "quantity": 10, "unit_price": 0.1, "mold_fee": 0},
+            {"order_no": anomaly_order, "employee_name": "\u5f90\u5c71\u7acb", "quantity": 10, "unit_price": 0.3, "mold_fee": 0},
+        ],
+        repo.get_user(1),
+    )
 
     page = client.get("/")
     client.post("/logout", data={"csrf": csrf(page.text)})
@@ -139,7 +150,8 @@ with TestClient(app) as client:
     assert workshop_report_page.status_code == 200
     assert "/finance/workshop-reports/export" in workshop_report_page.text
     assert 'name="export_columns"' in workshop_report_page.text
-    assert new_order in workshop_report_page.text and old_order not in workshop_report_page.text
+    assert 'value="unit_price_anomaly"' in workshop_report_page.text
+    assert new_order in workshop_report_page.text and anomaly_order in workshop_report_page.text and old_order not in workshop_report_page.text
     workshop_export = client.post(
         "/finance/workshop-reports/export",
         data={
@@ -148,14 +160,15 @@ with TestClient(app) as client:
             "employee_name": "\u5f90\u5c71\u7acb",
             "reported_from": "1900-01-01",
             "reported_to": "2999-12-31",
-            "export_columns": ["department", "employee", "order_no", "quantity", "unit_price", "reported_at"],
+            "export_columns": ["department", "employee", "order_no", "quantity", "unit_price", "unit_price_anomaly", "reported_at"],
         },
     )
     assert workshop_export.status_code == 200
     assert "spreadsheetml.sheet" in workshop_export.headers["content-type"]
     assert "%E5%86%B2%E5%8E%8B%E5%BE%90%E5%B1%B1%E7%AB%8B" in workshop_export.headers["content-disposition"]
     strings = xlsx_strings(workshop_export.content)
-    assert new_order in strings and "\u5f90\u5c71\u7acb" in strings and "\u51b2\u538b" in strings
+    assert new_order in strings and anomaly_order in strings and "\u5f90\u5c71\u7acb" in strings and "\u51b2\u538b" in strings
+    assert "\u5355\u4ef7\u5f02\u5e38" in strings and "\u662f" in strings
     assert "\u4ea7\u54c1" not in strings
 
     filtered_customer = client.get(f"/finance/receivables?receivable_q={new_order}")
