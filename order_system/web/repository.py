@@ -1497,7 +1497,7 @@ class Repository:
             total = int(conn.execute(f"SELECT COUNT(*) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0])
             amount_total = float(conn.execute(f"SELECT COALESCE(SUM(CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END), 0) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0] or 0)
             rows = conn.execute(
-                f"""SELECT w.*, o.product_name, o.customer_name, o.width_mm, o.height_mm, o.thickness_mm, o.diameter_mm,
+                f"""SELECT w.*, o.product_name, o.customer_name, o.order_type, o.width_mm, o.height_mm, o.thickness_mm, o.diameter_mm,
                            CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
                     FROM workshop_records w
                     LEFT JOIN orders o ON o.id = w.order_id
@@ -1519,7 +1519,7 @@ class Repository:
             for chunk in self._id_chunks(ids):
                 placeholders = ", ".join("?" for _ in chunk)
                 rows.extend(conn.execute(
-                    f"""SELECT w.*, o.product_name, o.customer_name, o.image_paths_json,
+                    f"""SELECT w.*, o.product_name, o.customer_name, o.image_paths_json, o.order_type,
                                o.width_mm, o.height_mm, o.thickness_mm, o.diameter_mm,
                                CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
                         FROM workshop_records w
@@ -1556,11 +1556,13 @@ class Repository:
 
     def _mark_workshop_unit_price_anomalies(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         excluded_departments = {"mold", "cutter", "polishing"}
+        sample_order_type = "样品单"
         names = sorted({
             str(row.get("operator_name") or "").strip()
             for row in rows
             if str(row.get("operator_name") or "").strip()
             and str(row.get("department_key") or "").strip() not in excluded_departments
+            and str(row.get("order_type") or "").strip() != sample_order_type
         })
         for row in rows:
             row["unit_price_mode"] = None
@@ -1573,15 +1575,17 @@ class Repository:
                 chunk = names[start:start + 500]
                 placeholders = ", ".join("?" for _ in chunk)
                 mode_rows = conn.execute(
-                    f"""SELECT operator_name, unit_price, COUNT(*) AS price_count
-                        FROM workshop_records
-                        WHERE operator_name IN ({placeholders})
-                          AND operator_name <> ''
-                          AND department_key NOT IN ('mold', 'cutter', 'polishing')
-                          AND unit_price IS NOT NULL
-                        GROUP BY operator_name, unit_price
-                        ORDER BY operator_name ASC, price_count DESC, unit_price ASC""",
-                    chunk,
+                    f"""SELECT w.operator_name AS operator_name, w.unit_price AS unit_price, COUNT(*) AS price_count
+                        FROM workshop_records w
+                        LEFT JOIN orders o ON o.id = w.order_id
+                        WHERE w.operator_name IN ({placeholders})
+                          AND w.operator_name <> ''
+                          AND w.department_key NOT IN ('mold', 'cutter', 'polishing')
+                          AND w.unit_price IS NOT NULL
+                          AND COALESCE(o.order_type, '') <> ?
+                        GROUP BY w.operator_name, w.unit_price
+                        ORDER BY w.operator_name ASC, price_count DESC, w.unit_price ASC""",
+                    (*chunk, sample_order_type),
                 ).fetchall()
                 for mode_row in mode_rows:
                     operator = str(mode_row["operator_name"])
@@ -1591,6 +1595,8 @@ class Repository:
             operator_name = str(row.get("operator_name") or "").strip()
             department_key = str(row.get("department_key") or "").strip()
             if department_key in excluded_departments or operator_name not in modes:
+                continue
+            if str(row.get("order_type") or "").strip() == sample_order_type:
                 continue
             mode_price = modes[operator_name]
             unit_price = float(row.get("unit_price") or 0)

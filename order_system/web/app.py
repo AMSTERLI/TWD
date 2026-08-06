@@ -556,7 +556,7 @@ def workshop_report_cell(row: dict[str, Any], column: str) -> Any:
     if column == "unit_price":
         return row.get("unit_price") or 0
     if column == "unit_price_anomaly":
-        return "是" if row.get("unit_price_anomaly") else "否"
+        return "\u662f" if row.get("unit_price_anomaly") else ""
     if column == "mold_fee":
         return row.get("mold_fee") or 0
     if column == "amount":

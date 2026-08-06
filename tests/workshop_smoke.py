@@ -251,15 +251,22 @@ with TestClient(app) as client:
     assert 'data-workshop-quantity-url="/workshop/press/records/' not in press_list.text
     _, press_mode_order_no = repo.create_order(payload("TWD1-260721121"))
     _, press_anomaly_order_no = repo.create_order(payload("TWD1-260721122"))
+    sample_payload = payload("TWD1-260721124")
+    sample_payload["order_type"] = "\u6837\u54c1\u5355"
+    _, press_sample_order_no = repo.create_order(sample_payload)
     repo.create_workshop_records(
         "press",
         "\u51b2\u538b",
         [
             {"order_no": press_mode_order_no, "employee_name": "\u5f90\u5c71\u7acb", "quantity": 10, "unit_price": 0.08, "mold_fee": 0},
             {"order_no": press_anomaly_order_no, "employee_name": "\u5f90\u5c71\u7acb", "quantity": 10, "unit_price": 0.12, "mold_fee": 0},
+            {"order_no": press_sample_order_no, "employee_name": "\u5f90\u5c71\u7acb", "quantity": 10, "unit_price": 99, "mold_fee": 0},
         ],
         repo.get_user(2),
     )
+    press_anomaly_rows = repo.workshop_records("", "press", 1, 100, employee_name="\u5f90\u5c71\u7acb")["rows"]
+    assert next(row for row in press_anomaly_rows if row["order_no"] == press_sample_order_no)["unit_price_anomaly"] == 0
+    assert next(row for row in press_anomaly_rows if row["order_no"] == press_anomaly_order_no)["unit_price_anomaly"] == 1
     press_list_with_anomaly = client.get("/workshop/press")
     assert press_list_with_anomaly.status_code == 200
     assert "unit-price-anomaly" in press_list_with_anomaly.text and press_anomaly_order_no in press_list_with_anomaly.text
