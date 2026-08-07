@@ -10,27 +10,25 @@
 
 {% if active_finance_page == 'receivables' %}
 <section class="finance-section" id="receivables">
-  <div class="section-title finance-title"><div><h2>客户收款</h2><p>共 {{ receivables.total }} 条，可按订单日期和收款状态检索</p></div>
-    <div class="finance-stash" data-finance-stash data-storage-key="twd-finance-receivable-stash">
-      <div class="finance-stash-head"><strong>订单暂存区</strong><div class="finance-stash-actions"><button type="button" class="small" data-clear-stash>清空</button><form method="post" action="/finance/receivables/pdf" data-stash-pdf-form><input type="hidden" name="csrf" value="{{ csrf }}"><span data-stash-hidden-inputs></span><button class="small primary" data-stash-pdf disabled>合并订单PDF</button></form></div></div>
-      <div class="finance-stash-list" data-stash-list></div>
-      <div class="muted finance-stash-empty" data-stash-empty>右键订单可暂存</div>
-    </div>
-  </div>
+  <div class="section-title finance-title"><div><h2>&#23458;&#25143;&#25910;&#27454;</h2><p>&#20849; {{ receivables.total }} &#26465;&#65292;&#21487;&#25353;&#20986;&#36135;&#26085;&#26399;&#12289;&#20986;&#36135;&#29366;&#24577;&#21644;&#25910;&#27454;&#29366;&#24577;&#26816;&#32034;</p></div></div>
   <form class="filterbar" method="get" action="/finance/receivables">
-    <label>订单关键词<input name="receivable_q" value="{{ receivable_q }}" placeholder="客户名、订单号、PO号或生产制号"></label>
-    <label>订单日期从<input type="date" name="receivable_date_from" value="{{ receivable_date_from }}"></label>
-    <label>至<input type="date" name="receivable_date_to" value="{{ receivable_date_to }}"></label>
-    <label>是否收款<select name="receivable_paid_status"><option value=""{% if receivable_paid_status == '' %} selected{% endif %}>全部</option><option value="paid"{% if receivable_paid_status == 'paid' %} selected{% endif %}>已收款</option><option value="unpaid"{% if receivable_paid_status == 'unpaid' %} selected{% endif %}>未收款</option></select></label>
-    <div class="filter-actions"><button class="primary">检索收款</button><a class="button" href="/finance/receivables">清空</a></div>
+    <label>&#26816;&#32034;1<input name="receivable_q" value="{{ receivable_q }}" placeholder="&#23458;&#25143;&#21517;&#12289;&#35746;&#21333;&#21495;&#12289;PO&#21495;&#25110;&#29983;&#20135;&#21046;&#21495;"></label>
+    <label>&#26816;&#32034;2<input name="receivable_q2" value="{{ receivable_q2 }}" placeholder="&#21487;&#20877;&#22635;&#19968;&#20010;&#26465;&#20214;"></label>
+    <label>&#20986;&#36135;&#26085;&#26399;&#20174;<input type="date" name="receivable_date_from" value="{{ receivable_date_from }}"></label>
+    <label>&#33267;<input type="date" name="receivable_date_to" value="{{ receivable_date_to }}"></label>
+    <label>&#20986;&#36135;&#29366;&#24577;<select name="receivable_shipped_status"><option value=""{% if receivable_shipped_status == '' %} selected{% endif %}>&#20840;&#37096;</option><option value="shipped"{% if receivable_shipped_status == 'shipped' %} selected{% endif %}>&#24050;&#20986;&#36135;</option><option value="unshipped"{% if receivable_shipped_status == 'unshipped' %} selected{% endif %}>&#24453;&#20986;&#36135;</option></select></label>
+    <label>&#25910;&#27454;&#29366;&#24577;<select name="receivable_paid_status"><option value=""{% if receivable_paid_status == '' %} selected{% endif %}>&#20840;&#37096;</option><option value="paid"{% if receivable_paid_status == 'paid' %} selected{% endif %}>&#24050;&#25910;&#27454;</option><option value="unpaid"{% if receivable_paid_status == 'unpaid' %} selected{% endif %}>&#26410;&#25910;&#27454;</option></select></label>
+    <div class="filter-actions"><button class="primary">&#26816;&#32034;&#25910;&#27454;</button><a class="button" href="/finance/receivables">&#28165;&#31354;</a></div>
   </form>
   <form method="post" data-selection-form data-selection-total="{{ receivables.total }}" data-selection-unpaid-total-all="{{ receivables.unpaid_total }}">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <input type="hidden" name="select_scope" value="page" data-select-scope>
     <input type="hidden" name="receivable_q" value="{{ receivable_q }}">
+    <input type="hidden" name="receivable_q2" value="{{ receivable_q2 }}">
     <input type="hidden" name="receivable_date_from" value="{{ receivable_date_from }}">
     <input type="hidden" name="receivable_date_to" value="{{ receivable_date_to }}">
     <input type="hidden" name="receivable_paid_status" value="{{ receivable_paid_status }}">
+    <input type="hidden" name="receivable_shipped_status" value="{{ receivable_shipped_status }}">
     <div class="selection-toolbar">
       <span>已选择 <strong data-selected-count>0</strong> 条；已选未收款合计 ¥ <strong data-selected-unpaid-total>0.00</strong></span>
       <button formaction="/finance/receivables/status" name="paid" value="1" data-requires-selection disabled>批量确认收款</button>
@@ -41,22 +39,23 @@
       <button class="primary" formaction="/finance/receivables/pdf" data-requires-selection disabled>合并导出 PDF</button>
     </div>
     <div class="panel table-wrap"><table>
-      <thead><tr><th><input type="checkbox" data-select-all aria-label="全选当前页"></th><th>订单号</th><th>客户名称</th><th>PO号</th><th>生产制号</th><th>数量</th><th>单价</th><th>应收</th><th>订单日期</th><th>状态</th><th>是否开票</th></tr></thead>
+      <thead><tr><th><input type="checkbox" data-select-all aria-label="&#20840;&#36873;&#24403;&#21069;&#39029;"></th><th>&#35746;&#21333;&#21495;</th><th>&#23458;&#25143;&#21517;&#31216;</th><th>PO&#21495;</th><th>&#29983;&#20135;&#21046;&#21495;</th><th>&#25968;&#37327;</th><th>&#21333;&#20215;</th><th>&#24212;&#25910;</th><th>&#20986;&#36135;&#26085;&#26399;</th><th>&#20986;&#36135;&#29366;&#24577;</th><th>&#25910;&#27454;&#29366;&#24577;</th><th>&#26159;&#21542;&#24320;&#31080;</th></tr></thead>
       <tbody>
-      {% for row in receivables.rows %}<tr data-context-row data-request-edit-url="/orders/{{ row.id }}/edit" data-stash-id="{{ row.id }}" data-stash-no="{{ row.order_no }}" data-csrf="{{ csrf }}" data-record-label="订单 {{ row.order_no }}">
+      {% for row in receivables.rows %}<tr data-context-row data-request-edit-url="/orders/{{ row.id }}/edit" data-csrf="{{ csrf }}" data-record-label="&#35746;&#21333; {{ row.order_no }}">
         <td><input type="checkbox" name="selected_ids" value="{{ row.id }}" data-select-item data-unpaid-amount="{{ row.amount if not row.paid_status else 0 }}" aria-label="选择订单 {{ row.order_no }}"></td>
         <td><a href="/orders/{{ row.id }}">{{ row.order_no }}</a></td><td>{{ row.customer_name or '-' }}</td><td>{{ row.bi_no or '-' }}</td><td>{{ row.production_no or '-' }}</td>
-        <td>{{ row.quantity }} {{ row.quantity_unit }}</td><td>{{ '多单价' if row.multi_price else '%.4f'|format(row.unit_price or 0) }}</td><td>¥ {{ '%.2f'|format(row.amount or 0) }}</td><td>{{ row.order_date or '-' }}</td>
-        <td><span class="badge {{ 'ok' if row.paid_status else 'warn' }}">{{ '已收款' if row.paid_status else '未收款' }}</span></td>
-        <td><span class="badge {{ 'ok' if row.invoice_status else 'warn' }}">{{ '已开票' if row.invoice_status else '未开票' }}</span></td>
-      </tr>{% else %}<tr><td colspan="11" class="muted">暂无匹配的收款记录</td></tr>{% endfor %}
+        <td>{{ row.quantity }} {{ row.quantity_unit }}</td><td>{% if row.multi_price %}&#22810;&#21333;&#20215;{% else %}{{ '%.4f'|format(row.unit_price or 0) }}{% endif %}</td><td>&#165; {{ '%.2f'|format(row.amount or 0) }}</td><td>{{ row.shipped_at|beijing_time if row.shipped_at else '-' }}</td>
+        <td><span class="badge {{ 'ok' if row.shipped_status else 'warn' }}">{% if row.shipped_status %}&#24050;&#20986;&#36135;{% else %}&#24453;&#20986;&#36135;{% endif %}</span></td>
+        <td><span class="badge {{ 'ok' if row.paid_status else 'warn' }}">{% if row.paid_status %}&#24050;&#25910;&#27454;{% else %}&#26410;&#25910;&#27454;{% endif %}</span></td>
+        <td><span class="badge {{ 'ok' if row.invoice_status else 'warn' }}">{% if row.invoice_status %}&#24050;&#24320;&#31080;{% else %}&#26410;&#24320;&#31080;{% endif %}</span></td>
+      </tr>{% else %}<tr><td colspan="12" class="muted">暂无匹配的收款记录</td></tr>{% endfor %}
       </tbody>
     </table></div>
   </form>
   {% if receivables.pages > 1 %}<nav class="pager">
-    {% if receivables.page > 1 %}<a href="?receivable_q={{ receivable_q|urlencode }}&receivable_date_from={{ receivable_date_from }}&receivable_date_to={{ receivable_date_to }}&receivable_paid_status={{ receivable_paid_status|urlencode }}&receivable_page={{ receivables.page - 1 }}">上一页</a>{% endif %}
+    {% if receivables.page > 1 %}<a href="?receivable_q={{ receivable_q|urlencode }}&receivable_q2={{ receivable_q2|urlencode }}&receivable_date_from={{ receivable_date_from }}&receivable_date_to={{ receivable_date_to }}&receivable_paid_status={{ receivable_paid_status|urlencode }}&receivable_shipped_status={{ receivable_shipped_status|urlencode }}&receivable_page={{ receivables.page - 1 }}">上一页</a>{% endif %}
     <span>第 {{ receivables.page }} / {{ receivables.pages }} 页，共 {{ receivables.total }} 条</span>
-    {% if receivables.page < receivables.pages %}<a href="?receivable_q={{ receivable_q|urlencode }}&receivable_date_from={{ receivable_date_from }}&receivable_date_to={{ receivable_date_to }}&receivable_paid_status={{ receivable_paid_status|urlencode }}&receivable_page={{ receivables.page + 1 }}">下一页</a>{% endif %}
+    {% if receivables.page < receivables.pages %}<a href="?receivable_q={{ receivable_q|urlencode }}&receivable_q2={{ receivable_q2|urlencode }}&receivable_date_from={{ receivable_date_from }}&receivable_date_to={{ receivable_date_to }}&receivable_paid_status={{ receivable_paid_status|urlencode }}&receivable_shipped_status={{ receivable_shipped_status|urlencode }}&receivable_page={{ receivables.page + 1 }}">下一页</a>{% endif %}
   </nav>{% endif %}
 </section>
 {% endif %}
@@ -124,7 +123,7 @@
       <button class="primary" formaction="/finance/payables/export" data-requires-selection disabled>导出选中表格</button>
     </div>
     <div class="panel table-wrap"><table>
-      <thead><tr><th><input type="checkbox" data-select-all aria-label="全选当前页"></th><th>订单号</th><th>产品</th><th>工艺</th><th>加工厂</th><th>产品/备品</th><th>加工单价</th><th>工艺费用</th><th>金额</th><th>外发日期</th><th>状态</th></tr></thead>
+      <thead><tr><th><input type="checkbox" data-select-all aria-label="&#20840;&#36873;&#24403;&#21069;&#39029;"></th><th>&#35746;&#21333;&#21495;</th><th>&#20135;&#21697;</th><th>&#24037;&#33402;</th><th>&#21152;&#24037;&#21378;</th><th>&#20135;&#21697;/&#22791;&#21697;</th><th>&#21152;&#24037;&#21333;&#20215;</th><th>&#24037;&#33402;&#36153;&#29992;</th><th>&#37329;&#39069;</th><th>&#22806;&#21457;&#26085;&#26399;</th><th>&#29366;&#24577;</th></tr></thead>
       <tbody>
       {% for row in payables.rows %}<tr>
         <td><input type="checkbox" name="selected_ids" value="{{ row.id }}" data-select-item aria-label="选择外发记录 {{ row.order_no }}"></td>
@@ -132,7 +131,7 @@
         <td>{{ row.product_quantity or 0 }} / {{ row.spare_quantity or 0 }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td>
         <td>{% if row.process_name == '冲压' %}加工费 {{ '%.2f'|format(row.processing_fee or 0) }}；材料 {{ '%.6f'|format(row.material_unit_price or 0) }}{% elif row.process_name == '上色' %}{{ row.color_count or 0 }} 色{% elif row.process_name == '印刷/UV' %}版费 {{ '%.2f'|format(row.plate_fee or 0) }}{% elif row.process_name == '低温锌合金' %}模具费 {{ '%.2f'|format(row.mold_fee or 0) }}{% else %}-{% endif %}</td>
         <td>{{ '¥ %.2f'|format(row.amount) if row.amount is not none else '-' }}</td><td>{{ row.outsource_date or '-' }}</td>
-        <td><span class="badge {{ 'ok' if row.paid_status else 'warn' }}">{{ '已付款' if row.paid_status else '未付款' }}</span></td>
+        <td><span class="badge {{ 'ok' if row.paid_status else 'warn' }}">{% if row.paid_status %}&#24050;&#20184;&#27454;{% else %}&#26410;&#20184;&#27454;{% endif %}</span></td>
       </tr>{% else %}<tr><td colspan="11" class="muted">暂无匹配的加工厂付款记录</td></tr>{% endfor %}
       </tbody>
     </table></div>

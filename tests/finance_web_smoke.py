@@ -98,6 +98,8 @@ with TestClient(app) as client:
     login(client, "admin", "admin-password")
     old_order = create_order(client, "2026-07-01", "旧订单", 1)
     new_order = create_order(client, "2026-07-15", "新订单", 2)
+    with repo.connect(write=True) as conn:
+        conn.execute("UPDATE orders SET shipped_status = 1, shipped_at = ? WHERE order_no = ?", ("2026-07-18 08:00:00", new_order))
     first_record = repo.create_outsource_batch(
         {"process_name": "plating", "factory_name": "factory-a", "outsource_date": "2026-07-10", "paid_status": 0},
         [{"order_no": old_order, "product_quantity": 10, "spare_quantity": 1, "unit_price": 0.5}],
@@ -136,12 +138,11 @@ with TestClient(app) as client:
     assert finance_page.status_code == 200
     assert old_order in finance_page.text and new_order in finance_page.text
     assert "产品" not in finance_page.text and "旧产品" not in finance_page.text and "新产品" not in finance_page.text
-    assert "是否开票" in finance_page.text and "未开票" in finance_page.text
-    assert "是否收款" in finance_page.text and "已选未收款合计 ¥" in finance_page.text
-    assert "订单暂存区" in finance_page.text and "data-finance-stash" in finance_page.text
-    assert "data-context-stash" in Path("order_system/web/static/app.js").read_text(encoding="utf-8")
+    assert "receivable_q2" in finance_page.text and "receivable_shipped_status" in finance_page.text
+    assert "&#20986;&#36135;&#29366;&#24577;" in finance_page.text and "&#25910;&#27454;&#29366;&#24577;" in finance_page.text
+    assert "&#24050;&#20986;&#36135;" in finance_page.text and "&#24453;&#20986;&#36135;" in finance_page.text
+    assert "data-finance-stash" not in finance_page.text and "data-stash-no" not in finance_page.text
     assert f'data-request-edit-url="/orders/1/edit"' in finance_page.text
-    assert f'data-stash-no="{old_order}"' in finance_page.text and 'data-stash-id="1"' in finance_page.text
     assert "/finance/receivables/pdf" in finance_page.text
     payables_page = client.get("/finance/payables")
     assert payables_page.status_code == 200
@@ -171,12 +172,16 @@ with TestClient(app) as client:
     assert "\u5355\u4ef7\u5f02\u5e38" in strings and "\u662f" in strings
     assert "\u4ea7\u54c1" not in strings
 
-    filtered_customer = client.get(f"/finance/receivables?receivable_q={new_order}")
+    filtered_customer = client.get(f"/finance/receivables?receivable_q=TWD2&receivable_q2=260715")
     receivable_html = filtered_customer.text
     assert new_order in receivable_html and old_order not in receivable_html
 
-    filtered_income = client.get("/finance/receivables?receivable_date_from=2026-07-10")
+    filtered_income = client.get("/finance/receivables?receivable_date_from=2026-07-18&receivable_date_to=2026-07-18")
     assert new_order in filtered_income.text and old_order not in filtered_income.text
+    filtered_shipped = client.get("/finance/receivables?receivable_shipped_status=shipped")
+    assert new_order in filtered_shipped.text and old_order not in filtered_shipped.text
+    filtered_unshipped_status = client.get("/finance/receivables?receivable_shipped_status=unshipped")
+    assert old_order in filtered_unshipped_status.text and new_order not in filtered_unshipped_status.text
     filtered_unpaid = client.get("/finance/receivables?receivable_paid_status=unpaid")
     assert old_order in filtered_unpaid.text and new_order in filtered_unpaid.text
     filtered_paid = client.get("/finance/receivables?receivable_paid_status=paid")
@@ -201,7 +206,7 @@ with TestClient(app) as client:
     assert invoice_response.status_code == 303
     assert repo.get_order(1)["invoice_status"] == 1 and repo.get_order(2)["invoice_status"] == 1
     invoice_page = client.get("/finance/receivables")
-    assert "已开票" in invoice_page.text
+    assert "&#24050;&#24320;&#31080;" in invoice_page.text
     uninvoice_response = client.post(
         "/finance/receivables/invoice",
         data={"csrf": csrf(invoice_page.text), "selected_ids": "2", "invoiced": "0"},
@@ -212,6 +217,8 @@ with TestClient(app) as client:
     bulk_ids = []
     for index in range(45):
         order_id, _ = repo.create_order(direct_order_payload(f"TWD9-260722{index + 1:03d}", "2026-07-22"))
+        with repo.connect(write=True) as conn:
+            conn.execute("UPDATE orders SET shipped_status = 1, shipped_at = ? WHERE id = ?", ("2026-07-22 09:00:00", order_id))
         bulk_ids.append(order_id)
     bulk_status = client.post(
         "/finance/receivables/status",
@@ -281,8 +288,8 @@ with TestClient(app) as client:
     approved_messages = client.get("/messages?status=approved")
     assert "同意财务修改" in approved_messages.text and "/orders/1" in approved_messages.text
     assert "/orders/1/edit?request_id=1" not in approved_messages.text
-    receivables_after_edit = client.get("/finance/receivables?receivable_date_to=2026-07-21")
-    assert "多单价" in receivables_after_edit.text and "¥ 133.00" in receivables_after_edit.text
+    receivables_after_edit = client.get(f"/finance/receivables?receivable_q={old_order}")
+    assert "&#22810;&#21333;&#20215;" in receivables_after_edit.text and "&#165; 133.00" in receivables_after_edit.text
     token = csrf(receivables_after_edit.text)
 
     response = client.post(

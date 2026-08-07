@@ -19,7 +19,7 @@ REQUIRED_WEB_FACTORIES = [("\u6bdb\u8fb9", "\u6797\u4e16\u57f9"), ("\u956d\u96d5
 ORDER_COLUMNS = [
     "order_type", "salesman", "order_no", "product_name", "order_date",
     "delivery_date", "quantity", "spare_quantity", "quantity_unit", "unit_price", "price_tiers_json", "extra_fee",
-    "paid_status", "shipped_status", "invoice_status", "order_prefix_no", "customer_code", "customer_name",
+    "paid_status", "shipped_status", "shipped_at", "invoice_status", "order_prefix_no", "customer_code", "customer_name",
     "production_no", "bi_no", "width_mm",
     "diameter_mm", "height_mm", "thickness_mm", "size_as_sample", "materials_json",
     "material_note", "material_note_red", "plating_json", "plating_note",
@@ -962,7 +962,7 @@ class Repository:
             payload["customer_code"] = prefix_no
             payload["customer_name"] = str(customer["name"])
             required_defaults = {
-                "quantity_unit": "个", "spare_quantity": 0, "paid_status": 0, "shipped_status": 0, "invoice_status": 0, "order_prefix_no": prefix_no,
+                "quantity_unit": "个", "spare_quantity": 0, "paid_status": 0, "shipped_status": 0, "shipped_at": None, "invoice_status": 0, "order_prefix_no": prefix_no,
                 "size_as_sample": 0, "materials_json": "[]", "plating_json": "[]",
                 "accessories_json": "[]", "polishing_json": "[]", "coloring_json": "[]",
                 "resin_json": "[]", "packaging_json": "[]", "price_tiers_json": "[]", "image_paths_json": "[]", "component_parts_json": "[]",
@@ -1047,26 +1047,35 @@ class Repository:
     def finance_orders(
         self,
         keyword: str = "",
-        date_from: str = "",
-        date_to: str = "",
+        keyword2: str = "",
+        shipped_from: str = "",
+        shipped_to: str = "",
         paid_status: str = "",
+        shipped_status: str = "",
         page: int = 1,
         page_size: int = 40,
     ) -> dict[str, Any]:
         keyword = keyword.strip()
-        date_from = date_from.strip()
-        date_to = date_to.strip()
+        keyword2 = keyword2.strip()
+        shipped_from = shipped_from.strip()
+        shipped_to = shipped_to.strip()
         paid_status = paid_status.strip()
+        shipped_status = shipped_status.strip()
         page = max(page, 1)
         offset = (page - 1) * page_size
         where = """WHERE (? = '' OR order_no LIKE ? OR customer_name LIKE ? OR bi_no LIKE ? OR production_no LIKE ?)
-                   AND (? = '' OR order_date >= ?)
-                   AND (? = '' OR order_date <= ?)"""
+                   AND (? = '' OR order_no LIKE ? OR customer_name LIKE ? OR bi_no LIKE ? OR production_no LIKE ?)
+                   AND (? = '' OR shipped_at >= ?)
+                   AND (? = '' OR shipped_at < date(?, '+1 day'))"""
         like = f"%{keyword}%"
-        args: list[Any] = [keyword, like, like, like, like, date_from, date_from, date_to, date_to]
+        like2 = f"%{keyword2}%"
+        args: list[Any] = [keyword, like, like, like, like, keyword2, like2, like2, like2, like2, shipped_from, shipped_from, shipped_to, shipped_to]
         if paid_status in {"paid", "unpaid"}:
             where += " AND paid_status = ?"
             args.append(1 if paid_status == "paid" else 0)
+        if shipped_status in {"shipped", "unshipped"}:
+            where += " AND shipped_status = ?"
+            args.append(1 if shipped_status == "shipped" else 0)
         with self.connect() as conn:
             total = int(conn.execute(f"SELECT COUNT(*) FROM orders {where}", args).fetchone()[0])
             all_amount_rows = conn.execute(
@@ -1080,8 +1089,9 @@ class Repository:
             rows = conn.execute(
                 f"""SELECT id, order_no, customer_code, customer_name, bi_no,
                            production_no, quantity, quantity_unit,
-                           unit_price, price_tiers_json, extra_fee, paid_status, invoice_status, order_date
-                    FROM orders {where} ORDER BY order_date DESC, id DESC LIMIT ? OFFSET ?""",
+                           unit_price, price_tiers_json, extra_fee, paid_status,
+                           shipped_status, shipped_at, invoice_status, order_date
+                    FROM orders {where} ORDER BY COALESCE(shipped_at, '') DESC, order_date DESC, id DESC LIMIT ? OFFSET ?""",
                 (*args, page_size, offset),
             ).fetchall()
         result_rows = []
@@ -1093,6 +1103,7 @@ class Repository:
         return {"rows": result_rows, "total": total, "page": page,
                 "pages": max(1, (total + page_size - 1) // page_size),
                 "unpaid_total": unpaid_total}
+
     @staticmethod
     def _normalized_ids(values: list[int]) -> list[int]:
         return sorted({int(value) for value in values if int(value) > 0})
@@ -1113,7 +1124,7 @@ class Repository:
                 rows.extend(conn.execute(
                     f"""SELECT id, order_no, customer_code, customer_name, bi_no,
                                production_no, product_name, quantity, quantity_unit,
-                               unit_price, price_tiers_json, extra_fee, paid_status, invoice_status, order_date
+                               unit_price, price_tiers_json, extra_fee, paid_status, shipped_status, shipped_at, invoice_status, order_date
                         FROM orders WHERE id IN ({placeholders})""",
                     chunk,
                 ).fetchall())
@@ -1174,8 +1185,8 @@ class Repository:
     def set_order_shipped(self, order_id: int, shipped: bool) -> None:
         with self.connect(write=True) as conn:
             conn.execute(
-                "UPDATE orders SET shipped_status = ? WHERE id = ?",
-                (int(shipped), order_id),
+                "UPDATE orders SET shipped_status = ?, shipped_at = CASE WHEN ? THEN COALESCE(shipped_at, CURRENT_TIMESTAMP) ELSE NULL END WHERE id = ?",
+                (int(shipped), int(shipped), order_id),
             )
 
     def ship_workshop_orders(self, department_key: str, order_nos: list[str]) -> list[str]:

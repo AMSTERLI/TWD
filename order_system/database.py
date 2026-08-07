@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS orders (
     extra_fee REAL,
     paid_status INTEGER NOT NULL DEFAULT 0,
     shipped_status INTEGER NOT NULL DEFAULT 0,
+    shipped_at TEXT,
     invoice_status INTEGER NOT NULL DEFAULT 0,
     order_prefix_no INTEGER NOT NULL DEFAULT 1,
     customer_code INTEGER,
@@ -180,6 +181,7 @@ class Database:
             self._ensure_column(conn, "orders", "extra_fee", "REAL")
             self._ensure_column(conn, "orders", "paid_status", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "orders", "shipped_status", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column(conn, "orders", "shipped_at", "TEXT")
             self._ensure_column(conn, "orders", "invoice_status", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "orders", "order_prefix_no", "INTEGER NOT NULL DEFAULT 1")
             self._ensure_column(conn, "orders", "customer_code", "INTEGER")

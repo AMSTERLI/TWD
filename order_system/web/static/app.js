@@ -1477,7 +1477,7 @@ if (contextRows.length) {
   const menu = document.createElement("div");
   menu.className = "admin-context-menu";
   menu.hidden = true;
-  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-workshop-edit>\u4fee\u6539\u8ba1\u4ef6</button><button type="button" data-context-workshop-quantity>申请改数量/金额</button><button type="button" data-context-stash>暂存</button><button type="button" data-context-replenish>申请补数</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-delete>删除</button>';
+  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-workshop-edit>\u4fee\u6539\u8ba1\u4ef6</button><button type="button" data-context-workshop-quantity>申请改数量/金额</button><button type="button" data-context-replenish>申请补数</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-delete>删除</button>';
   document.body.appendChild(menu);
   let activeRow = null;
 
@@ -1491,7 +1491,8 @@ if (contextRows.length) {
     menu.querySelector("[data-context-request]").hidden = !activeRow?.dataset.requestEditUrl;
     menu.querySelector("[data-context-workshop-edit]").hidden = !activeRow?.dataset.workshopEditUrl;
     menu.querySelector("[data-context-workshop-quantity]").hidden = !activeRow?.dataset.workshopQuantityUrl;
-    menu.querySelector("[data-context-stash]").hidden = !activeRow?.dataset.stashId;
+    const stashButton = menu.querySelector("[data-context-stash]");
+    if (stashButton) stashButton.hidden = !activeRow?.dataset.stashId;
     menu.querySelector("[data-context-replenish]").hidden = !activeRow?.dataset.replenishmentUrl;
     const shipButton = menu.querySelector("[data-context-ship]");
     shipButton.hidden = !activeRow?.dataset.shipUrl;
@@ -1607,7 +1608,8 @@ if (contextRows.length) {
     document.body.appendChild(form);
     form.submit();
   });
-  menu.querySelector("[data-context-stash]").addEventListener("click", () => {
+  const stashButton = menu.querySelector("[data-context-stash]");
+  if (stashButton) stashButton.addEventListener("click", () => {
     if (!activeRow?.dataset.stashId) return;
     document.dispatchEvent(new CustomEvent("finance-stash-add", {
       detail: {id: activeRow.dataset.stashId, no: activeRow.dataset.stashNo || activeRow.dataset.recordLabel || ""}

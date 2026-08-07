@@ -302,9 +302,11 @@ async def selected_receivable_ids(form: Any) -> list[int]:
     result = await run_in_threadpool(
         repo.finance_orders,
         str(form.get("receivable_q") or ""),
+        str(form.get("receivable_q2") or ""),
         str(form.get("receivable_date_from") or ""),
         str(form.get("receivable_date_to") or ""),
         str(form.get("receivable_paid_status") or ""),
+        str(form.get("receivable_shipped_status") or ""),
         1,
         BULK_MATCHING_LIMIT,
     )
@@ -1247,6 +1249,7 @@ async def edit_order(request: Request, order_id: int):
             raise ValueError("产品名称、有效数量和备品数量为必填项")
         payload["paid_status"] = int(existing.get("paid_status") or 0)
         payload["shipped_status"] = int(existing.get("shipped_status") or 0)
+        payload["shipped_at"] = existing.get("shipped_at")
         if user["role"] == "sales":
             payload["invoice_status"] = int(existing.get("invoice_status") or 0)
         uploaded_images = loads_json(payload.get("image_paths_json") or "[]")
@@ -1977,16 +1980,19 @@ def finance(request: Request):
 def finance_receivables(
     request: Request,
     receivable_q: str = "",
+    receivable_q2: str = "",
     receivable_date_from: str = "",
     receivable_date_to: str = "",
     receivable_paid_status: str = "",
+    receivable_shipped_status: str = "",
     receivable_page: int = 1,
 ):
     _, denied = require_page(request, {"finance"})
     if denied:
         return denied
     receivables = repo.finance_orders(
-        receivable_q, receivable_date_from, receivable_date_to, receivable_paid_status, receivable_page
+        receivable_q, receivable_q2, receivable_date_from, receivable_date_to,
+        receivable_paid_status, receivable_shipped_status, receivable_page
     )
     return templates.TemplateResponse(
         request,
@@ -1998,9 +2004,11 @@ def finance_receivables(
             payables=None,
             factories=[],
             receivable_q=receivable_q,
+            receivable_q2=receivable_q2,
             receivable_date_from=receivable_date_from,
             receivable_date_to=receivable_date_to,
             receivable_paid_status=receivable_paid_status,
+            receivable_shipped_status=receivable_shipped_status,
             payable_q="",
             payable_factory="",
             payable_date_from="",
@@ -2034,9 +2042,11 @@ def finance_payables(
             payables=payables,
             factories=repo.finance_factory_names(),
             receivable_q="",
+            receivable_q2="",
             receivable_date_from="",
             receivable_date_to="",
             receivable_paid_status="",
+            receivable_shipped_status="",
             payable_q=payable_q,
             payable_factory=payable_factory,
             payable_date_from=payable_date_from,
@@ -2087,9 +2097,11 @@ def finance_workshop_reports(
             reported_from=reported_from,
             reported_to=reported_to,
             receivable_q="",
+            receivable_q2="",
             receivable_date_from="",
             receivable_date_to="",
             receivable_paid_status="",
+            receivable_shipped_status="",
             payable_q="",
             payable_factory="",
             payable_date_from="",
@@ -2222,7 +2234,7 @@ async def finance_receivables_export(request: Request):
         format_receivable_export_quantity(row),
         row.get("quantity_unit") or "", format_receivable_export_unit_price(row),
         row.get("extra_fee") or 0, row.get("amount") or 0,
-        row.get("order_date") or "", "\u5df2\u6536\u6b3e" if row.get("paid_status") else "\u672a\u6536\u6b3e",
+        row.get("shipped_at") or "", "\u5df2\u51fa\u8d27" if row.get("shipped_status") else "\u5f85\u51fa\u8d27", "\u5df2\u6536\u6b3e" if row.get("paid_status") else "\u672a\u6536\u6b3e",
     ] for row in rows]
     await run_in_threadpool(
         repo.audit, user, "finance.receivables.export", str(len(rows)), client_ip(request)
