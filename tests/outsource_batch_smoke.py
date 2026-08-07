@@ -53,6 +53,11 @@ with TestClient(app) as client:
     repo.legacy.add_outsource_factory(LOW_ZINC, "low-zinc-factory")
     first_no = repo.create_order(order_payload("batch-one"))[1]
     second_no = repo.create_order(order_payload("batch-two"))[1]
+    legacy_order_id, _ = repo.create_order(order_payload("legacy-spaced"))
+    legacy_spaced_no = "TWD1- 260715099"
+    legacy_scanned_no = "TWD1-260715099"
+    with repo.connect(write=True) as conn:
+        conn.execute("UPDATE orders SET order_no = ? WHERE id = ?", (legacy_spaced_no, legacy_order_id))
 
     login = client.get("/login")
     client.post("/login", data={
@@ -77,6 +82,9 @@ with TestClient(app) as client:
     assert lookup_order["order_no"] == first_no
     assert lookup_order["quantity"] == 100 and lookup_order["spare_quantity"] == 7
     assert float(lookup_order["width_mm"]) == 12.5 and float(lookup_order["height_mm"]) == 8.25
+    legacy_lookup = client.get(f"/outsource/order-lookup?order_no={legacy_scanned_no}")
+    assert legacy_lookup.status_code == 200
+    assert legacy_lookup.json()["order"]["order_no"] == legacy_spaced_no
     response = client.post(
         "/outsource",
         data={
@@ -112,7 +120,7 @@ with TestClient(app) as client:
     assert all(row["received_status"] == 0 for row in records)
     receive = client.post(
         "/outsource/receive",
-        data={"csrf": token(page.text), "receive_order_no": [first_no]},
+        data={"csrf": token(page.text), "receive_order_no": [first_no], "receive_factory_name": ["batch-factory"]},
         follow_redirects=False,
     )
     assert receive.status_code == 303 and "received=1" in receive.headers["location"]
@@ -151,6 +159,23 @@ with TestClient(app) as client:
     except ValueError:
         pass
     assert len(repo.outsource_records()["rows"]) == before
+
+    legacy_outsource_id = repo.create_outsource_batch(
+        {"process_name": LASER, "factory_name": "legacy-factory", "outsource_date": "2026-07-15", "paid_status": 0},
+        [{"order_no": legacy_scanned_no, "unit_price": 0.5}],
+    )[0]
+    legacy_record = repo.get_outsource_record(legacy_outsource_id)
+    assert legacy_record["order_no"] == legacy_spaced_no
+    legacy_history = client.get(f"/outsource/history?order_no={legacy_scanned_no}&process_name={LASER}")
+    assert legacy_history.status_code == 200
+    assert legacy_history.json()["record"]["id"] == legacy_outsource_id
+    legacy_receive = client.post(
+        "/outsource/receive",
+        data={"csrf": token(client.get("/outsource").text), "receive_order_no": [legacy_scanned_no], "receive_factory_name": ["legacy-factory"]},
+        follow_redirects=False,
+    )
+    assert legacy_receive.status_code == 303
+    assert repo.get_outsource_record(legacy_outsource_id)["received_status"] == 1
 
     process_names = {item["process_name"] for item in repo.processes()}
     assert {PUNCH, COLORING, "印刷/UV", LEATHER}.issubset(process_names)

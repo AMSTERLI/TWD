@@ -122,12 +122,13 @@ with TestClient(app) as client:
             "csrf": csrf(manual_page.text), "order_type": "新订单", "salesman": "测试",
             "product_name": "手动编号", "order_date": "2026-07-15", "quantity": "1",
             "spare_quantity": "0",
-            "quantity_unit": "个", "order_prefix_no": "1", "order_no": "TWD1-MANUAL001",
+            "quantity_unit": "个", "order_prefix_no": "1", "order_no": " TWD1 - MANUAL001 ",
         },
         follow_redirects=False,
     )
     assert manual.status_code == 303
     manual_id = int(manual.headers["location"].split("/")[2].split("?")[0])
+    assert repo.get_order(manual_id)["order_no"] == "TWD1-MANUAL001"
     assert "TWD1-MANUAL001" in client.get(manual.headers["location"]).text
     orders_page = client.get("/orders")
     assert orders_page.status_code == 200 and "data-admin-context" in orders_page.text
@@ -236,5 +237,3 @@ with TestClient(app) as client:
     assert client.get("/orders/1/pdf").status_code == 200
 
 print(f"web smoke ok: {root}")
-
-

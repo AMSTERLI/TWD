@@ -101,6 +101,9 @@ with TestClient(app) as client:
     auto_qty_payload = payload("TWD1-260721104")
     auto_qty_payload["spare_quantity"] = 15
     _, auto_qty_order_no = repo.create_order(auto_qty_payload)
+    with repo.connect(write=True) as conn:
+        conn.execute("UPDATE orders SET order_no = ? WHERE id = ?", ("TWD1- 260721110", spaced_cutter_order_id))
+    spaced_cutter_order_no = "TWD1- 260721110"
 
     admin_login_page = client.get("/login")
     admin_login = client.post(

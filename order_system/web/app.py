@@ -27,7 +27,7 @@ from order_system.order_import import OrderImportError, analyze_order_document
 
 from .catalogs import import_catalogs
 from .pdf import merge_order_pdfs, render_order_pdf
-from .repository import ORDER_COLUMNS, Repository, price_tier_label, price_tiers_from_json
+from .repository import ORDER_COLUMNS, Repository, normalize_scanned_order_no, price_tier_label, price_tiers_from_json
 from .security import csrf_token, valid_csrf
 from .settings import (
     DB_PATH, IMAGES_DIR, MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES, SESSION_HTTPS_ONLY,
@@ -735,7 +735,7 @@ async def order_payload(form: Any, *, save_uploaded_images: bool = True) -> dict
     return {
         "order_type": str(form.get("order_type") or "新订单"),
         "salesman": str(form.get("salesman") or "").strip(),
-        "order_no": str(form.get("order_no") or "").strip(),
+        "order_no": normalize_scanned_order_no(form.get("order_no")),
         "_manual_order_no": form.get("manual_order_no") == "1",
         "product_name": str(form.get("product_name") or "").strip(),
         "order_date": str(form.get("order_date") or "").strip(),

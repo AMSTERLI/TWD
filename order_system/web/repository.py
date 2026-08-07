@@ -38,6 +38,12 @@ def normalize_scanned_order_no(value: Any) -> str:
     return re.sub(r"\s+", "", str(value or "")).strip()
 
 
+def scanned_order_no_base_candidate(value: Any) -> str:
+    clean = normalize_scanned_order_no(value)
+    match = re.fullmatch(r"(TWD\d+-\d{9})-\d+", clean)
+    return match.group(1) if match else ""
+
+
 def price_tiers_from_json(value: Any) -> list[dict[str, float]]:
     try:
         raw_items = json.loads(str(value or "[]"))
@@ -782,9 +788,10 @@ class Repository:
         order_no = str(order_no or "").strip()
         if not order_no:
             return False
+        normalized_order_no = normalize_scanned_order_no(order_no)
         order_rows = conn.execute(
-            "SELECT id FROM orders WHERE order_no = ?",
-            (order_no,),
+            "SELECT id FROM orders WHERE order_no = ? OR REPLACE(order_no, ' ', '') = ?",
+            (order_no, normalized_order_no),
         ).fetchall()
         for row in order_rows:
             if exclude_order_id is not None and int(row["id"]) == int(exclude_order_id):
@@ -806,6 +813,24 @@ class Repository:
                 continue
             return True
         return False
+
+    @staticmethod
+    def _find_order_by_scanned_no(conn: sqlite3.Connection, order_no: str) -> sqlite3.Row | None:
+        clean = normalize_scanned_order_no(order_no)
+        candidates = [clean]
+        base_order_no = scanned_order_no_base_candidate(clean)
+        if base_order_no:
+            candidates.append(base_order_no)
+        for candidate in dict.fromkeys(item for item in candidates if item):
+            row = conn.execute(
+                """SELECT * FROM orders
+                   WHERE order_no = ? OR REPLACE(order_no, ' ', '') = ?
+                   ORDER BY id DESC LIMIT 1""",
+                (candidate, candidate),
+            ).fetchone()
+            if row:
+                return row
+        return None
 
     @classmethod
     def _next_order_no(cls, conn: sqlite3.Connection, order_date: str, prefix_no: int) -> str:
@@ -921,7 +946,7 @@ class Repository:
         if not order_date:
             raise ValueError("下单日期不能为空")
         prefix_no = int(payload.get("customer_code") or payload.get("order_prefix_no") or 0)
-        requested_order_no = str(payload.get("order_no") or "").strip()
+        requested_order_no = normalize_scanned_order_no(payload.get("order_no"))
         if len(requested_order_no) > 100:
             raise ValueError("订单编号不能超过 100 个字符")
         with self.connect(write=True) as conn:
@@ -967,7 +992,8 @@ class Repository:
             payload["order_prefix_no"] = prefix_no
             payload["customer_code"] = prefix_no
             payload["customer_name"] = str(customer["name"])
-            order_no = str(payload.get("order_no") or "").strip()
+            order_no = normalize_scanned_order_no(payload.get("order_no"))
+            payload["order_no"] = order_no
             if not manual_order_no and self._order_no_taken(conn, order_no, exclude_order_id=order_id, allowed_order_no=order_no, allowed_user_id=reservation_user_id):
                 raise ValueError("订单编号已被占用，请重新生成订单编号或勾选手动填写")
             values = [payload.get(column) for column in ORDER_COLUMNS]
@@ -987,7 +1013,8 @@ class Repository:
         payload["order_prefix_no"] = prefix_no
         payload["customer_code"] = prefix_no
         payload["customer_name"] = str(customer["name"])
-        order_no = str(payload.get("order_no") or "").strip()
+        order_no = normalize_scanned_order_no(payload.get("order_no"))
+        payload["order_no"] = order_no
         if not manual_order_no and self._order_no_taken(conn, order_no, exclude_order_id=order_id, allowed_order_no=order_no, allowed_user_id=reservation_user_id):
             raise ValueError("订单编号已被占用，请重新生成订单编号或勾选手动填写")
         assignments = ", ".join(f"{column} = ?" for column in ORDER_COLUMNS)
@@ -1155,7 +1182,7 @@ class Repository:
         department_key = str(department_key or "").strip()
         normalized = []
         for order_no in order_nos:
-            value = str(order_no or "").strip()
+            value = normalize_scanned_order_no(order_no)
             if value and value not in normalized:
                 normalized.append(value)
         if not normalized:
@@ -1166,17 +1193,17 @@ class Repository:
                 row = conn.execute(
                     """SELECT id, order_no
                        FROM workshop_records
-                       WHERE order_no = ? AND department_key = ? AND shipped_status = 0
+                       WHERE (order_no = ? OR REPLACE(order_no, ' ', '') = ?) AND department_key = ? AND shipped_status = 0
                        ORDER BY reported_at DESC, id DESC
                        LIMIT 1""",
-                    (order_no, department_key),
+                    (order_no, order_no, department_key),
                 ).fetchone()
                 if not row:
                     existing = conn.execute(
                         """SELECT id FROM workshop_records
-                           WHERE order_no = ? AND department_key = ?
+                           WHERE (order_no = ? OR REPLACE(order_no, ' ', '') = ?) AND department_key = ?
                            ORDER BY reported_at DESC, id DESC LIMIT 1""",
-                        (order_no, department_key),
+                        (order_no, order_no, department_key),
                     ).fetchone()
                     if existing:
                         raise ValueError(f"订单 {order_no} 已出货")
@@ -1191,24 +1218,19 @@ class Repository:
         if not department_key or not order_no:
             return None
         with self.connect() as conn:
-            order = conn.execute(
-                """SELECT id, order_no, quantity, spare_quantity, width_mm, height_mm, thickness_mm, diameter_mm
-                   FROM orders
-                   WHERE order_no = ?
-                   ORDER BY id DESC LIMIT 1""",
-                (order_no,),
-            ).fetchone()
+            order = self._find_order_by_scanned_no(conn, order_no)
             if not order:
                 return None
+            order_no = str(order["order_no"])
             order_quantity = float(order["quantity"] or 0) + float(order["spare_quantity"] or 0)
             if department_key == "press":
                 latest = conn.execute(
                     """SELECT reported_at
                        FROM workshop_records
-                       WHERE department_key = ? AND order_no = ?
+                       WHERE department_key = ? AND (order_no = ? OR REPLACE(order_no, ' ', '') = ?)
                        ORDER BY reported_at DESC, id DESC
                        LIMIT 1""",
-                    (department_key, order_no),
+                    (department_key, order_no, normalize_scanned_order_no(order_no)),
                 ).fetchone()
                 if latest:
                     row = conn.execute(
@@ -1220,9 +1242,9 @@ class Repository:
                                   MAX(note_text) AS note_text,
                                   MAX(record_type) AS record_type, MAX(reported_at) AS reported_at
                            FROM workshop_records
-                           WHERE department_key = ? AND order_no = ? AND reported_at = ?
+                           WHERE department_key = ? AND (order_no = ? OR REPLACE(order_no, ' ', '') = ?) AND reported_at = ?
                            GROUP BY order_no, department_key""",
-                        (department_key, order_no, str(latest["reported_at"])),
+                        (department_key, order_no, normalize_scanned_order_no(order_no), str(latest["reported_at"])),
                     ).fetchone()
                 else:
                     row = None
@@ -1231,10 +1253,10 @@ class Repository:
                     """SELECT id, order_id, order_no, department_key, department_name, quantity, unit_price, mold_fee,
                               operator_name, shipped_status, material, size_text, spec, note_text, record_type, reported_at
                        FROM workshop_records
-                       WHERE department_key = ? AND order_no = ?
+                       WHERE department_key = ? AND (order_no = ? OR REPLACE(order_no, ' ', '') = ?)
                        ORDER BY reported_at DESC, id DESC
                        LIMIT 1""",
-                    (department_key, order_no),
+                    (department_key, order_no, normalize_scanned_order_no(order_no)),
                 ).fetchone()
         result = dict(row) if row else {
             "id": None,
@@ -1423,10 +1445,7 @@ class Repository:
             operator_id = int(user.get("id") or 0) or None
             operator_name = str(user.get("display_name") or user.get("username") or "")
             for row in clean_rows:
-                order = conn.execute(
-                    "SELECT id, order_no FROM orders WHERE order_no = ? ORDER BY id DESC LIMIT 1",
-                    (row["order_no"],),
-                ).fetchone()
+                order = self._find_order_by_scanned_no(conn, row["order_no"])
                 if not order:
                     raise ValueError(f"\u8ba2\u5355 {row['order_no']} \u4e0d\u5b58\u5728")
                 if department_key in tooling_departments and row.get("record_type") != "rework":
@@ -1711,7 +1730,7 @@ class Repository:
         return dict(row) if row else None
 
     def latest_outsource_for_order_process(self, order_no: str, process_name: str) -> dict[str, Any] | None:
-        order_no = order_no.strip()
+        order_no = normalize_scanned_order_no(order_no)
         process_name = process_name.strip()
         if not order_no or not process_name:
             return None
@@ -1719,12 +1738,12 @@ class Repository:
             row = conn.execute(
                 """SELECT id, order_no, process_name, factory_name, quantity, outsource_date, created_at
                    FROM outsource_records
-                   WHERE order_no = ? AND process_name = ?
+                   WHERE (order_no = ? OR REPLACE(order_no, ' ', '') = ?) AND process_name = ?
                      AND COALESCE(remake_flag, 0) = 0
                      AND COALESCE(replenishment_flag, 0) = 0
                    ORDER BY outsource_date DESC, created_at DESC, id DESC
                    LIMIT 1""",
-                (order_no, process_name),
+                (order_no, order_no, process_name),
             ).fetchone()
         return dict(row) if row else None
 
@@ -1849,25 +1868,25 @@ class Repository:
                 factory_name = item["factory_name"]
                 row = conn.execute(
                     """SELECT id, order_no, factory_name FROM outsource_records
-                       WHERE order_no = ? AND factory_name = ? AND COALESCE(received_status, 0) = 0
+                       WHERE (order_no = ? OR REPLACE(order_no, ' ', '') = ?) AND factory_name = ? AND COALESCE(received_status, 0) = 0
                        ORDER BY outsource_date DESC, created_at DESC, id DESC
                        LIMIT 1""",
-                    (order_no, factory_name),
+                    (order_no, order_no, factory_name),
                 ).fetchone()
                 if not row:
                     existing_factory = conn.execute(
                         """SELECT id FROM outsource_records
-                           WHERE order_no = ? AND factory_name = ?
+                           WHERE (order_no = ? OR REPLACE(order_no, ' ', '') = ?) AND factory_name = ?
                            ORDER BY outsource_date DESC, created_at DESC, id DESC LIMIT 1""",
-                        (order_no, factory_name),
+                        (order_no, order_no, factory_name),
                     ).fetchone()
                     if existing_factory:
                         raise ValueError(f"订单 {order_no} 在 {factory_name} 已收货")
                     existing_order = conn.execute(
                         """SELECT id FROM outsource_records
-                           WHERE order_no = ?
+                           WHERE order_no = ? OR REPLACE(order_no, ' ', '') = ?
                            ORDER BY outsource_date DESC, created_at DESC, id DESC LIMIT 1""",
-                        (order_no,),
+                        (order_no, order_no),
                     ).fetchone()
                     if existing_order:
                         raise ValueError(f"订单 {order_no} 在 {factory_name} 没有未收货外发记录")
@@ -1912,7 +1931,7 @@ class Repository:
     ) -> list[int]:
         if not rows:
             raise ValueError("请至少录入一个订单号")
-        normalized = [str(row.get("order_no") or "").strip() for row in rows]
+        normalized = [normalize_scanned_order_no(row.get("order_no")) for row in rows]
         if any(not order_no for order_no in normalized):
             raise ValueError("订单号不能为空")
         if len(normalized) != len(set(normalized)):
@@ -1931,10 +1950,7 @@ class Repository:
         inserted: list[int] = []
         with self.connect(write=True) as conn:
             for row, order_no in zip(rows, normalized):
-                order = conn.execute(
-                    "SELECT id, order_no, quantity, spare_quantity FROM orders WHERE order_no = ? ORDER BY id DESC LIMIT 1",
-                    (order_no,),
-                ).fetchone()
+                order = self._find_order_by_scanned_no(conn, order_no)
                 if not order:
                     raise ValueError(f"订单号不存在：{order_no}")
 
@@ -2054,19 +2070,25 @@ class Repository:
         return [dict(row) for row in rows]
 
     def lookup_order(self, order_no: str) -> dict[str, Any] | None:
-        order_no = str(order_no or "").strip()
+        order_no = normalize_scanned_order_no(order_no)
         if not order_no:
             return None
         with self.connect() as conn:
-            row = conn.execute(
-                """SELECT id, order_no, product_name, quantity, spare_quantity, quantity_unit,
-                          width_mm, diameter_mm, height_mm, thickness_mm
-                   FROM orders
-                   WHERE order_no = ?
-                   ORDER BY id DESC LIMIT 1""",
-                (order_no,),
-            ).fetchone()
-        return dict(row) if row else None
+            row = self._find_order_by_scanned_no(conn, order_no)
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "order_no": row["order_no"],
+            "product_name": row["product_name"],
+            "quantity": row["quantity"],
+            "spare_quantity": row["spare_quantity"],
+            "quantity_unit": row["quantity_unit"],
+            "width_mm": row["width_mm"],
+            "diameter_mm": row["diameter_mm"],
+            "height_mm": row["height_mm"],
+            "thickness_mm": row["thickness_mm"],
+        }
 
     def processes(self) -> list[dict[str, Any]]:
         return self.legacy.list_outsource_processes()
