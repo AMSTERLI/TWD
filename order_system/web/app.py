@@ -124,7 +124,7 @@ WORKSHOP_DEPARTMENTS = {
         "name": "\u538b\u94f8",
         "password_env": "TWD_WORKSHOP_DIECAST_PASSWORD",
         "default_password": "yazhu888",
-        "employees": ["\u519c\u5982\u5e72", "\u674e\u56fd\u5bcc", "\u66fe\u660e", "\u519c\u5929\u4f69"],
+        "employees": ["\u519c\u5982\u5e72", "\u674e\u56fd\u5bcc", "\u66fe\u660e", "\u519c\u5929\u4f69", "\u4e341", "\u4e342", "\u4e343", "\u4e344", "\u4e345"],
         "piecework": True,
         "mold_fee": True,
         "mold_fee_label": "\u88c5\u6a21\u8d39",

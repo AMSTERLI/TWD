@@ -26,6 +26,8 @@ LASER = "\u956d\u96d5"
 LOW_ZINC = "\u4f4e\u6e29\u950c\u5408\u91d1"
 LEATHER = "\u76ae\u9769"
 LAO_LEI = "\u8001\u96f7"
+PACKAGING = "\u5305\u88c5"
+ZENG_FENG_E = "\u66fe\u51e4\u5a25"
 
 
 def token(html: str) -> str:
@@ -67,6 +69,8 @@ with TestClient(app) as client:
     assert "\u79e6\u6c38\u548c" in pin_factories
     leather_factories = {item["factory_name"] for item in repo.factories(LEATHER)}
     assert LAO_LEI in leather_factories
+    packaging_factories = {item["factory_name"] for item in repo.factories(PACKAGING)}
+    assert ZENG_FENG_E in packaging_factories
     page = client.get("/outsource")
     assert page.status_code == 200
     assert "data-outsource-batch" in page.text

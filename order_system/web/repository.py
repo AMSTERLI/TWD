@@ -1357,7 +1357,7 @@ class Repository:
             "packaging": {"\u6d82\u5c0f\u82f1", "\u5f90\u5f69\u8fde", "\u5468\u7f8e\u8bc6", "\u9648\u5c0f\u971e", "\u738b\u5bb6\u4e3d", "\u6768\u660e\u4ed9", "\u5f20\u96ea\u6797", "\u738b\u6587\u5bb9", "\u66fe\u51e4\u5a25", "\u66fe\u8fde\u543e", "\u8d56\u706b\u80dc"},
             "polishing": {"\u725f\u6c5f"},
             "painting": {"\u5218\u8fdb", "\u9ec4\u4e09\u679a", "\u5468\u6625\u71d5", "\u519c\u91d1\u7ea2", "\u519c\u8273\u7ea2", "\u9648\u7eaf\u82f1", "\u6881\u5f66", "\u6768\u7ea2\u82f1", "\u5f90\u53cb\u4e3d"},
-            "diecast": {"\u519c\u5982\u5e72", "\u674e\u56fd\u5bcc", "\u66fe\u660e", "\u519c\u5929\u4f69"},
+            "diecast": {"\u519c\u5982\u5e72", "\u674e\u56fd\u5bcc", "\u66fe\u660e", "\u519c\u5929\u4f69", "\u4e341", "\u4e342", "\u4e343", "\u4e344", "\u4e345"},
         }
         tooling_departments = {"mold", "cutter"}
         additive_fee_departments = {"press", "polishing", "diecast"}

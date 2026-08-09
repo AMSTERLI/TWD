@@ -148,6 +148,7 @@ DEFAULT_OUTSOURCE_FACTORIES = [
     ("\u710a\u9488", "\u79e6\u6c38\u548c"),
     ("\u6bdb\u8fb9", "\u6797\u4e16\u57f9"),
     ("\u956d\u96d5", "\u5f20\u5c55\u5c71"),
+    ("\u5305\u88c5", "\u66fe\u51e4\u5a25"),
     ("\u76ae\u9769", "\u8001\u96f7"),
     ("\u78e8\u77f3", "\u6bdb\u536b\u5175"),
 ]

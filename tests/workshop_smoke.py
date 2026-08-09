@@ -437,7 +437,7 @@ with TestClient(app) as client:
     assert diecast_unlock.status_code == 303 and diecast_unlock.headers["location"] == "/workshop/diecast"
     diecast = client.get("/workshop/diecast")
     assert diecast.status_code == 200 and "touch-piecework-panel" in diecast.text
-    assert "\u519c\u5982\u5e72" in diecast.text and "\u519c\u5929\u4f69" in diecast.text
+    assert "\u519c\u5982\u5e72" in diecast.text and "\u519c\u5929\u4f69" in diecast.text and "\u4e341" in diecast.text and "\u4e345" in diecast.text
     assert "\u88c5\u6a21\u8d39" in diecast.text and 'list="mold-fee-options-diecast"' in diecast.text and '<option value="8"></option>' in diecast.text
     assert 'employee-button active' not in diecast.text
     diecast_report = client.post(
