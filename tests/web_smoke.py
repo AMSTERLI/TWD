@@ -223,6 +223,9 @@ with TestClient(app) as client:
         follow_redirects=False,
     )
     assert receive_again.status_code == 422
+    static_js = Path("order_system/web/static/app.js").read_text(encoding="utf-8")
+    assert "receiveFailureMessage" in static_js and "fetch(form.action" in static_js
+    assert "\\u6279\\u91cf\\u6536\\u8d27\\u4fdd\\u5b58\\u5931\\u8d25" in static_js
     receive_second = client.post(
         "/outsource/receive",
         data={

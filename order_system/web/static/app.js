@@ -1260,11 +1260,22 @@ document.querySelectorAll("[data-outsource-receive]").forEach(form => {
   form.addEventListener("input", event => {
     if (event.target.matches("[data-receive-order]")) showEnd(event.target);
   });
-  form.addEventListener("submit", event => {
+  function receiveFailureMessage(html, fallback) {
+    if (!html) return fallback;
+    try {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const error = doc.querySelector(".alert.error");
+      return error?.textContent.trim() || fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
     const activeRows = [...rows.querySelectorAll("tr")].filter(row => cleanWorkshopOrderNo(row.querySelector("[data-receive-order]")?.value));
     if (!activeRows.length) {
-      event.preventDefault();
-      alert("请至少扫描或输入一个订单号");
+      alert("\u8bf7\u81f3\u5c11\u626b\u63cf\u6216\u8f93\u5165\u4e00\u4e2a\u8ba2\u5355\u53f7");
       return;
     }
     const seen = new Set();
@@ -1274,17 +1285,34 @@ document.querySelectorAll("[data-outsource-receive]").forEach(form => {
       if (orderInput && orderInput.value !== orderNo) orderInput.value = orderNo;
       const factoryName = row.querySelector("[name=receive_factory_name]")?.value.trim() || "";
       if (!factoryName) {
-        event.preventDefault();
-        alert(`订单 ${orderNo} 请选择加工厂。`);
+        alert(`\u8ba2\u5355 ${orderNo} \u8bf7\u9009\u62e9\u52a0\u5de5\u5382\u3002`);
         return;
       }
       const key = `${orderNo}|${factoryName}`;
       if (seen.has(key)) {
-        event.preventDefault();
-        alert(`${orderNo} / ${factoryName} 已在本次收货批量录入中出现过。`);
+        alert(`${orderNo} / ${factoryName} \u5df2\u5728\u672c\u6b21\u6536\u8d27\u6279\u91cf\u5f55\u5165\u4e2d\u51fa\u73b0\u8fc7\u3002`);
         return;
       }
       seen.add(key);
+    }
+    const submitter = event.submitter || form.querySelector("button[type=submit],button:not([type])");
+    if (submitter) submitter.disabled = true;
+    try {
+      const response = await fetch(form.action, {method: "POST", body: new FormData(form)});
+      if (!response.ok) {
+        const text = await response.text();
+        alert(receiveFailureMessage(text, "\u6279\u91cf\u6536\u8d27\u4fdd\u5b58\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u8ba2\u5355\u53f7\u548c\u52a0\u5de5\u5382\u3002"));
+        return;
+      }
+      if (response.redirected) {
+        window.location.href = response.url;
+      } else {
+        window.location.reload();
+      }
+    } catch (_) {
+      alert("\u6279\u91cf\u6536\u8d27\u4fdd\u5b58\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u7f51\u7edc\u540e\u91cd\u8bd5\u3002");
+    } finally {
+      if (submitter) submitter.disabled = false;
     }
   });
   const first = rows.querySelector("[data-receive-order]");
