@@ -987,6 +987,9 @@ class Repository:
         manual_order_no = bool(payload.pop("_manual_order_no", False))
         assignments = ", ".join(f"{column} = ?" for column in ORDER_COLUMNS)
         with self.connect(write=True) as conn:
+            existing = conn.execute("SELECT order_no FROM orders WHERE id = ?", (order_id,)).fetchone()
+            if not existing:
+                return False
             prefix_no = int(payload.get("customer_code") or payload.get("order_prefix_no") or 0)
             customer = self._customer_for_code(conn, prefix_no)
             payload["order_prefix_no"] = prefix_no
@@ -994,20 +997,24 @@ class Repository:
             payload["customer_name"] = str(customer["name"])
             order_no = normalize_scanned_order_no(payload.get("order_no"))
             payload["order_no"] = order_no
-            if not manual_order_no and self._order_no_taken(conn, order_no, exclude_order_id=order_id, allowed_order_no=order_no, allowed_user_id=reservation_user_id):
+            order_no_changed = normalize_scanned_order_no(existing["order_no"]) != order_no
+            if order_no_changed and not manual_order_no and self._order_no_taken(conn, order_no, exclude_order_id=order_id, allowed_order_no=order_no, allowed_user_id=reservation_user_id):
                 raise ValueError("订单编号已被占用，请重新生成订单编号或勾选手动填写")
             values = [payload.get(column) for column in ORDER_COLUMNS]
             cursor = conn.execute(
                 f"UPDATE orders SET {assignments} WHERE id = ?",
                 (*values, order_id),
             )
-            if cursor.rowcount == 1 and not manual_order_no:
+            if order_no_changed and cursor.rowcount == 1 and not manual_order_no:
                 self._consume_order_no_reservation(conn, order_no, reservation_user_id, order_id)
             return cursor.rowcount == 1
 
     def _update_order_with_payload(self, conn: sqlite3.Connection, order_id: int, payload: dict[str, Any], reservation_user_id: int | None = None) -> bool:
         payload = dict(payload)
         manual_order_no = bool(payload.pop("_manual_order_no", False))
+        existing = conn.execute("SELECT order_no FROM orders WHERE id = ?", (order_id,)).fetchone()
+        if not existing:
+            return False
         prefix_no = int(payload.get("customer_code") or payload.get("order_prefix_no") or 0)
         customer = self._customer_for_code(conn, prefix_no)
         payload["order_prefix_no"] = prefix_no
@@ -1015,7 +1022,8 @@ class Repository:
         payload["customer_name"] = str(customer["name"])
         order_no = normalize_scanned_order_no(payload.get("order_no"))
         payload["order_no"] = order_no
-        if not manual_order_no and self._order_no_taken(conn, order_no, exclude_order_id=order_id, allowed_order_no=order_no, allowed_user_id=reservation_user_id):
+        order_no_changed = normalize_scanned_order_no(existing["order_no"]) != order_no
+        if order_no_changed and not manual_order_no and self._order_no_taken(conn, order_no, exclude_order_id=order_id, allowed_order_no=order_no, allowed_user_id=reservation_user_id):
             raise ValueError("订单编号已被占用，请重新生成订单编号或勾选手动填写")
         assignments = ", ".join(f"{column} = ?" for column in ORDER_COLUMNS)
         values = [payload.get(column) for column in ORDER_COLUMNS]
@@ -1023,7 +1031,7 @@ class Repository:
             f"UPDATE orders SET {assignments} WHERE id = ?",
             (*values, order_id),
         )
-        if cursor.rowcount == 1 and not manual_order_no:
+        if order_no_changed and cursor.rowcount == 1 and not manual_order_no:
             self._consume_order_no_reservation(conn, order_no, reservation_user_id, order_id)
         return cursor.rowcount == 1
 

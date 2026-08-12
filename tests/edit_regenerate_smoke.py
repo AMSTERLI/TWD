@@ -71,8 +71,24 @@ admin_payload["product_name"] = "admin-regenerated"
 assert repo.update_order(order_id, admin_payload, admin_id)
 assert repo.get_order(order_id)["order_no"] == new_no
 
-finance_order_no = repo.reserve_order_no("2026-07-21", 1, admin_id)
-finance_order_id, _ = repo.create_order(base_payload(finance_order_no, admin_id, "finance-original"))
+finance_order_no = "TWD1-260721777"
+finance_payload = base_payload(finance_order_no, admin_id, "finance-original")
+finance_payload["_manual_order_no"] = True
+finance_order_id, _ = repo.create_order(finance_payload)
+with sqlite3.connect(repo.db_path) as conn:
+    conn.execute(
+        """INSERT INTO order_no_reservations (order_no, order_date, order_prefix_no, reserved_by)
+           VALUES (?, ?, ?, ?)""",
+        (finance_order_no, "2026-07-21", 1, admin_id),
+    )
+same_number_proposal = repo.get_order(finance_order_id)
+same_number_proposal["product_name"] = "finance-same-number"
+same_number_request_id = repo.create_proposed_edit_request(
+    finance_order_id, finance, same_number_proposal, "same order number with stale reservation"
+)
+repo.review_edit_request(same_number_request_id, admin, True, "approved")
+assert repo.get_order(finance_order_id)["product_name"] == "finance-same-number"
+
 proposed_no = repo.reserve_order_no("2026-07-21", 1, finance_id)
 proposal = repo.get_order(finance_order_id)
 proposal["order_no"] = proposed_no
