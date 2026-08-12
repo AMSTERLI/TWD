@@ -1766,6 +1766,23 @@ class Repository:
             ).fetchone()
         return dict(row) if row else None
 
+    def unreceived_outsource_factories(self, order_no: str) -> list[dict[str, Any]]:
+        order_no = normalize_scanned_order_no(order_no)
+        if not order_no:
+            return []
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT factory_name, COUNT(*) AS record_count
+                   FROM outsource_records
+                   WHERE (order_no = ? OR REPLACE(order_no, ' ', '') = ?)
+                     AND COALESCE(received_status, 0) = 0
+                     AND TRIM(COALESCE(factory_name, '')) <> ''
+                   GROUP BY factory_name
+                   ORDER BY MAX(outsource_date) DESC, MAX(created_at) DESC, MAX(id) DESC""",
+                (order_no, order_no),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def update_outsource_record(self, record_id: int, payload: dict[str, Any]) -> bool:
         columns = [
             "process_name", "factory_name", "quantity", "product_quantity",

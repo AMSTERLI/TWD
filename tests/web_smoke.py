@@ -169,6 +169,8 @@ with TestClient(app) as client:
     expected_process_order = ["\u51b2\u538b", "\u4e0a\u8272", "\u6bdb\u8fb9", "\u5305\u88c5", "\u5370\u5237/UV", "\u8f66\u7ec7\u5e26", "\u956d\u96d5", "\u6811\u8102", "\u4f4e\u6e29\u950c\u5408\u91d1"]
     assert process_names[:len(expected_process_order)] == expected_process_order
     assert 'name="receive_factory_name"' in outsource_page.text
+    assert 'data-unreceived-factories-url="/outsource/unreceived-factories"' in outsource_page.text
+    assert 'data-receive-factory' in outsource_page.text
     assert "receive-table" in outsource_page.text
     assert "<th>\u52a0\u5de5\u5382</th>" in outsource_page.text
     assert "\u78e8\u77f3" in outsource_page.text and "\u6bdb\u536b\u5175" in outsource_page.text
@@ -201,6 +203,9 @@ with TestClient(app) as client:
         {"process_name": "\u76ae\u9769", "factory_name": "\u8001\u96f7", "outsource_date": "2026-07-19", "paid_status": 0},
         [{"order_no": "TWD1-260715001", "product_quantity": 6, "spare_quantity": 0, "unit_price": 1}],
     )[0]
+    receive_factory_lookup = client.get("/outsource/unreceived-factories?order_no=TWD1%20-%20260715%20001")
+    assert receive_factory_lookup.status_code == 200
+    assert {item["factory_name"] for item in receive_factory_lookup.json()["factories"]} == {"\u8001\u96f7", "\u5f20\u5c55\u5c71", "\u6bdb\u536b\u5175"}
     receive_first = client.post(
         "/outsource/receive",
         data={
@@ -213,6 +218,8 @@ with TestClient(app) as client:
     assert receive_first.status_code == 303
     assert repo.get_outsource_record(first_outsource)["received_status"] == 1
     assert repo.get_outsource_record(second_outsource)["received_status"] == 0
+    receive_factory_lookup_after = client.get("/outsource/unreceived-factories?order_no=TWD1-260715001")
+    assert "\u5f20\u5c55\u5c71" not in [item["factory_name"] for item in receive_factory_lookup_after.json()["factories"]]
     receive_again = client.post(
         "/outsource/receive",
         data={

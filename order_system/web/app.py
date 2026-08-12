@@ -2362,6 +2362,15 @@ async def outsource_order_lookup(request: Request, order_no: str = ""):
     return JSONResponse({"order": order})
 
 
+@app.get("/outsource/unreceived-factories")
+async def outsource_unreceived_factories(request: Request, order_no: str = ""):
+    _, denied = require_page(request, {"outsource"})
+    if denied:
+        return JSONResponse({"error": "\u672a\u767b\u5f55\u6216\u65e0\u6743\u9650"}, status_code=401)
+    factories = await run_in_threadpool(repo.unreceived_outsource_factories, order_no)
+    return JSONResponse({"factories": factories})
+
+
 @app.get("/outsource/receipt", response_class=HTMLResponse)
 def outsource_receipt(request: Request, ids: str = ""):
     _, denied = require_page(request, {"outsource"})

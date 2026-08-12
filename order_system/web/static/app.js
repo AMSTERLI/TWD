@@ -1211,6 +1211,11 @@ document.querySelectorAll("[data-outsource-receive]").forEach(form => {
   const rows = form.querySelector("[data-receive-rows]");
   const template = form.querySelector("[data-receive-row-template]");
   const addButton = form.querySelector("[data-add-receive-row]");
+  const unreceivedFactoriesUrl = form.dataset.unreceivedFactoriesUrl || "";
+  const defaultFactoryOptions = [...(rows.querySelector("[data-receive-factory]")?.options || [])].map(option => ({
+    value: option.value,
+    text: option.textContent || option.value,
+  }));
 
   function showEnd(input) {
     if (!input) return;
@@ -1230,6 +1235,58 @@ document.querySelectorAll("[data-outsource-receive]").forEach(form => {
     showEnd(input);
   }
 
+  function replaceFactoryOptions(select, factories, placeholder) {
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = "";
+    const empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = placeholder;
+    select.appendChild(empty);
+    factories.forEach(factory => {
+      const name = typeof factory === "string" ? factory : String(factory.factory_name || "");
+      if (!name) return;
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      select.appendChild(option);
+    });
+    if (factories.length === 1) {
+      select.value = typeof factories[0] === "string" ? factories[0] : String(factories[0].factory_name || "");
+    } else if ([...select.options].some(option => option.value === current)) {
+      select.value = current;
+    } else {
+      select.value = "";
+    }
+  }
+
+  function resetFactoryOptions(row) {
+    replaceFactoryOptions(row.querySelector("[data-receive-factory]"), defaultFactoryOptions, "\u8bf7\u9009\u62e9\u52a0\u5de5\u5382");
+  }
+
+  async function refreshReceiveFactories(input) {
+    const row = input?.closest("tr");
+    if (!row) return;
+    const select = row.querySelector("[data-receive-factory]");
+    const orderNo = cleanWorkshopOrderNo(input.value);
+    if (input.value !== orderNo) input.value = orderNo;
+    if (!orderNo || !unreceivedFactoriesUrl) {
+      resetFactoryOptions(row);
+      return;
+    }
+    replaceFactoryOptions(select, [], "\u6b63\u5728\u67e5\u8be2...");
+    try {
+      const response = await fetch(`${unreceivedFactoriesUrl}?order_no=${encodeURIComponent(orderNo)}`);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "\u67e5\u8be2\u5931\u8d25");
+      const factories = Array.isArray(result.factories) ? result.factories : [];
+      replaceFactoryOptions(select, factories, factories.length ? "\u8bf7\u9009\u62e9\u52a0\u5de5\u5382" : "\u65e0\u672a\u6536\u8d27\u52a0\u5de5\u5382");
+    } catch (_) {
+      resetFactoryOptions(row);
+      alert("\u672a\u80fd\u67e5\u8be2\u8be5\u8ba2\u5355\u7684\u672a\u6536\u8d27\u52a0\u5de5\u5382\uff0c\u8bf7\u624b\u52a8\u9009\u62e9\u3002");
+    }
+  }
+
   addButton?.addEventListener("click", () => addRow());
   form.addEventListener("click", event => {
     const button = event.target.closest("[data-remove-receive-row]");
@@ -1237,6 +1294,7 @@ document.querySelectorAll("[data-outsource-receive]").forEach(form => {
     if (rows.children.length === 1) {
       const input = rows.querySelector("[data-receive-order]");
       input.value = "";
+      resetFactoryOptions(input.closest("tr"));
       input.focus();
       showEnd(input);
       return;
@@ -1249,6 +1307,7 @@ document.querySelectorAll("[data-outsource-receive]").forEach(form => {
     const cleanedOrderNo = cleanWorkshopOrderNo(event.target.value);
     if (event.target.value !== cleanedOrderNo) event.target.value = cleanedOrderNo;
     if (!cleanedOrderNo) return;
+    refreshReceiveFactories(event.target);
     const row = event.target.closest("tr");
     const next = row.nextElementSibling;
     if (next) {
@@ -1259,6 +1318,9 @@ document.querySelectorAll("[data-outsource-receive]").forEach(form => {
   });
   form.addEventListener("input", event => {
     if (event.target.matches("[data-receive-order]")) showEnd(event.target);
+  });
+  form.addEventListener("change", event => {
+    if (event.target.matches("[data-receive-order]")) refreshReceiveFactories(event.target);
   });
   function receiveFailureMessage(html, fallback) {
     if (!html) return fallback;
