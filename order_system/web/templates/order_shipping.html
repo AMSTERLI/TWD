@@ -4,10 +4,10 @@
 <div class="page-head"><div><h1>扫码出货</h1><p>扫描订单二维码后进入缓存区，确认后批量出货。</p></div><div class="actions"><a class="button" href="/orders">返回订单查询</a></div></div>
 {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
 {% if shipped %}<div class="alert success">已批量出货 {{ shipped }} 张订单。</div>{% endif %}
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <section class="panel shipping-scan" data-order-shipping data-lookup-url="/api/orders/shipping-lookup">
   <div class="shipping-camera">
-    <video data-shipping-video muted playsinline></video>
-    <canvas data-shipping-canvas hidden></canvas>
+    <div class="shipping-reader" id="shipping-qr-reader" data-shipping-reader></div>
     <div class="scan-tip"><strong>摄像头扫码</strong><span data-shipping-status>点击开始扫码后，请允许浏览器调用摄像头。</span></div>
     <div class="actions"><button type="button" class="primary" data-start-shipping-scan>开始扫码</button><button type="button" data-stop-shipping-scan disabled>停止扫码</button></div>
   </div>

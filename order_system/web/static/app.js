@@ -1441,8 +1441,7 @@ document.querySelectorAll("[data-orders-batch-ship]").forEach(form => {
 
 document.querySelectorAll("[data-order-shipping]").forEach(section => {
   const lookupUrl = section.dataset.lookupUrl || "";
-  const video = section.querySelector("[data-shipping-video]");
-  const canvas = section.querySelector("[data-shipping-canvas]");
+  const reader = section.querySelector("[data-shipping-reader]");
   const status = section.querySelector("[data-shipping-status]");
   const startButton = section.querySelector("[data-start-shipping-scan]");
   const stopButton = section.querySelector("[data-stop-shipping-scan]");
@@ -1452,9 +1451,8 @@ document.querySelectorAll("[data-order-shipping]").forEach(section => {
   const buffer = confirmForm?.querySelector("[data-shipping-buffer]");
   const emptyRow = confirmForm?.querySelector("[data-shipping-empty]");
   const scannedIds = new Set();
-  let stream = null;
-  let detector = null;
   let scanning = false;
+  let qrScanner = null;
   let lastCode = "";
   let lastCodeAt = 0;
 
@@ -1533,46 +1531,49 @@ document.querySelectorAll("[data-order-shipping]").forEach(section => {
     lookupAndAdd(orderNo);
   }
 
-  async function scanLoop() {
-    if (!scanning || !detector || !video.videoWidth) {
-      if (scanning) requestAnimationFrame(scanLoop);
-      return;
-    }
-    try {
-      const codes = await detector.detect(video);
-      if (codes.length) scannedCode(codes[0].rawValue || "");
-    } catch (error) {
-      console.warn("Failed to scan order QR", error);
-    }
-    if (scanning) requestAnimationFrame(scanLoop);
-  }
-
   async function startScan() {
-    if (!("BarcodeDetector" in window)) {
-      setStatus("当前浏览器不支持摄像头二维码识别，请使用扫码枪或手动输入。", true);
+    if (!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+      setStatus("当前页面不是 HTTPS，浏览器可能禁止调用摄像头。请使用 HTTPS，或先用扫码枪/手动输入。", true);
+      alert("当前页面不是 HTTPS，浏览器可能禁止调用摄像头。");
+      return;
+    }
+    if (!window.Html5Qrcode || !reader?.id) {
+      setStatus("二维码扫码组件加载失败，请检查网络后刷新页面，或使用扫码枪/手动输入。", true);
       return;
     }
     try {
-      detector = new BarcodeDetector({formats: ["qr_code"]});
-      stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: "environment"}, audio: false});
-      video.srcObject = stream;
-      await video.play();
+      if (!qrScanner) qrScanner = new Html5Qrcode(reader.id, false);
+      await qrScanner.start(
+        {facingMode: "environment"},
+        {fps: 8, qrbox: {width: 250, height: 250}},
+        decodedText => scannedCode(decodedText),
+        () => {}
+      );
       scanning = true;
       startButton.disabled = true;
       stopButton.disabled = false;
       setStatus("正在扫码，请将订单二维码放入画面。");
-      requestAnimationFrame(scanLoop);
     } catch (error) {
-      setStatus("无法调用摄像头，请检查浏览器权限。", true);
-      alert("无法调用摄像头，请检查浏览器权限。");
+      const message = error?.message || String(error || "");
+      const hint = message.includes("Permission") || message.includes("NotAllowed")
+        ? "无法调用摄像头，请允许浏览器摄像头权限。"
+        : "无法启动摄像头扫码，请检查浏览器权限或使用扫码枪/手动输入。";
+      setStatus(hint, true);
+      alert(hint);
     }
   }
 
-  function stopScan() {
+  async function stopScan() {
+    const wasScanning = scanning;
     scanning = false;
-    stream?.getTracks().forEach(track => track.stop());
-    stream = null;
-    if (video) video.srcObject = null;
+    try {
+      if (qrScanner && wasScanning) {
+        await qrScanner.stop();
+        qrScanner.clear();
+      }
+    } catch (error) {
+      console.warn("Failed to stop shipping QR scanner", error);
+    }
     startButton.disabled = false;
     stopButton.disabled = true;
     setStatus("扫码已停止。");

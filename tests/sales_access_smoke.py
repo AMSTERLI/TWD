@@ -101,6 +101,7 @@ with TestClient(app) as client:
     assert f'data-ship-url="/orders/{own_id}/ship"' in orders.text
     shipping_page = client.get("/orders/shipping")
     assert shipping_page.status_code == 200 and "扫码出货" in shipping_page.text and "data-order-shipping" in shipping_page.text
+    assert "html5-qrcode" in shipping_page.text and "shipping-qr-reader" in shipping_page.text
     lookup = client.get(f"/api/orders/shipping-lookup?order_no={own_no}")
     assert lookup.status_code == 200 and lookup.json()["order"]["order_no"] == own_no
     denied_lookup = client.get(f"/api/orders/shipping-lookup?order_no={other_no}")
