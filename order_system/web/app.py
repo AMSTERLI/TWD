@@ -130,6 +130,14 @@ WORKSHOP_DEPARTMENTS = {
         "mold_fee_label": "\u88c5\u6a21\u8d39",
         "mold_fee_options": ["0", "4", "5", "6", "7", "8"],
     },
+    "uv": {
+        "name": "UV",
+        "process_options": ["UV"],
+        "piecework": True,
+        "mold_fee": True,
+        "mold_fee_label": "\u7248\u8d39",
+        "mold_fee_input": True,
+    },
 }
 WORKSHOP_PASSWORD_DEPARTMENTS = {"mold", "cutter"}
 
@@ -1855,6 +1863,8 @@ async def workshop_department_export(request: Request, department_key: str):
             beijing_time(row.get("reported_at") or ""),
         ] for row in rows]
         headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u90e8\u95e8", "\u6570\u91cf", "\u5355\u4ef7", "\u62a5\u5230\u65f6\u95f4"]
+    if department.get("process_options"):
+        headers = ["\u5de5\u827a" if header == "\u5458\u5de5" else header for header in headers]
     await run_in_threadpool(
         repo.audit, user, "workshop.export", f"{department_key}:{len(rows)}", client_ip(request)
     )

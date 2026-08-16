@@ -98,6 +98,7 @@ with TestClient(app) as client:
     polishing_order_id, polishing_order_no = repo.create_order(payload("TWD1-260721107"))
     painting_order_id, painting_order_no = repo.create_order(payload("TWD1-260721108"))
     diecast_order_id, diecast_order_no = repo.create_order(payload("TWD1-260721109"))
+    uv_order_id, uv_order_no = repo.create_order(payload("TWD1-260721126"))
     auto_qty_payload = payload("TWD1-260721104")
     auto_qty_payload["spare_quantity"] = 15
     _, auto_qty_order_no = repo.create_order(auto_qty_payload)
@@ -132,7 +133,8 @@ with TestClient(app) as client:
     home = client.get("/workshop")
     assert home.status_code == 200 and "/workshop/mold/unlock" in home.text and "/workshop/cutter/unlock" in home.text
     assert "/workshop/press" in home.text and "/workshop/crystal" in home.text and "/workshop/packaging" in home.text
-    assert "/workshop/polishing" in home.text and "/workshop/painting" in home.text and "/workshop/diecast" in home.text
+    assert "/workshop/polishing" in home.text and "/workshop/painting" in home.text and "/workshop/diecast" in home.text and "/workshop/uv" in home.text
+    assert "/workshop/uv/unlock" not in home.text
     bad_unlock = client.post(
         "/workshop/mold/unlock",
         data={"csrf": csrf(home.text), "password": "bad"},
@@ -456,6 +458,36 @@ with TestClient(app) as client:
         assert abs(row["amount"] - 14.5) < 1e-9
     diecast_list = client.get("/workshop/diecast")
     assert diecast_list.status_code == 200 and 'data-selection-amount-total-all="29.00"' in diecast_list.text
+    uv = client.get("/workshop/uv")
+    assert uv.status_code == 200 and "touch-piecework-panel" in uv.text
+    assert 'data-employee-value="UV"' in uv.text and "\u7248\u8d39" in uv.text and 'data-batch-workshop-price' in uv.text
+    uv_report = client.post(
+        "/workshop/uv",
+        data={"csrf": csrf(uv.text), "employee_name": ["UV"], "order_no": [uv_order_no], "quantity": ["20"], "unit_price": ["0.5"], "mold_fee": ["8"]},
+        follow_redirects=False,
+    )
+    assert uv_report.status_code == 303
+    uv_records = repo.order_workshop_records(uv_order_id)
+    assert len(uv_records) == 1
+    assert uv_records[0]["department_name"] == "UV"
+    assert uv_records[0]["operator_name"] == "UV"
+    assert uv_records[0]["quantity"] == 20
+    assert abs(uv_records[0]["unit_price"] - 0.5) < 1e-9
+    assert abs(uv_records[0]["mold_fee"] - 8) < 1e-9
+    assert abs(uv_records[0]["amount"] - 18) < 1e-9
+    uv_list = client.get("/workshop/uv")
+    assert uv_list.status_code == 200 and 'data-selection-amount-total-all="18.00"' in uv_list.text
+    uv_export = client.post(
+        "/workshop/uv/export",
+        data={"csrf": csrf(uv_list.text), "selected_ids": [str(row["id"]) for row in uv_records]},
+    )
+    assert uv_export.status_code == 200
+    uv_workbook_path = root / "uv-export.xlsx"
+    uv_workbook_path.write_bytes(uv_export.content)
+    uv_sheet = load_workbook(uv_workbook_path).active
+    assert uv_sheet.cell(row=1, column=4).value == "\u5de5\u827a"
+    assert uv_sheet.cell(row=1, column=8).value == "\u7248\u8d39"
+    assert uv_sheet.cell(row=2, column=9).value == 18
     packaging_unlock = client.post(
         "/workshop/packaging/unlock",
         data={"csrf": csrf(home.text), "password": "packaging-pass-123"},

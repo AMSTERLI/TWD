@@ -1366,9 +1366,10 @@ class Repository:
             "polishing": {"\u725f\u6c5f"},
             "painting": {"\u5218\u8fdb", "\u9ec4\u4e09\u679a", "\u5468\u6625\u71d5", "\u519c\u91d1\u7ea2", "\u519c\u8273\u7ea2", "\u9648\u7eaf\u82f1", "\u6881\u5f66", "\u6768\u7ea2\u82f1", "\u5f90\u53cb\u4e3d"},
             "diecast": {"\u519c\u5982\u5e72", "\u674e\u56fd\u5bcc", "\u66fe\u660e", "\u519c\u5929\u4f69", "\u4e341", "\u4e342", "\u4e343", "\u4e344", "\u4e345"},
+            "uv": {"UV"},
         }
         tooling_departments = {"mold", "cutter"}
-        additive_fee_departments = {"press", "polishing", "diecast"}
+        additive_fee_departments = {"press", "polishing", "diecast", "uv"}
         dropdown_fee_departments = {"press", "diecast"}
         multiplier_fee_departments = {"painting"}
         clean_rows: list[dict[str, Any]] = []
@@ -1394,7 +1395,7 @@ class Repository:
                 raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u6570\u91cf\u5fc5\u987b\u5927\u4e8e 0")
             raw_employee = str(row.get("employee_name") or "").strip()
             employee_names = [item.strip() for item in re.split(r"[,\s]+", raw_employee) if item.strip()]
-            process_options = {"crystal": {"\u73bb\u7483", "\u78c1\u94c1", "\u914d\u4ef6"}}
+            process_options = {"crystal": {"\u73bb\u7483", "\u78c1\u94c1", "\u914d\u4ef6"}, "uv": {"UV"}}
             if department_key in process_options:
                 employee_names = list(dict.fromkeys(employee_names))
                 allowed_options = process_options[department_key]
