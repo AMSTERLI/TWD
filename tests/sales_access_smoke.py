@@ -50,6 +50,8 @@ def create_payload(order_no: str, salesman: str, product_name: str, delivery_dat
         "quantity": 1,
         "spare_quantity": 5,
         "quantity_unit": "个",
+        "unit_price": 2.5,
+        "extra_fee": 1,
         "order_prefix_no": 1,
         "paid_status": 0,
         "shipped_status": 0,
@@ -75,6 +77,8 @@ with TestClient(app) as client:
     own_id, own_no = repo.create_order(create_payload("TWD1-260717901", "杨娟", "杨娟订单", "2026-07-20"))
     other_id, other_no = repo.create_order(create_payload("TWD1-260717902", "廖春凤", "廖春凤订单", "2026-07-25"))
     later_id, later_no = repo.create_order(create_payload("TWD1-260717903", "杨娟", "杨娟晚交期订单", "2026-08-20"))
+    shipped_id, shipped_no = repo.create_order(create_payload("TWD1-260717904", "杨娟", "杨娟已出货订单", "2026-07-18"))
+    repo.set_order_shipped(shipped_id, True)
 
     login(client, "yangjuan", "sales-pass-123")
     new_page = client.get("/orders/new")
@@ -84,13 +88,39 @@ with TestClient(app) as client:
 
     orders = client.get("/orders")
     assert orders.status_code == 200
-    assert own_no in orders.text and later_no in orders.text
-    assert orders.text.index(later_no) < orders.text.index(own_no)
+    assert own_no in orders.text and later_no in orders.text and shipped_no in orders.text
+    assert orders.text.index(own_no) < orders.text.index(later_no) < orders.text.index(shipped_no)
     assert other_no not in orders.text
     assert "PO号" in orders.text and "PO-901" in orders.text
     assert "杨娟订单" not in orders.text and "业务员" not in orders.text
     assert "1+5" in orders.text and "待出货" in orders.text
+    assert "单价" in orders.text and "金额" in orders.text and "2.5000" in orders.text and "&#165; 3.50" in orders.text
+    assert 'data-select-all' in orders.text and f'name="order_ids" value="{own_id}"' in orders.text
+    assert f'name="order_ids" value="{shipped_id}" disabled' in orders.text
+    assert "/orders/shipping" in orders.text
     assert f'data-ship-url="/orders/{own_id}/ship"' in orders.text
+    shipping_page = client.get("/orders/shipping")
+    assert shipping_page.status_code == 200 and "扫码出货" in shipping_page.text and "data-order-shipping" in shipping_page.text
+    lookup = client.get(f"/api/orders/shipping-lookup?order_no={own_no}")
+    assert lookup.status_code == 200 and lookup.json()["order"]["order_no"] == own_no
+    denied_lookup = client.get(f"/api/orders/shipping-lookup?order_no={other_no}")
+    assert denied_lookup.status_code == 404
+    batch_target_id, _ = repo.create_order(create_payload("TWD1-260717905", "杨娟", "杨娟批量出货订单", "2026-07-21"))
+    batch_page = client.get("/orders")
+    batch = client.post(
+        "/orders/ship-batch",
+        data={"csrf": csrf(batch_page.text), "order_ids": str(batch_target_id)},
+        follow_redirects=False,
+    )
+    assert batch.status_code == 303
+    assert repo.get_order(batch_target_id)["shipped_status"] == 1
+    denied_batch = client.post(
+        "/orders/ship-batch",
+        data={"csrf": csrf(batch_page.text), "order_ids": str(other_id)},
+        follow_redirects=False,
+    )
+    assert denied_batch.status_code == 303
+    assert repo.get_order(other_id)["shipped_status"] == 0
     searched = client.get("/orders?q=PO-901")
     assert searched.status_code == 200 and own_no in searched.text
     searched = client.get("/orders?q=SC-901")

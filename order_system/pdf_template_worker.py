@@ -18,6 +18,7 @@ PAGE_HEIGHT = 780
 QR_CODE_RIGHT = 526
 QR_CODE_TOP = 6
 QR_CODE_SIZE = 62.36
+QR_CODE_LEFT = 14
 FOOTER_QR_CODE_RIGHT = 526
 FOOTER_QR_CODE_TOP = 744
 FOOTER_QR_CODE_SIZE = 34.02
@@ -135,6 +136,7 @@ def _draw_qr_code(pdf: canvas.Canvas, value: str, right: float, top: float, size
 
 
 def _draw_order_qr_code(pdf: canvas.Canvas, order_no: str) -> None:
+    _draw_qr_code(pdf, order_no, QR_CODE_LEFT + QR_CODE_SIZE, QR_CODE_TOP, QR_CODE_SIZE)
     _draw_qr_code(pdf, order_no, QR_CODE_RIGHT, QR_CODE_TOP, QR_CODE_SIZE)
 
 

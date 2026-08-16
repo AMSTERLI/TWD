@@ -751,17 +751,23 @@ class Repository:
         if salesman:
             where += " AND salesman = ?"
             args.append(salesman)
-            order_by = "CASE WHEN delivery_date IS NULL OR TRIM(delivery_date) = '' THEN 1 ELSE 0 END, delivery_date DESC, id DESC"
+            order_by = "shipped_status ASC, CASE WHEN delivery_date IS NULL OR TRIM(delivery_date) = '' THEN 1 ELSE 0 END, delivery_date ASC, id DESC"
         with self.connect() as conn:
             total = int(conn.execute(f"SELECT COUNT(*) FROM orders {where}", args).fetchone()[0])
             rows = conn.execute(
                 f"""SELECT id, order_no, customer_code, customer_name, product_name,
                            order_type, salesman, bi_no, production_no, quantity, spare_quantity, quantity_unit, order_date,
-                           delivery_date, paid_status, shipped_status
+                           delivery_date, unit_price, price_tiers_json, extra_fee, paid_status, shipped_status
                     FROM orders {where} ORDER BY {order_by} LIMIT ? OFFSET ?""",
                 (*args, page_size, offset),
             ).fetchall()
-        return {"rows": [dict(row) for row in rows], "total": total, "page": page,
+        result_rows = []
+        for row in rows:
+            item = dict(row)
+            item["amount"] = order_receivable_amount(item)
+            item["multi_price"] = bool(price_tiers_from_json(item.get("price_tiers_json")))
+            result_rows.append(item)
+        return {"rows": result_rows, "total": total, "page": page,
                 "pages": max(1, (total + page_size - 1) // page_size)}
 
     def get_order(self, order_id: int) -> dict[str, Any] | None:
@@ -1196,6 +1202,52 @@ class Repository:
                 "UPDATE orders SET shipped_status = ?, shipped_at = CASE WHEN ? THEN COALESCE(shipped_at, CURRENT_TIMESTAMP) ELSE NULL END WHERE id = ?",
                 (int(shipped), int(shipped), order_id),
             )
+
+    def set_sales_orders_shipped_many(self, order_ids: list[int], salesman: str, shipped: bool = True) -> int:
+        ids = self._normalized_ids(order_ids)
+        salesman = str(salesman or "").strip()
+        if not ids or not salesman:
+            return 0
+        changed = 0
+        with self.connect(write=True) as conn:
+            for chunk in self._id_chunks(ids):
+                placeholders = ", ".join("?" for _ in chunk)
+                cursor = conn.execute(
+                    f"""UPDATE orders
+                        SET shipped_status = ?,
+                            shipped_at = CASE WHEN ? THEN COALESCE(shipped_at, CURRENT_TIMESTAMP) ELSE NULL END
+                        WHERE id IN ({placeholders}) AND salesman = ?""",
+                    (int(shipped), int(shipped), *chunk, salesman),
+                )
+                changed += int(cursor.rowcount)
+        return changed
+
+    def sales_shipping_order(self, order_no: str, salesman: str) -> dict[str, Any] | None:
+        order_no = normalize_scanned_order_no(order_no)
+        salesman = str(salesman or "").strip()
+        if not order_no or not salesman:
+            return None
+        with self.connect() as conn:
+            row = self._find_order_by_scanned_no(conn, order_no)
+        if not row or str(row["salesman"] or "").strip() != salesman:
+            return None
+        item = {
+            "id": row["id"],
+            "order_no": row["order_no"],
+            "customer_name": row["customer_name"],
+            "product_name": row["product_name"],
+            "quantity": row["quantity"],
+            "spare_quantity": row["spare_quantity"],
+            "quantity_unit": row["quantity_unit"],
+            "unit_price": row["unit_price"],
+            "price_tiers_json": row["price_tiers_json"],
+            "extra_fee": row["extra_fee"],
+            "delivery_date": row["delivery_date"],
+            "shipped_status": row["shipped_status"],
+        }
+        item["amount"] = order_receivable_amount(item)
+        item["multi_price"] = bool(price_tiers_from_json(item.get("price_tiers_json")))
+        return item
 
     def ship_workshop_orders(self, department_key: str, order_nos: list[str]) -> list[str]:
         department_key = str(department_key or "").strip()

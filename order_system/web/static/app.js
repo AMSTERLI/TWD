@@ -1431,6 +1431,182 @@ document.querySelectorAll("[data-selection-form]").forEach(form => {
   refreshSelection();
 });
 
+document.querySelectorAll("[data-orders-batch-ship]").forEach(form => {
+  form.addEventListener("submit", event => {
+    if (form.querySelectorAll("[data-select-item]:checked").length) return;
+    event.preventDefault();
+    alert("请至少勾选一个待出货订单");
+  });
+});
+
+document.querySelectorAll("[data-order-shipping]").forEach(section => {
+  const lookupUrl = section.dataset.lookupUrl || "";
+  const video = section.querySelector("[data-shipping-video]");
+  const canvas = section.querySelector("[data-shipping-canvas]");
+  const status = section.querySelector("[data-shipping-status]");
+  const startButton = section.querySelector("[data-start-shipping-scan]");
+  const stopButton = section.querySelector("[data-stop-shipping-scan]");
+  const manualInput = section.querySelector("[data-shipping-manual]");
+  const manualButton = section.querySelector("[data-add-shipping-manual]");
+  const confirmForm = document.querySelector("[data-shipping-confirm]");
+  const buffer = confirmForm?.querySelector("[data-shipping-buffer]");
+  const emptyRow = confirmForm?.querySelector("[data-shipping-empty]");
+  const scannedIds = new Set();
+  let stream = null;
+  let detector = null;
+  let scanning = false;
+  let lastCode = "";
+  let lastCodeAt = 0;
+
+  function setStatus(message, isError = false) {
+    if (!status) return;
+    status.textContent = message;
+    status.className = isError ? "error-text" : "";
+  }
+
+  function formatMoney(value) {
+    return `¥ ${Number(value || 0).toFixed(2)}`;
+  }
+
+  function formatUnitPrice(order) {
+    return order.multi_price ? "多单价" : Number(order.unit_price || 0).toFixed(4);
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, char => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[char]));
+  }
+
+  function quantityText(order) {
+    const spare = Number(order.spare_quantity || 0);
+    return `${order.quantity || 0}${spare ? `+${spare}` : ""} ${order.quantity_unit || ""}`.trim();
+  }
+
+  function removeEmptyRow() {
+    emptyRow?.remove();
+  }
+
+  function addOrderToBuffer(order) {
+    if (!order?.id || scannedIds.has(String(order.id))) {
+      setStatus(`${order?.order_no || "该订单"} 已在缓存区`);
+      return;
+    }
+    scannedIds.add(String(order.id));
+    removeEmptyRow();
+    const row = document.createElement("tr");
+    row.dataset.shippingOrderId = String(order.id);
+    row.innerHTML = `<td><input type="hidden" name="order_ids" value="${Number(order.id)}"><a href="/orders/${Number(order.id)}">${escapeHtml(order.order_no || "")}</a></td><td>${escapeHtml(order.customer_name || "-")}</td><td>${escapeHtml(order.product_name || "-")}</td><td>${escapeHtml(quantityText(order))}</td><td>${escapeHtml(formatUnitPrice(order))}</td><td>${escapeHtml(formatMoney(order.amount))}</td><td>${escapeHtml(order.delivery_date || "-")}</td><td><span class="badge ${order.shipped_status ? "ok" : "warn"}">${order.shipped_status ? "已出货" : "待出货"}</span></td><td><button type="button" class="small danger-button" data-remove-shipping-order>移除</button></td>`;
+    buffer?.appendChild(row);
+    setStatus(`${order.order_no} 已加入缓存区`);
+  }
+
+  async function lookupAndAdd(rawValue) {
+    const orderNo = cleanWorkshopOrderNo(rawValue);
+    if (!orderNo) return;
+    try {
+      const response = await fetch(`${lookupUrl}?order_no=${encodeURIComponent(orderNo)}`);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "订单查询失败");
+      if (result.order?.shipped_status) {
+        setStatus(`${result.order.order_no} 已出货`, true);
+        return;
+      }
+      addOrderToBuffer(result.order);
+    } catch (error) {
+      setStatus(error.message || "订单查询失败", true);
+      alert(error.message || "订单查询失败");
+    }
+  }
+
+  function scannedCode(value) {
+    const orderNo = cleanWorkshopOrderNo(value);
+    if (!orderNo) return;
+    const now = Date.now();
+    if (orderNo === lastCode && now - lastCodeAt < 1800) return;
+    lastCode = orderNo;
+    lastCodeAt = now;
+    lookupAndAdd(orderNo);
+  }
+
+  async function scanLoop() {
+    if (!scanning || !detector || !video.videoWidth) {
+      if (scanning) requestAnimationFrame(scanLoop);
+      return;
+    }
+    try {
+      const codes = await detector.detect(video);
+      if (codes.length) scannedCode(codes[0].rawValue || "");
+    } catch (error) {
+      console.warn("Failed to scan order QR", error);
+    }
+    if (scanning) requestAnimationFrame(scanLoop);
+  }
+
+  async function startScan() {
+    if (!("BarcodeDetector" in window)) {
+      setStatus("当前浏览器不支持摄像头二维码识别，请使用扫码枪或手动输入。", true);
+      return;
+    }
+    try {
+      detector = new BarcodeDetector({formats: ["qr_code"]});
+      stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: "environment"}, audio: false});
+      video.srcObject = stream;
+      await video.play();
+      scanning = true;
+      startButton.disabled = true;
+      stopButton.disabled = false;
+      setStatus("正在扫码，请将订单二维码放入画面。");
+      requestAnimationFrame(scanLoop);
+    } catch (error) {
+      setStatus("无法调用摄像头，请检查浏览器权限。", true);
+      alert("无法调用摄像头，请检查浏览器权限。");
+    }
+  }
+
+  function stopScan() {
+    scanning = false;
+    stream?.getTracks().forEach(track => track.stop());
+    stream = null;
+    if (video) video.srcObject = null;
+    startButton.disabled = false;
+    stopButton.disabled = true;
+    setStatus("扫码已停止。");
+  }
+
+  startButton?.addEventListener("click", startScan);
+  stopButton?.addEventListener("click", stopScan);
+  manualButton?.addEventListener("click", () => {
+    lookupAndAdd(manualInput.value);
+    manualInput.value = "";
+    manualInput.focus();
+  });
+  manualInput?.addEventListener("keydown", event => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    manualButton.click();
+  });
+  buffer?.addEventListener("click", event => {
+    const button = event.target.closest("[data-remove-shipping-order]");
+    if (!button) return;
+    const row = button.closest("tr");
+    scannedIds.delete(row?.dataset.shippingOrderId || "");
+    row?.remove();
+    if (!buffer.querySelector("[name=order_ids]")) {
+      buffer.innerHTML = '<tr data-shipping-empty><td colspan="9" class="muted">暂无待确认订单</td></tr>';
+    }
+  });
+  confirmForm?.addEventListener("submit", event => {
+    if (confirmForm.querySelectorAll("[name=order_ids]").length) return;
+    event.preventDefault();
+    alert("请先扫描或录入订单");
+  });
+});
+
 document.querySelectorAll("[data-finance-stash]").forEach(stash => {
   const key = stash.dataset.storageKey || "twd-finance-stash";
   const list = stash.querySelector("[data-stash-list]");

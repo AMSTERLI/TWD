@@ -15,6 +15,7 @@
     <nav data-nav>
       {% if user.role in ['admin', 'sales', 'finance', 'production'] %}<a href="/orders">&#35746;&#21333;</a>{% endif %}
       {% if user.role in ['admin', 'sales'] %}<a href="/orders/new">&#19994;&#21153;&#19979;&#21333;</a>{% endif %}
+      {% if user.role == 'sales' %}<a href="/orders/shipping">&#25195;&#30721;&#20986;&#36135;</a>{% endif %}
       {% if user.role in ['admin', 'finance'] %}<a href="/finance">&#36130;&#21153;</a>{% endif %}
       {% if user.role in ['admin', 'production'] %}<a href="/production">&#29983;&#31649;</a>{% endif %}
       {% if user.role == 'outsource' %}<a href="/finance/payables">&#20184;&#27454;</a>{% endif %}

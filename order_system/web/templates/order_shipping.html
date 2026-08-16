@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}扫码出货 · TWD 订单系统{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>扫码出货</h1><p>扫描订单二维码后进入缓存区，确认后批量出货。</p></div><div class="actions"><a class="button" href="/orders">返回订单查询</a></div></div>
+{% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+{% if shipped %}<div class="alert success">已批量出货 {{ shipped }} 张订单。</div>{% endif %}
+<section class="panel shipping-scan" data-order-shipping data-lookup-url="/api/orders/shipping-lookup">
+  <div class="shipping-camera">
+    <video data-shipping-video muted playsinline></video>
+    <canvas data-shipping-canvas hidden></canvas>
+    <div class="scan-tip"><strong>摄像头扫码</strong><span data-shipping-status>点击开始扫码后，请允许浏览器调用摄像头。</span></div>
+    <div class="actions"><button type="button" class="primary" data-start-shipping-scan>开始扫码</button><button type="button" data-stop-shipping-scan disabled>停止扫码</button></div>
+  </div>
+  <div class="shipping-manual">
+    <label>手动录入订单号<input data-shipping-manual autocomplete="off" placeholder="扫描枪或手动输入后按回车"></label>
+    <button type="button" data-add-shipping-manual>加入缓存区</button>
+  </div>
+</section>
+<form method="post" action="/orders/ship-batch" data-shipping-confirm>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <section class="panel table-wrap">
+    <div class="panel-head"><h2>出货缓存区</h2><button class="primary" type="submit">确认批量出货</button></div>
+    <table>
+      <thead><tr><th>订单号</th><th>客户</th><th>产品</th><th>数量</th><th>单价</th><th>金额</th><th>交期</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody data-shipping-buffer><tr data-shipping-empty><td colspan="9" class="muted">暂无待确认订单</td></tr></tbody>
+    </table>
+  </section>
+</form>
+{% endblock %}

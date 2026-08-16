@@ -1030,6 +1030,49 @@ def orders(request: Request, q: str = "", page: int = 1):
     return templates.TemplateResponse(request, "orders.html", page_context(request, result=result, q=q, list_mode="orders"))
 
 
+@app.get("/orders/shipping", response_class=HTMLResponse)
+def order_shipping(request: Request):
+    user, denied = require_page(request, {"sales"})
+    if denied:
+        return denied
+    return templates.TemplateResponse(request, "order_shipping.html", page_context(request, shipped=0, error=""))
+
+
+@app.get("/api/orders/shipping-lookup")
+def shipping_lookup(request: Request, order_no: str = ""):
+    user, denied = require_page(request, {"sales"})
+    if denied:
+        return JSONResponse({"error": "未登录或无权限"}, status_code=401)
+    record = repo.sales_shipping_order(order_no, user_display_name(user))
+    if not record:
+        return JSONResponse({"error": "订单不存在或不属于当前业务"}, status_code=404)
+    return {"order": record}
+
+
+@app.post("/orders/ship-batch", response_class=HTMLResponse)
+async def ship_orders_batch(request: Request):
+    user, denied = require_page(request, {"sales"})
+    if denied:
+        return denied
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    order_ids = [as_int(value) for value in form.getlist("order_ids")]
+    if not any(order_ids):
+        return templates.TemplateResponse(
+            request,
+            "order_shipping.html",
+            page_context(request, shipped=0, error="请至少勾选或扫描一个订单"),
+            status_code=400,
+        )
+    changed = await run_in_threadpool(repo.set_sales_orders_shipped_many, order_ids, user_display_name(user), True)
+    await run_in_threadpool(repo.audit, user, "order.ship_batch", f"{changed}:{','.join(str(item) for item in order_ids if item)}", client_ip(request))
+    referer = str(request.headers.get("referer") or "")
+    if "/orders/shipping" in referer:
+        return templates.TemplateResponse(request, "order_shipping.html", page_context(request, shipped=changed, error=""))
+    return RedirectResponse("/orders", status_code=303)
+
+
 @app.get("/production", response_class=HTMLResponse)
 def production_orders(request: Request, q: str = "", page: int = 1):
     _, denied = require_page(request, {"production"})
