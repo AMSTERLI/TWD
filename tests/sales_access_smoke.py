@@ -101,11 +101,11 @@ with TestClient(app) as client:
     assert f'data-ship-url="/orders/{own_id}/ship"' in orders.text
     shipping_page = client.get("/orders/shipping")
     assert shipping_page.status_code == 200 and "扫码出货" in shipping_page.text and "data-order-shipping" in shipping_page.text
-    assert "html5-qrcode" in shipping_page.text and "shipping-qr-reader" in shipping_page.text
+    assert "html5-qrcode" not in shipping_page.text and "shipping-qr-reader" not in shipping_page.text
     lookup = client.get(f"/api/orders/shipping-lookup?order_no={own_no}")
     assert lookup.status_code == 200 and lookup.json()["order"]["order_no"] == own_no
-    denied_lookup = client.get(f"/api/orders/shipping-lookup?order_no={other_no}")
-    assert denied_lookup.status_code == 404
+    other_lookup = client.get(f"/api/orders/shipping-lookup?order_no={other_no}")
+    assert other_lookup.status_code == 200 and other_lookup.json()["order"]["order_no"] == other_no
     batch_target_id, _ = repo.create_order(create_payload("TWD1-260717905", "杨娟", "杨娟批量出货订单", "2026-07-21"))
     batch_page = client.get("/orders")
     batch = client.post(
@@ -115,13 +115,13 @@ with TestClient(app) as client:
     )
     assert batch.status_code == 303
     assert repo.get_order(batch_target_id)["shipped_status"] == 1
-    denied_batch = client.post(
+    cross_sales_batch = client.post(
         "/orders/ship-batch",
         data={"csrf": csrf(batch_page.text), "order_ids": str(other_id)},
         follow_redirects=False,
     )
-    assert denied_batch.status_code == 303
-    assert repo.get_order(other_id)["shipped_status"] == 0
+    assert cross_sales_batch.status_code == 303
+    assert repo.get_order(other_id)["shipped_status"] == 1
     searched = client.get("/orders?q=PO-901")
     assert searched.status_code == 200 and own_no in searched.text
     searched = client.get("/orders?q=SC-901")
@@ -143,12 +143,13 @@ with TestClient(app) as client:
     assert repo.get_order(own_id)["shipped_status"] == 1
     shipped_orders = client.get("/orders")
     assert "已出货" in shipped_orders.text and 'data-shipped="1"' in shipped_orders.text
-    denied_ship = client.post(
+    cross_sales_ship = client.post(
         f"/orders/{other_id}/ship",
         data={"csrf": csrf(shipped_orders.text), "shipped": "1"},
         follow_redirects=False,
     )
-    assert denied_ship.status_code == 403
+    assert cross_sales_ship.status_code == 303
+    assert repo.get_order(other_id)["shipped_status"] == 1
     unshipped = client.post(
         f"/orders/{own_id}/ship",
         data={"csrf": csrf(shipped_orders.text), "shipped": "0"},

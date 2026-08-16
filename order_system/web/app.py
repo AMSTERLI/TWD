@@ -1043,9 +1043,9 @@ def shipping_lookup(request: Request, order_no: str = ""):
     user, denied = require_page(request, {"sales"})
     if denied:
         return JSONResponse({"error": "未登录或无权限"}, status_code=401)
-    record = repo.sales_shipping_order(order_no, user_display_name(user))
+    record = repo.shipping_order(order_no)
     if not record:
-        return JSONResponse({"error": "订单不存在或不属于当前业务"}, status_code=404)
+        return JSONResponse({"error": "订单不存在"}, status_code=404)
     return {"order": record}
 
 
@@ -1065,7 +1065,7 @@ async def ship_orders_batch(request: Request):
             page_context(request, shipped=0, error="请至少勾选或扫描一个订单"),
             status_code=400,
         )
-    changed = await run_in_threadpool(repo.set_sales_orders_shipped_many, order_ids, user_display_name(user), True)
+    changed = await run_in_threadpool(repo.set_orders_shipped_many, order_ids, True)
     await run_in_threadpool(repo.audit, user, "order.ship_batch", f"{changed}:{','.join(str(item) for item in order_ids if item)}", client_ip(request))
     referer = str(request.headers.get("referer") or "")
     if "/orders/shipping" in referer:
@@ -1405,8 +1405,6 @@ async def ship_order(request: Request, order_id: int):
     record = await run_in_threadpool(repo.get_order, order_id)
     if not record:
         return Response(status_code=404)
-    if sales_order_forbidden(user, record):
-        return Response(status_code=403)
     shipped = str(form.get("shipped") or "") == "1"
     await run_in_threadpool(repo.set_order_shipped, order_id, shipped)
     await run_in_threadpool(repo.audit, user, "order.ship", f"{order_id}:{int(shipped)}", client_ip(request))

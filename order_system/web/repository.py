@@ -1203,10 +1203,9 @@ class Repository:
                 (int(shipped), int(shipped), order_id),
             )
 
-    def set_sales_orders_shipped_many(self, order_ids: list[int], salesman: str, shipped: bool = True) -> int:
+    def set_orders_shipped_many(self, order_ids: list[int], shipped: bool = True) -> int:
         ids = self._normalized_ids(order_ids)
-        salesman = str(salesman or "").strip()
-        if not ids or not salesman:
+        if not ids:
             return 0
         changed = 0
         with self.connect(write=True) as conn:
@@ -1216,20 +1215,19 @@ class Repository:
                     f"""UPDATE orders
                         SET shipped_status = ?,
                             shipped_at = CASE WHEN ? THEN COALESCE(shipped_at, CURRENT_TIMESTAMP) ELSE NULL END
-                        WHERE id IN ({placeholders}) AND salesman = ?""",
-                    (int(shipped), int(shipped), *chunk, salesman),
+                        WHERE id IN ({placeholders})""",
+                    (int(shipped), int(shipped), *chunk),
                 )
                 changed += int(cursor.rowcount)
         return changed
 
-    def sales_shipping_order(self, order_no: str, salesman: str) -> dict[str, Any] | None:
+    def shipping_order(self, order_no: str) -> dict[str, Any] | None:
         order_no = normalize_scanned_order_no(order_no)
-        salesman = str(salesman or "").strip()
-        if not order_no or not salesman:
+        if not order_no:
             return None
         with self.connect() as conn:
             row = self._find_order_by_scanned_no(conn, order_no)
-        if not row or str(row["salesman"] or "").strip() != salesman:
+        if not row:
             return None
         item = {
             "id": row["id"],

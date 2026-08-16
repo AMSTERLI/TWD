@@ -1,18 +1,13 @@
 {% extends "base.html" %}
 {% block title %}扫码出货 · TWD 订单系统{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>扫码出货</h1><p>扫描订单二维码后进入缓存区，确认后批量出货。</p></div><div class="actions"><a class="button" href="/orders">返回订单查询</a></div></div>
+<div class="page-head"><div><h1>扫码出货</h1><p>使用扫码枪或手动输入订单号进入缓存区，确认后批量出货。</p></div><div class="actions"><a class="button" href="/orders">返回订单查询</a></div></div>
 {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
 {% if shipped %}<div class="alert success">已批量出货 {{ shipped }} 张订单。</div>{% endif %}
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <section class="panel shipping-scan" data-order-shipping data-lookup-url="/api/orders/shipping-lookup">
-  <div class="shipping-camera">
-    <div class="shipping-reader" id="shipping-qr-reader" data-shipping-reader></div>
-    <div class="scan-tip"><strong>摄像头扫码</strong><span data-shipping-status>点击开始扫码后，请允许浏览器调用摄像头。</span></div>
-    <div class="actions"><button type="button" class="primary" data-start-shipping-scan>开始扫码</button><button type="button" data-stop-shipping-scan disabled>停止扫码</button></div>
-  </div>
   <div class="shipping-manual">
-    <label>手动录入订单号<input data-shipping-manual autocomplete="off" placeholder="扫描枪或手动输入后按回车"></label>
+    <div class="scan-tip"><strong>扫码枪录入</strong><span data-shipping-status>扫码枪扫描或手动输入订单号后按回车。</span></div>
+    <label>订单号<input data-shipping-manual autocomplete="off" autofocus placeholder="扫描枪或手动输入后按回车"></label>
     <button type="button" data-add-shipping-manual>加入缓存区</button>
   </div>
 </section>
