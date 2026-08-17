@@ -412,7 +412,7 @@ with TestClient(app) as client:
     assert painting_unlock.status_code == 303 and painting_unlock.headers["location"] == "/workshop/painting"
     painting = client.get("/workshop/painting")
     assert painting.status_code == 200 and "touch-piecework-panel" in painting.text
-    assert "\u989c\u8272\u6570\u91cf" in painting.text and 'data-default-value="1"' in painting.text
+    assert "\u989c\u8272\u5355\u4ef7" in painting.text and "\u989c\u8272\u6570\u91cf" in painting.text and 'data-default-value="1"' in painting.text
     assert 'employee-button active' not in painting.text
     assert "\u5218\u8fdb" in painting.text and "\u5f90\u53cb\u4e3d" in painting.text
     painting_report = client.post(
@@ -431,6 +431,7 @@ with TestClient(app) as client:
         assert abs(row["amount"] - 22.5) < 1e-9
     painting_list = client.get("/workshop/painting")
     assert painting_list.status_code == 200 and 'data-selection-amount-total-all="45.00"' in painting_list.text
+    assert "\u989c\u8272\u5355\u4ef7" in painting_list.text and "0.4500" in painting_list.text
     diecast_unlock = client.post(
         "/workshop/diecast/unlock",
         data={"csrf": csrf(home.text), "password": "diecast-pass-123"},
@@ -460,10 +461,12 @@ with TestClient(app) as client:
     assert diecast_list.status_code == 200 and 'data-selection-amount-total-all="29.00"' in diecast_list.text
     uv = client.get("/workshop/uv")
     assert uv.status_code == 200 and "touch-piecework-panel" in uv.text
-    assert 'data-employee-value="UV"' in uv.text and "\u7248\u8d39" in uv.text and 'data-batch-workshop-price' in uv.text
+    assert 'data-employee-value="UV"' not in uv.text and "\u7248\u8d39" in uv.text and 'data-batch-workshop-price' in uv.text
+    assert "data-workshop-employees" not in uv.text and "<th>\u5de5\u827a</th>" not in uv.text
+    assert "&#22791;&#27880;" in uv.text and "\u8fd4\u5de5" in uv.text
     uv_report = client.post(
         "/workshop/uv",
-        data={"csrf": csrf(uv.text), "employee_name": ["UV"], "order_no": [uv_order_no], "quantity": ["20"], "unit_price": ["0.5"], "mold_fee": ["8"]},
+        data={"csrf": csrf(uv.text), "order_no": [uv_order_no], "quantity": ["20"], "unit_price": ["0.5"], "mold_fee": ["8"], "note_text": ["uv-note"], "record_type": ["rework"]},
         follow_redirects=False,
     )
     assert uv_report.status_code == 303
@@ -471,12 +474,15 @@ with TestClient(app) as client:
     assert len(uv_records) == 1
     assert uv_records[0]["department_name"] == "UV"
     assert uv_records[0]["operator_name"] == "UV"
+    assert uv_records[0]["note_text"] == "uv-note"
+    assert uv_records[0]["record_type"] == "rework"
     assert uv_records[0]["quantity"] == 20
     assert abs(uv_records[0]["unit_price"] - 0.5) < 1e-9
     assert abs(uv_records[0]["mold_fee"] - 8) < 1e-9
     assert abs(uv_records[0]["amount"] - 18) < 1e-9
     uv_list = client.get("/workshop/uv")
     assert uv_list.status_code == 200 and 'data-selection-amount-total-all="18.00"' in uv_list.text
+    assert "uv-note" in uv_list.text and "\u8fd4\u5de5" in uv_list.text and "\u5de5\u827a" not in uv_list.text
     uv_export = client.post(
         "/workshop/uv/export",
         data={"csrf": csrf(uv_list.text), "selected_ids": [str(row["id"]) for row in uv_records]},
@@ -485,9 +491,12 @@ with TestClient(app) as client:
     uv_workbook_path = root / "uv-export.xlsx"
     uv_workbook_path.write_bytes(uv_export.content)
     uv_sheet = load_workbook(uv_workbook_path).active
-    assert uv_sheet.cell(row=1, column=4).value == "\u5de5\u827a"
+    assert uv_sheet.cell(row=1, column=4).value == "\u5907\u6ce8"
     assert uv_sheet.cell(row=1, column=8).value == "\u7248\u8d39"
+    assert uv_sheet.cell(row=1, column=10).value == "\u8ba2\u5355\u7c7b\u522b"
+    assert uv_sheet.cell(row=2, column=4).value == "uv-note"
     assert uv_sheet.cell(row=2, column=9).value == 18
+    assert uv_sheet.cell(row=2, column=10).value == "\u8fd4\u5de5"
     packaging_unlock = client.post(
         "/workshop/packaging/unlock",
         data={"csrf": csrf(home.text), "password": "packaging-pass-123"},

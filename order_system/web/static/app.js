@@ -415,6 +415,7 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   const employeeButtons = [...section.querySelectorAll("[data-employee-value]")];
   const singleOptionPicker = section.dataset.singleOption === "1";
   const specialEmployee = section.dataset.specialEmployee || "";
+  const unitPriceLabel = section.dataset.unitPriceLabel || "\u52a0\u5de5\u5355\u4ef7";
   const singleEmployeePicker = Boolean(specialEmployee);
   const historyChecks = new WeakMap();
   const scanAdvanceTimers = new WeakMap();
@@ -677,11 +678,11 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   rows.querySelectorAll("tr").forEach(row => { applyCurrentEmployee(row, true); applySpecialEmployee(row); });
   addButton?.addEventListener("click", () => addRow());
   batchPriceButton?.addEventListener("click", () => {
-    const value = window.prompt("\u8bf7\u8f93\u5165\u65b0\u7684\u52a0\u5de5\u5355\u4ef7");
+    const value = window.prompt(`\u8bf7\u8f93\u5165\u65b0\u7684${unitPriceLabel}`);
     if (value === null) return;
     const cleaned = value.trim();
     if (!/^\d+(?:\.\d{1,4})?$/.test(cleaned)) {
-      window.alert("\u8bf7\u8f93\u5165\u6709\u6548\u7684\u52a0\u5de5\u5355\u4ef7\uff0c\u6700\u591a 4 \u4f4d\u5c0f\u6570");
+      window.alert(`\u8bf7\u8f93\u5165\u6709\u6548\u7684${unitPriceLabel}\uff0c\u6700\u591a 4 \u4f4d\u5c0f\u6570`);
       return;
     }
     const activeRows = [...rows.querySelectorAll("tr")].filter(row => cleanWorkshopOrderNo(row.querySelector("[data-workshop-order]")?.value));

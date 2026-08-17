@@ -115,6 +115,7 @@ WORKSHOP_DEPARTMENTS = {
         "employees": ["\u5218\u8fdb", "\u9ec4\u4e09\u679a", "\u5468\u6625\u71d5", "\u519c\u91d1\u7ea2", "\u519c\u8273\u7ea2", "\u9648\u7eaf\u82f1", "\u6881\u5f66", "\u6768\u7ea2\u82f1", "\u5f90\u53cb\u4e3d"],
         "piecework": True,
         "mold_fee": True,
+        "unit_price_label": "\u989c\u8272\u5355\u4ef7",
         "mold_fee_label": "\u989c\u8272\u6570\u91cf",
         "mold_fee_input": True,
         "mold_fee_default": "1",
@@ -132,11 +133,14 @@ WORKSHOP_DEPARTMENTS = {
     },
     "uv": {
         "name": "UV",
-        "process_options": ["UV"],
         "piecework": True,
+        "fixed_operator": "UV",
         "mold_fee": True,
         "mold_fee_label": "\u7248\u8d39",
         "mold_fee_input": True,
+        "note_text": True,
+        "record_type": True,
+        "record_type_rework_label": "\u8fd4\u5de5",
     },
 }
 WORKSHOP_PASSWORD_DEPARTMENTS = {"mold", "cutter"}
@@ -1551,6 +1555,7 @@ def workshop_department(name: str) -> dict[str, Any] | None:
         "piecework": bool(department.get("piecework")),
         "quantity_only": bool(department.get("quantity_only")),
         "mold_fee": bool(department.get("mold_fee")),
+        "unit_price_label": str(department.get("unit_price_label") or "\u52a0\u5de5\u5355\u4ef7"),
         "mold_fee_label": str(department.get("mold_fee_label") or "\u88c5\u6a21\u8d39"),
         "mold_fee_options": list(department.get("mold_fee_options") or []),
         "mold_fee_input": bool(department.get("mold_fee_input")),
@@ -1559,6 +1564,10 @@ def workshop_department(name: str) -> dict[str, Any] | None:
         "tooling": bool(department.get("tooling")),
         "cutter": bool(department.get("cutter")),
         "notes": list(department.get("notes") or []),
+        "note_text": bool(department.get("note_text")),
+        "record_type": bool(department.get("record_type")),
+        "record_type_rework_label": str(department.get("record_type_rework_label") or "\u91cd\u505a"),
+        "fixed_operator": str(department.get("fixed_operator") or ""),
         "special_employee": str(department.get("special_employee") or ""),
         "mold": bool(department.get("mold")),
         "materials": list(department.get("materials") or []),
@@ -1854,7 +1863,38 @@ async def workshop_department_export(request: Request, department_key: str):
         ] for row in rows]
         headers = ["\u8ba2\u5355\u53f7", "\u5c3a\u5bf8", "\u5907\u6ce8", "\u6570\u91cf", "\u91d1\u989d", "\u8ba2\u5355\u7c7b\u522b", "\u5f55\u5165\u65f6\u95f4"]
     elif department.get("piecework"):
-        if department.get("mold_fee"):
+        if department_key == "painting":
+            data = [[
+                row.get("order_no") or "",
+                row.get("product_name") or "",
+                order_size_text(row),
+                row.get("department_name") or "",
+                row.get("operator_name") or "",
+                row.get("quantity") or 1,
+                row.get("reference_quantity") or 0,
+                row.get("unit_price") or 0,
+                row.get("mold_fee") or 0,
+                float(row.get("unit_price") or 0) * float(row.get("mold_fee") or 0),
+                row.get("amount") or 0,
+                beijing_time(row.get("reported_at") or ""),
+            ] for row in rows]
+            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u5c3a\u5bf8", "\u90e8\u95e8", "\u5458\u5de5", "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u989c\u8272\u5355\u4ef7", "\u989c\u8272\u6570\u91cf", "\u5355\u4ef7", "\u91d1\u989d", "\u62a5\u5230\u65f6\u95f4"]
+        elif department_key == "uv":
+            data = [[
+                row.get("order_no") or "",
+                row.get("product_name") or "",
+                row.get("department_name") or "",
+                row.get("note_text") or "",
+                row.get("quantity") or 1,
+                row.get("reference_quantity") or 0,
+                row.get("unit_price") or 0,
+                row.get("mold_fee") or 0,
+                row.get("amount") or 0,
+                "\u8fd4\u5de5" if row.get("record_type") == "rework" else "\u6b63\u5e38",
+                beijing_time(row.get("reported_at") or ""),
+            ] for row in rows]
+            headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u90e8\u95e8", "\u5907\u6ce8", "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u5355\u4ef7", "\u7248\u8d39", "\u91d1\u989d", "\u8ba2\u5355\u7c7b\u522b", "\u62a5\u5230\u65f6\u95f4"]
+        elif department.get("mold_fee"):
             data = [[
                 row.get("order_no") or "",
                 row.get("product_name") or "",

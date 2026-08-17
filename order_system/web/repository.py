@@ -1445,12 +1445,14 @@ class Repository:
                 raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u6570\u91cf\u5fc5\u987b\u5927\u4e8e 0")
             raw_employee = str(row.get("employee_name") or "").strip()
             employee_names = [item.strip() for item in re.split(r"[,\s]+", raw_employee) if item.strip()]
-            process_options = {"crystal": {"\u73bb\u7483", "\u78c1\u94c1", "\u914d\u4ef6"}, "uv": {"UV"}}
+            process_options = {"crystal": {"\u73bb\u7483", "\u78c1\u94c1", "\u914d\u4ef6"}}
             if department_key in process_options:
                 employee_names = list(dict.fromkeys(employee_names))
                 allowed_options = process_options[department_key]
                 if len(employee_names) != 1 or employee_names[0] not in allowed_options:
                     raise ValueError(f"\u8ba2\u5355 {order_no} \u8bf7\u9009\u62e9{department_name}\u5de5\u827a")
+            if department_key == "uv":
+                employee_names = ["UV"]
             if department_key in piecework_employees:
                 employee_names = list(dict.fromkeys(employee_names))
                 allowed_employees = piecework_employees[department_key]
@@ -1493,9 +1495,9 @@ class Repository:
                 material = ""
                 size_text = ""
                 spec = ""
-                if department_key != "polishing":
+                if department_key not in {"polishing", "uv"}:
                     note_text = ""
-                record_type = "normal"
+                record_type = "rework" if department_key == "uv" and record_type == "rework" else "normal"
             clean_rows.append({
                 "order_no": order_no,
                 "unit_price": unit_price,
