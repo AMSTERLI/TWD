@@ -374,6 +374,7 @@ with TestClient(app) as client:
     static_css = Path("order_system/web/static/app.css").read_text(encoding="utf-8")
     assert ".workshop-department-polishing .piecework-table table" in static_css
     assert ".employee-selection:empty::before" in static_css
+    assert ".workshop-department-uv .piecework-table" in static_css and 'select[name="record_type"]' in static_css
     static_js = Path("order_system/web/static/app.js").read_text(encoding="utf-8")
     assert "singleEmployeePicker" in static_js and "[data-special-note-header]" in static_js
     polishing_report = client.post(
@@ -432,6 +433,7 @@ with TestClient(app) as client:
     painting_list = client.get("/workshop/painting")
     assert painting_list.status_code == 200 and 'data-selection-amount-total-all="45.00"' in painting_list.text
     assert "\u989c\u8272\u5355\u4ef7" in painting_list.text and "0.4500" in painting_list.text
+    assert "&#989c;" not in painting_list.text
     diecast_unlock = client.post(
         "/workshop/diecast/unlock",
         data={"csrf": csrf(home.text), "password": "diecast-pass-123"},
