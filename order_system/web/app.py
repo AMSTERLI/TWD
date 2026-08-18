@@ -132,7 +132,7 @@ WORKSHOP_DEPARTMENTS = {
         "mold_fee_options": ["0", "4", "5", "6", "7", "8"],
     },
     "uv": {
-        "name": "UV",
+        "name": "UV\uff08\u5434\u53cc\u5a25\uff09",
         "piecework": True,
         "fixed_operator": "UV",
         "mold_fee": True,

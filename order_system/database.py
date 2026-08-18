@@ -148,7 +148,7 @@ DEFAULT_OUTSOURCE_FACTORIES = [
     ("\u710a\u9488", "\u79e6\u6c38\u548c"),
     ("\u6bdb\u8fb9", "\u6797\u4e16\u57f9"),
     ("\u956d\u96d5", "\u5f20\u5c55\u5c71"),
-    ("\u5305\u88c5", "\u66fe\u51e4\u5a25"),
+    ("\u5305\u88c5", "\u66fe\u8fde\u543e"),
     ("\u76ae\u9769", "\u8001\u96f7"),
     ("\u78e8\u77f3", "\u6bdb\u536b\u5175"),
 ]
@@ -230,6 +230,13 @@ class Database:
             )
             self._seed_outsource_processes(conn)
             self._seed_outsource_factories(conn)
+            conn.execute(
+                """
+                UPDATE outsource_factories
+                SET factory_name = '曾连吾'
+                WHERE process_name = '包装' AND factory_name = '曾凤娥'
+                """
+            )
             conn.execute(
                 "UPDATE outsource_records SET process_name = '印刷/UV' WHERE process_name IN ('印刷', 'UV')"
             )

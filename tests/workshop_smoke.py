@@ -463,6 +463,7 @@ with TestClient(app) as client:
     assert diecast_list.status_code == 200 and 'data-selection-amount-total-all="29.00"' in diecast_list.text
     uv = client.get("/workshop/uv")
     assert uv.status_code == 200 and "touch-piecework-panel" in uv.text
+    assert "UV\uff08\u5434\u53cc\u5a25\uff09" in uv.text
     assert 'data-employee-value="UV"' not in uv.text and "\u7248\u8d39" in uv.text and 'data-batch-workshop-price' in uv.text
     assert "data-workshop-employees" not in uv.text and "<th>\u5de5\u827a</th>" not in uv.text
     assert "&#22791;&#27880;" in uv.text and "\u8fd4\u5de5" in uv.text
@@ -474,7 +475,7 @@ with TestClient(app) as client:
     assert uv_report.status_code == 303
     uv_records = repo.order_workshop_records(uv_order_id)
     assert len(uv_records) == 1
-    assert uv_records[0]["department_name"] == "UV"
+    assert uv_records[0]["department_name"] == "UV\uff08\u5434\u53cc\u5a25\uff09"
     assert uv_records[0]["operator_name"] == "UV"
     assert uv_records[0]["note_text"] == "uv-note"
     assert uv_records[0]["record_type"] == "rework"
