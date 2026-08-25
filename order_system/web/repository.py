@@ -1373,9 +1373,11 @@ class Repository:
         if not isinstance(raw_processes, list):
             raw_processes = [raw_processes] if raw_processes else []
         processes = [str(item or "").strip() for item in raw_processes if str(item or "").strip()]
+        plating_note = str(order["plating_note"] or "").strip()
         return {
             "order_no": str(order["order_no"]),
-            "process_name": "、".join(processes),
+            "process_name": "、".join(processes) if processes else plating_note,
+            "remark": plating_note if processes else "",
             "quantity": float(order["quantity"] or 0) + float(order["spare_quantity"] or 0),
         }
 

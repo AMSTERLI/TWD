@@ -52,7 +52,13 @@ def payload(order_no: str) -> dict[str, object]:
 with TestClient(app) as client:
     repo.create_user("qixin", "qixin888", "plating")
     repo.create_user("admin", "admin-password", "admin")
-    order_id, order_no = repo.create_order(payload("TWD1-260825501"))
+    checked_payload = payload("TWD1-260825501")
+    checked_payload["plating_note"] = "电镀加厚"
+    order_id, order_no = repo.create_order(checked_payload)
+    note_only_payload = payload("TWD1-260825502")
+    note_only_payload["plating_json"] = dumps_json([])
+    note_only_payload["plating_note"] = "按样品电镀"
+    _, note_only_order_no = repo.create_order(note_only_payload)
 
     login_page = client.get("/login")
     login = client.post(
@@ -76,7 +82,13 @@ with TestClient(app) as client:
     lookup = client.get(f"/plating/order-lookup?order_no={order_no}")
     assert lookup.status_code == 200
     assert lookup.json()["order"]["process_name"] == "仿金、保护油"
+    assert lookup.json()["order"]["remark"] == "电镀加厚"
     assert lookup.json()["order"]["quantity"] == 115
+    note_only_lookup = client.get(f"/plating/order-lookup?order_no={note_only_order_no}")
+    assert note_only_lookup.status_code == 200
+    assert note_only_lookup.json()["order"]["process_name"] == "按样品电镀"
+    assert note_only_lookup.json()["order"]["remark"] == ""
+    assert note_only_lookup.json()["order"]["quantity"] == 115
 
     saved = client.post(
         "/plating",

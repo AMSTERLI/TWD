@@ -849,6 +849,7 @@ document.querySelectorAll("[data-plating-scan]").forEach(section => {
       input.value = result.order.order_no || orderNo;
       row.querySelector('[name="process_name"]').value = result.order.process_name || "";
       row.querySelector('[name="quantity"]').value = cleanNumber(result.order.quantity || 1);
+      row.querySelector('[name="remark"]').value = result.order.remark || "";
       row.dataset.lookupOk = "1";
       if (status) status.textContent = `已读取订单 ${input.value} 的电镀工艺和数量。`;
       return true;
