@@ -108,6 +108,10 @@ with TestClient(app) as client:
     assert "杨娟订单" not in orders.text and "业务员" not in orders.text
     assert "1+5" in orders.text and "待出货" in orders.text
     assert "单价" in orders.text and "金额" in orders.text and "2.5000" in orders.text and "&#165; 3.50" in orders.text
+    assert f'data-order-image-preview="/api/orders/{own_id}/preview-image"' in orders.text
+    assert "order-image-hover" in APP_JS
+    assert client.get(f"/api/orders/{own_id}/preview-image").status_code == 200
+    assert client.get(f"/api/orders/{other_id}/preview-image").status_code == 404
     assert 'data-select-all' in orders.text and f'name="order_ids" value="{own_id}"' in orders.text
     assert f'name="order_ids" value="{shipped_id}" disabled' in orders.text
     assert "/orders/shipping" in orders.text
@@ -242,6 +246,9 @@ with TestClient(app) as client:
     logout(client)
 
     login(client, "admin", "admin-pass-123")
+    admin_orders = client.get("/orders")
+    assert f'data-order-image-preview="/api/orders/{other_id}/preview-image"' in admin_orders.text
+    assert client.get(f"/api/orders/{other_id}/preview-image").status_code == 200
     messages = client.get("/messages")
     assert messages.status_code == 200
     assert "杨娟" in messages.text

@@ -766,7 +766,7 @@ class Repository:
             rows = conn.execute(
                 f"""SELECT id, order_no, customer_code, customer_name, product_name,
                            order_type, salesman, bi_no, production_no, quantity, spare_quantity, quantity_unit, order_date,
-                           delivery_date, unit_price, price_tiers_json, extra_fee, paid_status, shipped_status
+                           delivery_date, unit_price, price_tiers_json, extra_fee, paid_status, shipped_status, image_paths_json
                     FROM orders {where} ORDER BY {order_by} LIMIT ? OFFSET ?""",
                 (*args, page_size, offset),
             ).fetchall()
@@ -775,6 +775,11 @@ class Repository:
             item = dict(row)
             item["amount"] = order_receivable_amount(item)
             item["multi_price"] = bool(price_tiers_from_json(item.get("price_tiers_json")))
+            try:
+                image_names = json.loads(str(item.get("image_paths_json") or "[]"))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                image_names = []
+            item["has_image"] = bool(isinstance(image_names, list) and image_names)
             result_rows.append(item)
         return {"rows": result_rows, "total": total, "page": page,
                 "pages": max(1, (total + page_size - 1) // page_size)}

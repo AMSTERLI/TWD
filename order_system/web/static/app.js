@@ -1929,6 +1929,66 @@ document.addEventListener("click", event => {
   submitReplenishmentRequest({...row?.dataset, ...button.dataset});
 });
 
+const orderImagePreviewRows = document.querySelectorAll("[data-order-image-preview]");
+if (orderImagePreviewRows.length) {
+  const preview = document.createElement("div");
+  preview.className = "order-image-hover";
+  preview.hidden = true;
+  const image = document.createElement("img");
+  preview.appendChild(image);
+  document.body.appendChild(preview);
+  let activeRow = null;
+  let pointerX = 0;
+  let pointerY = 0;
+
+  function placeOrderImagePreview() {
+    const gap = 18;
+    const margin = 8;
+    const width = preview.offsetWidth || 320;
+    const height = preview.offsetHeight || 240;
+    let left = pointerX + gap;
+    let top = pointerY + gap;
+    if (left + width > window.innerWidth - margin) left = pointerX - width - gap;
+    if (top + height > window.innerHeight - margin) top = pointerY - height - gap;
+    preview.style.left = `${Math.max(margin, left)}px`;
+    preview.style.top = `${Math.max(margin, top)}px`;
+  }
+
+  function revealOrderImagePreview() {
+    if (!activeRow || !image.complete || !image.naturalWidth) return;
+    preview.hidden = false;
+    placeOrderImagePreview();
+  }
+
+  image.addEventListener("load", revealOrderImagePreview);
+  image.addEventListener("error", () => { preview.hidden = true; });
+  orderImagePreviewRows.forEach(row => {
+    row.addEventListener("mouseenter", event => {
+      activeRow = row;
+      pointerX = event.clientX;
+      pointerY = event.clientY;
+      preview.hidden = true;
+      image.alt = row.dataset.orderImageLabel || "订单产品图片";
+      const url = row.dataset.orderImagePreview || "";
+      if (image.dataset.previewUrl !== url) {
+        image.dataset.previewUrl = url;
+        image.src = url;
+      } else {
+        revealOrderImagePreview();
+      }
+    });
+    row.addEventListener("mousemove", event => {
+      pointerX = event.clientX;
+      pointerY = event.clientY;
+      if (!preview.hidden) placeOrderImagePreview();
+    });
+    row.addEventListener("mouseleave", () => {
+      activeRow = null;
+      preview.hidden = true;
+    });
+  });
+}
+
 const contextRows = document.querySelectorAll("[data-context-row], [data-admin-context]");
 if (contextRows.length) {
   const menu = document.createElement("div");

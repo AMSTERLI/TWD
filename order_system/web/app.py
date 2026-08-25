@@ -1130,6 +1130,20 @@ def shipping_order_image(request: Request, order_id: int):
     return FileResponse(image_path)
 
 
+@app.get("/api/orders/{order_id}/preview-image")
+def order_list_preview_image(request: Request, order_id: int):
+    user, denied = require_page(request, {"admin", "sales", "finance", "production"})
+    if denied:
+        return denied
+    record = repo.get_order(order_id)
+    if not record or sales_order_forbidden(user, record):
+        return Response(status_code=404)
+    image_path = first_order_image_path(record)
+    if not image_path:
+        return Response(status_code=404)
+    return FileResponse(image_path)
+
+
 @app.post("/orders/ship-batch", response_class=HTMLResponse)
 async def ship_orders_batch(request: Request):
     user, denied = require_page(request, {"sales"})
