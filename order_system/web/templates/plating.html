@@ -14,7 +14,8 @@
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <div class="table-wrap batch-table plating-table">
         <table>
-          <thead><tr><th>订单号</th><th>电镀工艺</th><th>数量</th><th>加工单价</th><th>金额</th><th>备注</th><th></th></tr></thead>
+          <colgroup><col class="plating-col-order"><col class="plating-col-process"><col class="plating-col-quantity"><col class="plating-col-price"><col class="plating-col-amount"><col class="plating-col-remark"><col class="plating-col-action"></colgroup>
+          <thead><tr><th>订单号</th><th>电镀工艺</th><th>数量</th><th>加工单价</th><th>金额</th><th>备注</th><th aria-label="操作"></th></tr></thead>
           <tbody data-plating-rows>
             <tr>
               <td><input name="order_no" autocomplete="off" data-plating-order placeholder="扫描或手动输入"></td>
