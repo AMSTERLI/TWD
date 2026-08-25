@@ -73,6 +73,7 @@ with TestClient(app) as client:
     assert "data-plating-scan" in page.text
     assert '<span class="role">电镀</span>' in page.text
     assert "电镀工艺" in page.text and "加工单价" in page.text and "备注" in page.text
+    assert 'name="amount"' in page.text and "金额" in page.text
     assert "data-touch-keypad" not in page.text and "data-touch-number" not in page.text
     assert "订单列表" not in page.text and "workshop-record-list" not in page.text
     assert "data-nav-toggle" not in page.text and "/messages" not in page.text
@@ -98,6 +99,7 @@ with TestClient(app) as client:
             "process_name": ["亮金（修改）"],
             "quantity": ["120"],
             "unit_price": ["0.35"],
+            "amount": ["50"],
             "remark": ["加厚处理"],
         },
         follow_redirects=False,
@@ -109,6 +111,7 @@ with TestClient(app) as client:
     assert record["department_key"] == "plating" and record["department_name"] == "电镀"
     assert record["material"] == "亮金（修改）" and record["note_text"] == "加厚处理"
     assert record["quantity"] == 120 and abs(record["unit_price"] - 0.35) < 1e-9
+    assert record["manual_amount"] == 50 and record["amount"] == 50
     assert record["operator_name"] == "qixin"
 
     client.post("/logout", data={"csrf": csrf(client.get("/plating").text)}, follow_redirects=False)

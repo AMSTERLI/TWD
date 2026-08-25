@@ -14,13 +14,14 @@
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <div class="table-wrap batch-table plating-table">
         <table>
-          <thead><tr><th>订单号</th><th>电镀工艺</th><th>数量</th><th>加工单价</th><th>备注</th><th></th></tr></thead>
+          <thead><tr><th>订单号</th><th>电镀工艺</th><th>数量</th><th>加工单价</th><th>金额</th><th>备注</th><th></th></tr></thead>
           <tbody data-plating-rows>
             <tr>
               <td><input name="order_no" autocomplete="off" data-plating-order placeholder="扫描或手动输入"></td>
               <td><input name="process_name" maxlength="200" autocomplete="off" placeholder="自动读取，可修改"></td>
               <td><input type="number" name="quantity" step="1" min="0.0001" value="1" required></td>
               <td><input type="number" name="unit_price" step="0.0001" min="0" value="0" required></td>
+              <td><input type="number" name="amount" step="0.0001" min="0" value="0" required></td>
               <td><input name="remark" maxlength="200" autocomplete="off" placeholder="选填"></td>
               <td><button type="button" class="small danger-button" data-remove-plating-row>删除</button></td>
             </tr>
@@ -33,6 +34,7 @@
           <td><input name="process_name" maxlength="200" autocomplete="off" placeholder="自动读取，可修改"></td>
           <td><input type="number" name="quantity" step="1" min="0.0001" value="1" required></td>
           <td><input type="number" name="unit_price" step="0.0001" min="0" value="0" required></td>
+          <td><input type="number" name="amount" step="0.0001" min="0" value="0" required></td>
           <td><input name="remark" maxlength="200" autocomplete="off" placeholder="选填"></td>
           <td><button type="button" class="small danger-button" data-remove-plating-row>删除</button></td>
         </tr>

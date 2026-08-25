@@ -1062,6 +1062,7 @@ async def plating_submit(request: Request):
     processes = form.getlist("process_name")
     quantities = form.getlist("quantity")
     unit_prices = form.getlist("unit_price")
+    amounts = form.getlist("amount")
     remarks = form.getlist("remark")
     rows = []
     for index, order_no in enumerate(form.getlist("order_no")):
@@ -1070,6 +1071,7 @@ async def plating_submit(request: Request):
             "process_name": processes[index] if index < len(processes) else "",
             "quantity": quantities[index] if index < len(quantities) else "",
             "unit_price": unit_prices[index] if index < len(unit_prices) else "0",
+            "amount": amounts[index] if index < len(amounts) else "",
             "remark": remarks[index] if index < len(remarks) else "",
         })
     try:

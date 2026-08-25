@@ -14,7 +14,7 @@
 .batch-table td{padding:5px 4px}
 .batch-table input,.batch-table select{width:74px;min-width:0;padding:7px 5px;font-size:13px}
 .batch-table input[type="number"]{width:66px}
-.plating-create-panel{max-width:1180px;margin:0 auto}.plating-create-panel .scan-tip{margin-bottom:14px}.plating-table table{min-width:950px}.plating-table [name="order_no"]{width:200px;min-width:200px}.plating-table [name="process_name"]{width:240px;min-width:240px}.plating-table [name="quantity"],.plating-table [name="unit_price"]{width:120px}.plating-table [name="remark"]{width:220px;min-width:220px}
+.plating-create-panel{max-width:1280px;margin:0 auto}.plating-create-panel .scan-tip{margin-bottom:14px}.plating-table table{min-width:1050px}.plating-table [name="order_no"]{width:200px;min-width:200px}.plating-table [name="process_name"]{width:240px;min-width:240px}.plating-table [name="quantity"],.plating-table [name="unit_price"],.plating-table [name="amount"]{width:110px}.plating-table [name="remark"]{width:220px;min-width:220px}
 .batch-table [name="order_no"]{width:142px;min-width:142px;text-align:right;direction:ltr;font-variant-numeric:tabular-nums}
 .batch-table [name="remark"]{width:96px;min-width:96px}
 .batch-table [name="flag_type"]{width:74px}

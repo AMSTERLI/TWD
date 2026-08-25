@@ -819,11 +819,19 @@ document.querySelectorAll("[data-plating-scan]").forEach(section => {
   const cleanNumber = value => Number(Number(value || 0).toFixed(4)).toString();
   const lookupTimers = new WeakMap();
 
+  function updateAmount(row) {
+    const quantity = Number(row?.querySelector('[name="quantity"]')?.value || 0);
+    const unitPrice = Number(row?.querySelector('[name="unit_price"]')?.value || 0);
+    const amount = row?.querySelector('[name="amount"]');
+    if (amount) amount.value = cleanNumber(quantity * unitPrice);
+  }
+
   function resetRow(row) {
     row.querySelector('[name="order_no"]').value = "";
     row.querySelector('[name="process_name"]').value = "";
     row.querySelector('[name="quantity"]').value = "1";
     row.querySelector('[name="unit_price"]').value = "0";
+    row.querySelector('[name="amount"]').value = "0";
     row.querySelector('[name="remark"]').value = "";
     row.dataset.lookupKey = "";
   }
@@ -850,6 +858,7 @@ document.querySelectorAll("[data-plating-scan]").forEach(section => {
       row.querySelector('[name="process_name"]').value = result.order.process_name || "";
       row.querySelector('[name="quantity"]').value = cleanNumber(result.order.quantity || 1);
       row.querySelector('[name="remark"]').value = result.order.remark || "";
+      updateAmount(row);
       row.dataset.lookupOk = "1";
       if (status) status.textContent = `已读取订单 ${input.value} 的电镀工艺和数量。`;
       return true;
@@ -876,6 +885,10 @@ document.querySelectorAll("[data-plating-scan]").forEach(section => {
     } else row.remove();
   });
   section.addEventListener("input", event => {
+    if (event.target.matches('[name="quantity"], [name="unit_price"]')) {
+      updateAmount(event.target.closest("tr"));
+      return;
+    }
     if (!event.target.matches("[data-plating-order]")) return;
     const row = event.target.closest("tr");
     const orderNo = cleanOrderNo(event.target.value);

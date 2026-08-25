@@ -164,6 +164,7 @@ class Repository:
                     record_type TEXT NOT NULL DEFAULT 'normal',
                     quantity INTEGER NOT NULL DEFAULT 1,
                     unit_price REAL NOT NULL DEFAULT 0,
+                    manual_amount REAL,
                     mold_fee REAL NOT NULL DEFAULT 0,
                     shipped_status INTEGER NOT NULL DEFAULT 0,
                     operator_id INTEGER,
@@ -232,6 +233,8 @@ class Repository:
                 conn.execute("ALTER TABLE workshop_records ADD COLUMN record_type TEXT NOT NULL DEFAULT 'normal'")
             if "mold_fee" not in existing_workshop_columns:
                 conn.execute("ALTER TABLE workshop_records ADD COLUMN mold_fee REAL NOT NULL DEFAULT 0")
+            if "manual_amount" not in existing_workshop_columns:
+                conn.execute("ALTER TABLE workshop_records ADD COLUMN manual_amount REAL")
             conn.execute(
                 "UPDATE web_users SET display_name = username "
                 "WHERE display_name IS NULL OR TRIM(display_name) = ''"
@@ -1397,6 +1400,11 @@ class Repository:
                 unit_price = float(row.get("unit_price") or 0)
             except (TypeError, ValueError):
                 raise ValueError(f"订单 {order_no} 的加工单价无效")
+            try:
+                amount_value = row.get("amount")
+                amount = quantity * unit_price if amount_value in (None, "") else float(amount_value)
+            except (TypeError, ValueError):
+                raise ValueError(f"订单 {order_no} 的金额无效")
             if not process_name:
                 raise ValueError(f"订单 {order_no} 请填写电镀工艺")
             if len(process_name) > 200:
@@ -1405,6 +1413,8 @@ class Repository:
                 raise ValueError(f"订单 {order_no} 的数量必须大于 0")
             if unit_price < 0:
                 raise ValueError(f"订单 {order_no} 的加工单价不能小于 0")
+            if amount < 0:
+                raise ValueError(f"订单 {order_no} 的金额不能小于 0")
             if len(remark) > 200:
                 raise ValueError(f"订单 {order_no} 的备注不能超过 200 个字")
             clean_rows.append({
@@ -1412,6 +1422,7 @@ class Repository:
                 "process_name": process_name,
                 "quantity": quantity,
                 "unit_price": unit_price,
+                "amount": amount,
                 "remark": remark,
             })
         if not clean_rows:
@@ -1428,11 +1439,11 @@ class Repository:
                 cursor = conn.execute(
                     """INSERT INTO workshop_records
                        (order_id, order_no, department_key, department_name, material, note_text,
-                        quantity, unit_price, operator_id, operator_name)
-                       VALUES (?, ?, 'plating', '电镀', ?, ?, ?, ?, ?, ?)""",
+                        quantity, unit_price, manual_amount, operator_id, operator_name)
+                       VALUES (?, ?, 'plating', '电镀', ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         int(order["id"]), str(order["order_no"]), row["process_name"], row["remark"],
-                        row["quantity"], row["unit_price"], operator_id, operator_name,
+                        row["quantity"], row["unit_price"], row["amount"], operator_id, operator_name,
                     ),
                 )
                 created_ids.append(int(cursor.lastrowid))
@@ -1671,10 +1682,10 @@ class Repository:
         )
         with self.connect() as conn:
             total = int(conn.execute(f"SELECT COUNT(*) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0])
-            amount_total = float(conn.execute(f"SELECT COALESCE(SUM(CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END), 0) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0] or 0)
+            amount_total = float(conn.execute(f"SELECT COALESCE(SUM(CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) WHEN w.department_key = 'plating' THEN COALESCE(w.manual_amount, COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0)) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END), 0) FROM workshop_records w LEFT JOIN orders o ON o.id = w.order_id {where}", args).fetchone()[0] or 0)
             rows = conn.execute(
                 f"""SELECT w.*, o.product_name, o.customer_name, o.order_type, o.width_mm, o.height_mm, o.thickness_mm, o.diameter_mm,
-                           CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
+                           CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) WHEN w.department_key = 'plating' THEN COALESCE(w.manual_amount, COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0)) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
                     FROM workshop_records w
                     LEFT JOIN orders o ON o.id = w.order_id
                     {where}
@@ -1697,7 +1708,7 @@ class Repository:
                 rows.extend(conn.execute(
                     f"""SELECT w.*, o.product_name, o.customer_name, o.image_paths_json, o.order_type,
                                o.width_mm, o.height_mm, o.thickness_mm, o.diameter_mm,
-                               CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
+                               CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) WHEN w.department_key = 'plating' THEN COALESCE(w.manual_amount, COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0)) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
                         FROM workshop_records w
                         LEFT JOIN orders o ON o.id = w.order_id
                         WHERE w.id IN ({placeholders}) AND (? = '' OR w.department_key = ?)""",
@@ -1783,7 +1794,7 @@ class Repository:
     def order_workshop_records(self, order_id: int) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
-                """SELECT w.*, CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
+                """SELECT w.*, CASE WHEN w.department_key IN ('mold', 'cutter') THEN COALESCE(w.unit_price, 0) WHEN w.department_key = 'painting' THEN COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) * COALESCE(NULLIF(w.mold_fee, 0), 1) WHEN w.department_key = 'plating' THEN COALESCE(w.manual_amount, COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0)) ELSE COALESCE(w.quantity, 1) * COALESCE(w.unit_price, 0) + COALESCE(w.mold_fee, 0) END AS amount
                    FROM workshop_records w
                    WHERE w.order_id = ?
                    ORDER BY w.reported_at ASC, w.id ASC""",
