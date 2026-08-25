@@ -106,8 +106,8 @@ def _draw_header(pdf: canvas.Canvas, record: dict) -> None:
     order_type = record.get("order_type") or ""
     order_type_color = RED if str(order_type).startswith("补数单") else BLACK
     _draw_box_text(pdf, order_type, 108, 66, 76, 20, color=order_type_color)
-    _draw_box_text(pdf, record.get("salesman") or "", 271, 66, 76, 20)
-    _draw_box_text(pdf, record.get("product_name") or "", 434, 66, 77, 20)
+    _draw_box_text(pdf, record.get("product_name") or "", 271, 66, 76, 20)
+    _draw_box_text(pdf, record.get("salesman") or "", 434, 66, 77, 20)
 
     _draw_box_text(pdf, _format_quantity(record), 108, 107, 76, 20)
     width_text = record.get("width_mm") or ""

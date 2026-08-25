@@ -58,6 +58,9 @@ with TestClient(app) as client:
     assert "点击本段文字，选中本框直接粘贴" in form_page.text
     assert "拖拽文件到本框" in form_page.text
     assert "补充描述" in form_page.text
+    assert form_page.text.count("data-ai-prompt-option") == 2
+    assert "把客单中的品名识别成PO号" in form_page.text
+    assert "精炼订单总备注中的内容，但是要保留关键工艺信息" in form_page.text
     assert "提交自动填好的表格前，必须人工核对。" in form_page.text
     assert 'data-paste-image-target="#product-images"' in form_page.text
     assert 'data-customer-name' in form_page.text and "程炬（编码 1）" in form_page.text
