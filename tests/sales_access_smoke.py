@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 import re
 import sys
@@ -15,6 +16,10 @@ from fastapi.testclient import TestClient  # noqa: E402
 from order_system.database import dumps_json  # noqa: E402
 from order_system.web.app import app, repo  # noqa: E402
 from order_system.web.repository import ORDER_COLUMNS  # noqa: E402
+
+
+PNG_BYTES = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=")
+APP_JS = (Path(__file__).resolve().parents[1] / "order_system" / "web" / "static" / "app.js").read_text(encoding="utf-8")
 
 
 def csrf(html: str) -> str:
@@ -74,8 +79,16 @@ with TestClient(app) as client:
     repo.create_user("admin", "admin-pass-123", "admin", display_name="管理员")
     repo.create_user("yangjuan", "sales-pass-123", "sales", display_name="杨娟")
     repo.create_user("liaochunfeng", "sales-pass-456", "sales", display_name="廖春凤")
-    own_id, own_no = repo.create_order(create_payload("TWD1-260717901", "杨娟", "杨娟订单", "2026-07-20"))
-    other_id, other_no = repo.create_order(create_payload("TWD1-260717902", "廖春凤", "廖春凤订单", "2026-07-25"))
+    own_image = "shipping-own.png"
+    other_image = "shipping-other.png"
+    (root / "images" / own_image).write_bytes(PNG_BYTES)
+    (root / "images" / other_image).write_bytes(PNG_BYTES)
+    own_payload = create_payload("TWD1-260717901", "杨娟", "杨娟订单", "2026-07-20")
+    own_payload["image_paths_json"] = dumps_json([own_image])
+    other_payload = create_payload("TWD1-260717902", "廖春凤", "廖春凤订单", "2026-07-25")
+    other_payload["image_paths_json"] = dumps_json([other_image])
+    own_id, own_no = repo.create_order(own_payload)
+    other_id, other_no = repo.create_order(other_payload)
     later_id, later_no = repo.create_order(create_payload("TWD1-260717903", "杨娟", "杨娟晚交期订单", "2026-08-20"))
     shipped_id, shipped_no = repo.create_order(create_payload("TWD1-260717904", "杨娟", "杨娟已出货订单", "2026-07-18"))
     repo.set_order_shipped(shipped_id, True)
@@ -102,10 +115,47 @@ with TestClient(app) as client:
     shipping_page = client.get("/orders/shipping")
     assert shipping_page.status_code == 200 and "扫码出货" in shipping_page.text and "data-order-shipping" in shipping_page.text
     assert "html5-qrcode" not in shipping_page.text and "shipping-qr-reader" not in shipping_page.text
+    assert "data-shipping-image" in shipping_page.text and "data-shipping-quantity" in shipping_page.text
+    assert "data-shipping-unit-price" in shipping_page.text and "data-shipping-extra-fee" in shipping_page.text
+    assert "data-add-shipping-manual disabled" in shipping_page.text
+    assert "lookupOrder(manualInput.value);" in APP_JS
+    assert "addOrderToBuffer(result.order)" not in APP_JS
     lookup = client.get(f"/api/orders/shipping-lookup?order_no={own_no}")
     assert lookup.status_code == 200 and lookup.json()["order"]["order_no"] == own_no
+    assert lookup.json()["order"]["image_url"] == f"/api/orders/shipping-image/{own_id}"
+    assert client.get(lookup.json()["order"]["image_url"]).status_code == 200
     other_lookup = client.get(f"/api/orders/shipping-lookup?order_no={other_no}")
     assert other_lookup.status_code == 200 and other_lookup.json()["order"]["order_no"] == other_no
+    assert client.get(f"/images/{other_image}").status_code == 404
+    assert client.get(other_lookup.json()["order"]["image_url"]).status_code == 200
+    editable_payload = create_payload("TWD1-260717906", "廖春凤", "可编辑出货订单", "2026-07-22")
+    editable_payload["price_tiers_json"] = dumps_json([{"quantity": 1, "unit_price": 2.5}])
+    editable_id, _ = repo.create_order(editable_payload)
+    editable_batch = client.post(
+        "/orders/ship-batch",
+        data={
+            "csrf": csrf(shipping_page.text), "order_ids": str(editable_id),
+            "shipping_quantity": "12", "shipping_unit_price": "3.75", "shipping_extra_fee": "4.5",
+        },
+        headers={"referer": "http://testserver/orders/shipping"},
+        follow_redirects=False,
+    )
+    assert editable_batch.status_code == 200 and "已批量出货 1 张订单" in editable_batch.text
+    editable_order = repo.get_order(editable_id)
+    assert editable_order["shipped_status"] == 1
+    assert editable_order["quantity"] == 12 and editable_order["unit_price"] == 3.75 and editable_order["extra_fee"] == 4.5
+    assert editable_order["price_tiers_json"] == "[]"
+    invalid_id, _ = repo.create_order(create_payload("TWD1-260717907", "杨娟", "无效出货数据", "2026-07-23"))
+    invalid_batch = client.post(
+        "/orders/ship-batch",
+        data={
+            "csrf": csrf(shipping_page.text), "order_ids": str(invalid_id),
+            "shipping_quantity": "0", "shipping_unit_price": "3", "shipping_extra_fee": "0",
+        },
+        headers={"referer": "http://testserver/orders/shipping"},
+        follow_redirects=False,
+    )
+    assert invalid_batch.status_code == 422 and repo.get_order(invalid_id)["shipped_status"] == 0
     batch_target_id, _ = repo.create_order(create_payload("TWD1-260717905", "杨娟", "杨娟批量出货订单", "2026-07-21"))
     batch_page = client.get("/orders")
     batch = client.post(

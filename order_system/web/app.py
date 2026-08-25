@@ -1113,7 +1113,21 @@ def shipping_lookup(request: Request, order_no: str = ""):
     record = repo.shipping_order(order_no)
     if not record:
         return JSONResponse({"error": "订单不存在"}, status_code=404)
+    record["image_url"] = f"/api/orders/shipping-image/{record['id']}" if first_order_image_path(record) else ""
+    record.pop("image_paths_json", None)
     return {"order": record}
+
+
+@app.get("/api/orders/shipping-image/{order_id}")
+def shipping_order_image(request: Request, order_id: int):
+    _, denied = require_page(request, {"sales"})
+    if denied:
+        return denied
+    record = repo.get_order(order_id)
+    image_path = first_order_image_path(record or {})
+    if not image_path:
+        return Response(status_code=404)
+    return FileResponse(image_path)
 
 
 @app.post("/orders/ship-batch", response_class=HTMLResponse)
@@ -1124,7 +1138,8 @@ async def ship_orders_batch(request: Request):
     form = await request.form()
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
-    order_ids = [as_int(value) for value in form.getlist("order_ids")]
+    raw_order_ids = form.getlist("order_ids")
+    order_ids = [as_int(value) for value in raw_order_ids]
     if not any(order_ids):
         return templates.TemplateResponse(
             request,
@@ -1132,7 +1147,31 @@ async def ship_orders_batch(request: Request):
             page_context(request, shipped=0, error="请至少勾选或扫描一个订单"),
             status_code=400,
         )
-    changed = await run_in_threadpool(repo.set_orders_shipped_many, order_ids, True)
+    quantities = form.getlist("shipping_quantity")
+    unit_prices = form.getlist("shipping_unit_price")
+    extra_fees = form.getlist("shipping_extra_fee")
+    has_shipping_updates = bool(quantities or unit_prices or extra_fees)
+    try:
+        if has_shipping_updates:
+            rows = [
+                {
+                    "order_id": raw_order_id,
+                    "quantity": quantities[index] if index < len(quantities) else "",
+                    "unit_price": unit_prices[index] if index < len(unit_prices) else "",
+                    "extra_fee": extra_fees[index] if index < len(extra_fees) else "",
+                }
+                for index, raw_order_id in enumerate(raw_order_ids)
+            ]
+            changed = await run_in_threadpool(repo.ship_orders_with_updates, rows)
+        else:
+            changed = await run_in_threadpool(repo.set_orders_shipped_many, order_ids, True)
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "order_shipping.html",
+            page_context(request, shipped=0, error=str(exc)),
+            status_code=422,
+        )
     await run_in_threadpool(repo.audit, user, "order.ship_batch", f"{changed}:{','.join(str(item) for item in order_ids if item)}", client_ip(request))
     referer = str(request.headers.get("referer") or "")
     if "/orders/shipping" in referer:

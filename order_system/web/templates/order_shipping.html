@@ -1,14 +1,27 @@
 {% extends "base.html" %}
 {% block title %}扫码出货 · TWD 订单系统{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>扫码出货</h1><p>使用扫码枪或手动输入订单号进入缓存区，确认后批量出货。</p></div><div class="actions"><a class="button" href="/orders">返回订单查询</a></div></div>
+<div class="page-head"><div><h1>扫码出货</h1><p>扫码后先核对产品图片和订单数据，加入缓存区后再批量确认出货。</p></div><div class="actions"><a class="button" href="/orders">返回订单查询</a></div></div>
 {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
 {% if shipped %}<div class="alert success">已批量出货 {{ shipped }} 张订单。</div>{% endif %}
 <section class="panel shipping-scan" data-order-shipping data-lookup-url="/api/orders/shipping-lookup">
   <div class="shipping-manual">
     <div class="scan-tip"><strong>扫码枪录入</strong><span data-shipping-status>扫码枪扫描或手动输入订单号后按回车。</span></div>
     <label>订单号<input data-shipping-manual autocomplete="off" autofocus placeholder="扫描枪或手动输入后按回车"></label>
-    <button type="button" data-add-shipping-manual>加入缓存区</button>
+    <button type="button" data-add-shipping-manual disabled>加入缓存区</button>
+  </div>
+  <div class="shipping-product-preview">
+    <div class="shipping-image-frame">
+      <img data-shipping-image alt="产品图片" hidden>
+      <span data-shipping-image-empty>扫码后显示产品图片</span>
+    </div>
+    <div class="shipping-preview-title"><strong data-shipping-preview-order>尚未读取订单</strong><span data-shipping-preview-product></span></div>
+  </div>
+  <div class="shipping-order-editor">
+    <label>数量<input type="number" min="1" step="1" data-shipping-quantity disabled></label>
+    <label>单价<input type="number" min="0" step="0.0001" data-shipping-unit-price disabled></label>
+    <label>附加费<input type="number" min="0" step="0.01" data-shipping-extra-fee disabled></label>
+    <div class="shipping-preview-amount"><span>金额</span><strong data-shipping-preview-amount>&#165; 0.00</strong></div>
   </div>
 </section>
 <form method="post" action="/orders/ship-batch" data-shipping-confirm>

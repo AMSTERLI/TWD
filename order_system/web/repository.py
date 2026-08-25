@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import sqlite3
 from contextlib import contextmanager
@@ -1229,6 +1230,72 @@ class Repository:
                 changed += int(cursor.rowcount)
         return changed
 
+    def ship_orders_with_updates(self, rows: list[dict[str, Any]]) -> int:
+        clean_rows: list[dict[str, Any]] = []
+        seen_ids: set[int] = set()
+        for row in rows:
+            raw_values = (row.get("quantity"), row.get("unit_price"), row.get("extra_fee"))
+            if any(value is None or not str(value).strip() for value in raw_values):
+                raise ValueError("请填写数量、单价和附加费")
+            try:
+                order_id = int(row.get("order_id") or 0)
+                raw_quantity = float(raw_values[0])
+                unit_price = float(raw_values[1])
+                extra_fee = float(raw_values[2])
+            except (TypeError, ValueError):
+                raise ValueError("数量、单价和附加费必须是有效数字")
+            if order_id <= 0:
+                raise ValueError("订单不存在")
+            if order_id in seen_ids:
+                raise ValueError("同一订单不能重复加入缓存区")
+            if not raw_quantity.is_integer() or raw_quantity <= 0:
+                raise ValueError("数量必须是大于 0 的整数")
+            if not all(math.isfinite(value) for value in (unit_price, extra_fee)):
+                raise ValueError("单价和附加费必须是有限数字")
+            if unit_price < 0 or extra_fee < 0:
+                raise ValueError("单价和附加费不能为负数")
+            seen_ids.add(order_id)
+            clean_rows.append({
+                "order_id": order_id,
+                "quantity": int(raw_quantity),
+                "unit_price": unit_price,
+                "extra_fee": extra_fee,
+            })
+        if not clean_rows:
+            raise ValueError("请至少扫描或录入一个订单")
+
+        changed = 0
+        with self.connect(write=True) as conn:
+            for row in clean_rows:
+                existing = conn.execute(
+                    """SELECT order_no, quantity, unit_price, price_tiers_json, shipped_status
+                       FROM orders WHERE id = ?""",
+                    (row["order_id"],),
+                ).fetchone()
+                if not existing:
+                    raise ValueError("订单不存在")
+                if int(existing["shipped_status"] or 0):
+                    raise ValueError(f"订单 {existing['order_no']} 已出货")
+                pricing_changed = (
+                    int(existing["quantity"] or 0) != row["quantity"]
+                    or abs(float(existing["unit_price"] or 0) - row["unit_price"]) > 1e-9
+                )
+                price_tiers_json = str(existing["price_tiers_json"] or "[]")
+                if pricing_changed and price_tiers_from_json(price_tiers_json):
+                    price_tiers_json = "[]"
+                cursor = conn.execute(
+                    """UPDATE orders
+                       SET quantity = ?, unit_price = ?, extra_fee = ?, price_tiers_json = ?,
+                           shipped_status = 1, shipped_at = COALESCE(shipped_at, CURRENT_TIMESTAMP)
+                       WHERE id = ?""",
+                    (
+                        row["quantity"], row["unit_price"], row["extra_fee"],
+                        price_tiers_json, row["order_id"],
+                    ),
+                )
+                changed += int(cursor.rowcount)
+        return changed
+
     def shipping_order(self, order_no: str) -> dict[str, Any] | None:
         order_no = normalize_scanned_order_no(order_no)
         if not order_no:
@@ -1248,6 +1315,7 @@ class Repository:
             "unit_price": row["unit_price"],
             "price_tiers_json": row["price_tiers_json"],
             "extra_fee": row["extra_fee"],
+            "image_paths_json": row["image_paths_json"],
             "delivery_date": row["delivery_date"],
             "shipped_status": row["shipped_status"],
         }

@@ -1580,10 +1580,20 @@ document.querySelectorAll("[data-order-shipping]").forEach(section => {
   const status = section.querySelector("[data-shipping-status]");
   const manualInput = section.querySelector("[data-shipping-manual]");
   const manualButton = section.querySelector("[data-add-shipping-manual]");
+  const previewImage = section.querySelector("[data-shipping-image]");
+  const previewImageEmpty = section.querySelector("[data-shipping-image-empty]");
+  const previewOrderNo = section.querySelector("[data-shipping-preview-order]");
+  const previewProduct = section.querySelector("[data-shipping-preview-product]");
+  const quantityInput = section.querySelector("[data-shipping-quantity]");
+  const unitPriceInput = section.querySelector("[data-shipping-unit-price]");
+  const extraFeeInput = section.querySelector("[data-shipping-extra-fee]");
+  const previewAmount = section.querySelector("[data-shipping-preview-amount]");
   const confirmForm = document.querySelector("[data-shipping-confirm]");
   const buffer = confirmForm?.querySelector("[data-shipping-buffer]");
   const emptyRow = confirmForm?.querySelector("[data-shipping-empty]");
   const scannedIds = new Set();
+  let currentOrder = null;
+  let lookupSequence = 0;
 
   function setStatus(message, isError = false) {
     if (!status) return;
@@ -1593,10 +1603,6 @@ document.querySelectorAll("[data-order-shipping]").forEach(section => {
 
   function formatMoney(value) {
     return `¥ ${Number(value || 0).toFixed(2)}`;
-  }
-
-  function formatUnitPrice(order) {
-    return order.multi_price ? "多单价" : Number(order.unit_price || 0).toFixed(4);
   }
 
   function escapeHtml(value) {
@@ -1609,16 +1615,97 @@ document.querySelectorAll("[data-order-shipping]").forEach(section => {
     }[char]));
   }
 
-  function quantityText(order) {
+  function quantityText(order, quantity = order.quantity) {
     const spare = Number(order.spare_quantity || 0);
-    return `${order.quantity || 0}${spare ? `+${spare}` : ""} ${order.quantity_unit || ""}`.trim();
+    return `${quantity || 0}${spare ? `+${spare}` : ""} ${order.quantity_unit || ""}`.trim();
   }
 
   function removeEmptyRow() {
     emptyRow?.remove();
   }
 
-  function addOrderToBuffer(order) {
+  function setEditorEnabled(enabled) {
+    [quantityInput, unitPriceInput, extraFeeInput].forEach(input => {
+      if (input) input.disabled = !enabled;
+    });
+    if (manualButton) manualButton.disabled = !enabled;
+  }
+
+  function clearPreview() {
+    currentOrder = null;
+    if (previewOrderNo) previewOrderNo.textContent = "尚未读取订单";
+    if (previewProduct) previewProduct.textContent = "";
+    if (previewImage) {
+      previewImage.hidden = true;
+      previewImage.removeAttribute("src");
+    }
+    if (previewImageEmpty) {
+      previewImageEmpty.hidden = false;
+      previewImageEmpty.textContent = "扫码后显示产品图片";
+    }
+    [quantityInput, unitPriceInput, extraFeeInput].forEach(input => {
+      if (input) input.value = "";
+    });
+    if (previewAmount) previewAmount.textContent = formatMoney(0);
+    setEditorEnabled(false);
+  }
+
+  function previewValues() {
+    const rawQuantity = String(quantityInput?.value || "").trim();
+    const rawUnitPrice = String(unitPriceInput?.value || "").trim();
+    const rawExtraFee = String(extraFeeInput?.value || "").trim();
+    if (!rawQuantity || !rawUnitPrice || !rawExtraFee) throw new Error("请填写数量、单价和附加费");
+    const quantity = Number(rawQuantity);
+    const unitPrice = Number(rawUnitPrice);
+    const extraFee = Number(rawExtraFee);
+    if (!Number.isInteger(quantity) || quantity <= 0) throw new Error("数量必须是大于 0 的整数");
+    if (![unitPrice, extraFee].every(Number.isFinite) || unitPrice < 0 || extraFee < 0) {
+      throw new Error("单价和附加费不能为负数");
+    }
+    return {quantity, unitPrice, extraFee};
+  }
+
+  function pricingUnchanged(order, values) {
+    return Number(order.quantity || 0) === values.quantity
+      && Math.abs(Number(order.unit_price || 0) - values.unitPrice) < 1e-9;
+  }
+
+  function orderAmount(order, values) {
+    if (order.multi_price && pricingUnchanged(order, values)) {
+      return Number(order.amount || 0) - Number(order.extra_fee || 0) + values.extraFee;
+    }
+    return values.quantity * values.unitPrice + values.extraFee;
+  }
+
+  function refreshPreviewAmount() {
+    if (!currentOrder || !previewAmount) return;
+    try {
+      previewAmount.textContent = formatMoney(orderAmount(currentOrder, previewValues()));
+    } catch (_error) {
+      previewAmount.textContent = "-";
+    }
+  }
+
+  function showOrderPreview(order) {
+    currentOrder = order;
+    if (previewOrderNo) previewOrderNo.textContent = order.order_no || "";
+    if (previewProduct) previewProduct.textContent = order.product_name || "-";
+    if (quantityInput) quantityInput.value = Number(order.quantity || 0).toString();
+    if (unitPriceInput) unitPriceInput.value = Number(order.unit_price || 0).toString();
+    if (extraFeeInput) extraFeeInput.value = Number(order.extra_fee || 0).toString();
+    if (previewImage && order.image_url) {
+      previewImage.src = order.image_url;
+      previewImage.hidden = false;
+      if (previewImageEmpty) previewImageEmpty.hidden = true;
+    } else if (previewImageEmpty) {
+      previewImageEmpty.hidden = false;
+      previewImageEmpty.textContent = "暂无产品图片";
+    }
+    setEditorEnabled(true);
+    refreshPreviewAmount();
+  }
+
+  function addOrderToBuffer(order, values) {
     if (!order?.id || scannedIds.has(String(order.id))) {
       setStatus(`${order?.order_no || "该订单"} 已在缓存区`);
       return;
@@ -1627,38 +1714,73 @@ document.querySelectorAll("[data-order-shipping]").forEach(section => {
     removeEmptyRow();
     const row = document.createElement("tr");
     row.dataset.shippingOrderId = String(order.id);
-    row.innerHTML = `<td><input type="hidden" name="order_ids" value="${Number(order.id)}"><a href="/orders/${Number(order.id)}">${escapeHtml(order.order_no || "")}</a></td><td>${escapeHtml(order.customer_name || "-")}</td><td>${escapeHtml(order.product_name || "-")}</td><td>${escapeHtml(quantityText(order))}</td><td>${escapeHtml(formatUnitPrice(order))}</td><td>${escapeHtml(formatMoney(order.amount))}</td><td>${escapeHtml(order.delivery_date || "-")}</td><td><span class="badge ${order.shipped_status ? "ok" : "warn"}">${order.shipped_status ? "已出货" : "待出货"}</span></td><td><button type="button" class="small danger-button" data-remove-shipping-order>移除</button></td>`;
+    const unitPriceText = order.multi_price && pricingUnchanged(order, values)
+      ? "多单价"
+      : values.unitPrice.toFixed(4);
+    row.innerHTML = `<td><input type="hidden" name="order_ids" value="${Number(order.id)}"><input type="hidden" name="shipping_quantity" value="${values.quantity}"><input type="hidden" name="shipping_unit_price" value="${values.unitPrice}"><input type="hidden" name="shipping_extra_fee" value="${values.extraFee}"><a href="/orders/${Number(order.id)}">${escapeHtml(order.order_no || "")}</a></td><td>${escapeHtml(order.customer_name || "-")}</td><td>${escapeHtml(order.product_name || "-")}</td><td>${escapeHtml(quantityText(order, values.quantity))}</td><td>${escapeHtml(unitPriceText)}</td><td>${escapeHtml(formatMoney(orderAmount(order, values)))}</td><td>${escapeHtml(order.delivery_date || "-")}</td><td><span class="badge warn">待出货</span></td><td><button type="button" class="small danger-button" data-remove-shipping-order>移除</button></td>`;
     buffer?.appendChild(row);
     setStatus(`${order.order_no} 已加入缓存区`);
   }
 
-  async function lookupAndAdd(rawValue) {
+  async function lookupOrder(rawValue) {
     const orderNo = cleanWorkshopOrderNo(rawValue);
     if (!orderNo) return;
+    const sequence = ++lookupSequence;
+    clearPreview();
+    setStatus(`正在读取 ${orderNo}…`);
     try {
       const response = await fetch(`${lookupUrl}?order_no=${encodeURIComponent(orderNo)}`);
       const result = await response.json();
+      if (sequence !== lookupSequence) return;
       if (!response.ok) throw new Error(result.error || "订单查询失败");
       if (result.order?.shipped_status) {
         setStatus(`${result.order.order_no} 已出货`, true);
         return;
       }
-      addOrderToBuffer(result.order);
+      showOrderPreview(result.order);
+      setStatus(`${result.order.order_no} 已读取，请核对详情后加入缓存区`);
     } catch (error) {
+      if (sequence !== lookupSequence) return;
+      clearPreview();
       setStatus(error.message || "订单查询失败", true);
       alert(error.message || "订单查询失败");
     }
   }
 
   manualButton?.addEventListener("click", () => {
-    lookupAndAdd(manualInput.value);
-    manualInput.value = "";
-    manualInput.focus();
+    if (!currentOrder) return;
+    if (cleanWorkshopOrderNo(manualInput?.value) !== cleanWorkshopOrderNo(currentOrder.order_no)) {
+      setStatus("订单号已改变，请按回车重新读取", true);
+      return;
+    }
+    try {
+      const order = currentOrder;
+      addOrderToBuffer(order, previewValues());
+      if (!scannedIds.has(String(order.id))) return;
+      if (manualInput) manualInput.value = "";
+      clearPreview();
+      manualInput?.focus();
+    } catch (error) {
+      setStatus(error.message, true);
+      alert(error.message);
+    }
   });
   manualInput?.addEventListener("keydown", event => {
     if (event.key !== "Enter") return;
     event.preventDefault();
-    manualButton.click();
+    lookupOrder(manualInput.value);
+  });
+  manualInput?.addEventListener("input", () => {
+    if (!currentOrder) return;
+    if (cleanWorkshopOrderNo(manualInput.value) !== cleanWorkshopOrderNo(currentOrder.order_no)) clearPreview();
+  });
+  [quantityInput, unitPriceInput, extraFeeInput].forEach(input => input?.addEventListener("input", refreshPreviewAmount));
+  previewImage?.addEventListener("error", () => {
+    previewImage.hidden = true;
+    if (previewImageEmpty) {
+      previewImageEmpty.hidden = false;
+      previewImageEmpty.textContent = "产品图片无法显示";
+    }
   });
   buffer?.addEventListener("click", event => {
     const button = event.target.closest("[data-remove-shipping-order]");
@@ -1675,6 +1797,7 @@ document.querySelectorAll("[data-order-shipping]").forEach(section => {
     event.preventDefault();
     alert("请先扫描或录入订单");
   });
+  clearPreview();
 });
 
 document.querySelectorAll("[data-finance-stash]").forEach(stash => {
