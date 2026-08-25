@@ -26,6 +26,8 @@ original_convert = order_import._convert_with_libreoffice
 original_contains_images = order_import._docx_contains_images
 original_extract_docx = order_import._extract_docx
 original_render = order_import._render_doc_pages
+original_extract_document_text = order_import.extract_document_text
+original_layout_render = order_import._render_layout_document_pages
 
 
 def placeholder_docx(output_dir: Path) -> Path:
@@ -66,11 +68,38 @@ try:
     assert visual_content[0]["type"] == "text"
     assert visual_content[1]["type"] == "image_url"
     assert visual_content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+    layout_order = root / "customer-order.xlsx"
+    layout_order.write_bytes(b"xlsx-placeholder")
+
+    def fake_layout_render(source_path: Path, output_dir: Path) -> list[Path]:
+        assert source_path == layout_order
+        image_path = output_dir / "doc-page-1.png"
+        image_path.write_bytes(PNG_BYTES)
+        return [image_path]
+
+    order_import.extract_document_text = lambda path: "材质 | 锌合金烤漆\n电镀 | 染黑"
+    order_import._render_layout_document_pages = fake_layout_render
+    layout_content = order_import._layout_document_user_content(layout_order, "红色方块为选中")
+    assert isinstance(layout_content, list)
+    assert "锌合金烤漆" in layout_content[0]["text"]
+    assert "红色方块为选中" in layout_content[0]["text"]
+    assert layout_content[1]["min_pixels"] == order_import.VISUAL_MIN_PIXELS
+
+    def failed_layout_render(source_path: Path, output_dir: Path) -> list[Path]:
+        raise order_import.OrderImportError("render failed")
+
+    order_import._render_layout_document_pages = failed_layout_render
+    fallback_content = order_import._layout_document_user_content(layout_order, "")
+    assert isinstance(fallback_content, str)
+    assert "锌合金烤漆" in fallback_content
 finally:
     order_import._convert_with_libreoffice = original_convert
     order_import._docx_contains_images = original_contains_images
     order_import._extract_docx = original_extract_docx
     order_import._render_doc_pages = original_render
+    order_import.extract_document_text = original_extract_document_text
+    order_import._render_layout_document_pages = original_layout_render
 
 assert ".doc" in order_import.SUPPORTED_DOCUMENT_SUFFIXES
 

@@ -5,6 +5,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from PIL import Image
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import order_system.order_import as order_import  # noqa: E402
@@ -93,8 +95,20 @@ assert content[0]["type"] == "text"
 assert "勾画" in content[0]["text"] and "高亮" in content[0]["text"] and "制作工艺" in content[0]["text"]
 assert "颜色块" in content[0]["text"] and "空白的方框" in content[0]["text"]
 assert "表格布局和上下文合理判断" in content[0]["text"] and "不加" in content[0]["text"]
+assert "逐区检查每一个编号区域" in content[0]["text"]
+assert "POLISH FRONT SIDE" in content[0]["text"] and "BACK OF PIN" in content[0]["text"]
 assert "不要猜测" not in content[0]["text"]
 assert content[1]["type"] == "image_url"
 assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+assert content[1]["min_pixels"] == order_import.VISUAL_MIN_PIXELS
+assert content[1]["max_pixels"] == order_import.VISUAL_MAX_PIXELS
 assert result["product_name"] == "钥匙扣"
+
+tall_image_path = root / "tall-order.png"
+Image.new("RGB", (1_000, 1_400), "white").save(tall_image_path)
+expanded = order_import._expanded_visual_images([tall_image_path], root / "sections")
+assert expanded[0] == tall_image_path
+assert len(expanded) == 3
+with Image.open(expanded[1]) as top_section, Image.open(expanded[2]) as bottom_section:
+    assert top_section.size == bottom_section.size == (1_000, 868)
 print(f"order import image smoke ok: {root}")

@@ -23,9 +23,13 @@ MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_DOCUMENT_CHARS = 50_000
 MAX_SUPPLEMENTAL_PROMPT_CHARS = 2_000
 MAX_DOC_VISUAL_PAGES = 6
+MAX_VISUAL_IMAGES = 8
+VISUAL_MIN_PIXELS = 4_194_304
+VISUAL_MAX_PIXELS = 8_388_608
 DOC_CONVERSION_TIMEOUT_SECONDS = 60
 SUPPORTED_DOCUMENT_SUFFIXES = {".doc", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf"}
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
+VISUAL_DOCUMENT_SUFFIXES = {".docx", ".xlsx", ".xlsm", ".xls", ".pdf"}
 
 
 class OrderImportError(RuntimeError):
@@ -124,11 +128,10 @@ def _docx_contains_images(path: Path) -> bool:
         return False
 
 
-def _render_doc_pages(source_path: Path, output_dir: Path) -> list[Path]:
-    pdf_path = _convert_with_libreoffice(source_path, "pdf", output_dir)
+def _render_pdf_pages(pdf_path: Path, output_dir: Path) -> list[Path]:
     renderer = shutil.which("pdftoppm")
     if not renderer:
-        raise OrderImportError("服务器缺少 PDF 转图片组件，无法对图片型 .doc 进行视觉识别。")
+        raise OrderImportError("服务器缺少 PDF 转图片组件，无法进行页面视觉识别。")
 
     image_prefix = output_dir / "doc-page"
     command = [
@@ -139,7 +142,7 @@ def _render_doc_pages(source_path: Path, output_dir: Path) -> list[Path]:
         "-l",
         str(MAX_DOC_VISUAL_PAGES),
         "-scale-to",
-        "2000",
+        "2400",
         str(pdf_path),
         str(image_prefix),
     ]
@@ -152,14 +155,24 @@ def _render_doc_pages(source_path: Path, output_dir: Path) -> list[Path]:
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
-        raise OrderImportError("图片型 .doc 转图片超时，请另存为 PDF 后重试。") from exc
+        raise OrderImportError("客单页面转图片超时，请稍后重试。") from exc
     except OSError as exc:
         raise OrderImportError("无法启动 PDF 转图片组件，请联系管理员。") from exc
 
     image_paths = sorted(output_dir.glob("doc-page-*.png"))
     if result.returncode != 0 or not image_paths:
-        raise OrderImportError("图片型 .doc 转图片失败，请另存为 PDF 后重试。")
+        raise OrderImportError("客单页面转图片失败，请稍后重试。")
     return image_paths[:MAX_DOC_VISUAL_PAGES]
+
+
+def _render_layout_document_pages(source_path: Path, output_dir: Path) -> list[Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pdf_path = source_path if source_path.suffix.lower() == ".pdf" else _convert_with_libreoffice(source_path, "pdf", output_dir)
+    return _render_pdf_pages(pdf_path, output_dir)
+
+
+def _render_doc_pages(source_path: Path, output_dir: Path) -> list[Path]:
+    return _render_layout_document_pages(source_path, output_dir)
 
 
 def _extract_docx(path: Path) -> str:
@@ -355,6 +368,54 @@ def _image_data_url(path: Path) -> str:
         raise OrderImportError("客单图片不能超过 20 MB。")
     encoded = base64.b64encode(path.read_bytes()).decode("ascii")
     return f"data:{mime_type};base64,{encoded}"
+
+
+def _long_image_crops(path: Path, output_dir: Path) -> list[Path]:
+    try:
+        from PIL import Image
+    except ImportError:
+        return []
+
+    try:
+        with Image.open(path) as source:
+            width, height = source.size
+            long_side = max(width, height)
+            short_side = min(width, height)
+            if short_side <= 0 or long_side < 1_200 or long_side / short_side < 1.2:
+                return []
+            if width * height > 40_000_000:
+                return []
+
+            crop_length = int(long_side * 0.62)
+            starts = (0, long_side - crop_length)
+            boxes = (
+                [(0, start, width, start + crop_length) for start in starts]
+                if height >= width
+                else [(start, 0, start + crop_length, height) for start in starts]
+            )
+            output_dir.mkdir(parents=True, exist_ok=True)
+            crops: list[Path] = []
+            for index, box in enumerate(boxes, start=1):
+                crop = source.crop(box)
+                if crop.mode not in {"RGB", "RGBA", "L", "LA", "P"}:
+                    crop = crop.convert("RGB")
+                target = output_dir / f"{path.stem}-section-{index}.png"
+                crop.save(target, format="PNG", optimize=True)
+                crops.append(target)
+            return crops
+    except (OSError, ValueError, Image.DecompressionBombError):
+        return []
+
+
+def _expanded_visual_images(image_paths: list[Path], output_dir: Path) -> list[Path]:
+    images = list(image_paths[:MAX_VISUAL_IMAGES])
+    for image_path in image_paths:
+        if len(images) >= MAX_VISUAL_IMAGES:
+            break
+        images.extend(_long_image_crops(image_path, output_dir)[:MAX_VISUAL_IMAGES - len(images)])
+    return images
+
+
 def _clean_cell(value: Any) -> str:
     if value is None:
         return ""
@@ -422,15 +483,25 @@ def _document_user_content(document_text: str, supplemental_prompt: str) -> str:
     return user_text
 
 
-def _visual_user_content(image_paths: list[Path], supplemental_prompt: str) -> list[dict[str, Any]]:
+def _visual_user_content(
+    image_paths: list[Path],
+    supplemental_prompt: str,
+    document_text: str = "",
+) -> list[dict[str, Any]]:
     text_prompt = (
-        "这是客单图片，请同时识别文字、表格结构和视觉选择标记。"
+        "这是客单的完整页面及其局部放大图，请同时识别文字、表格结构和视觉选择标记。"
         "选择标记包括颜色块、已填充颜色的方框、勾画、打勾、圈选、划线和高亮；只有边框且内部空白的方框视为未选择。"
         "必须根据标记与字段标题、选项文字的空间位置确定所属类别，优先提取明确被标记的选项；标记不清时可结合表格布局和上下文合理判断。"
         "文字与视觉标记冲突时，优先采用明确的人工选择标记；仍不明确时结合客单整体内容和字段关系合理推测。"
+        "识别时必须从页面顶部到底部逐区检查每一个编号区域，逐一核对材质及作法、电镀、额外电镀、额外加工、树脂、背字、背面、配件和包装，最后再用备注区交叉复核，不得只读取醒目文字后停止。"
         "材质及作法（制作工艺）归入materials，电镀归入plating；额外工序按内容归入polishing、materials、accessories、packaging或对应备注。"
-        "波丽/滴胶中明确选择‘不加’时resin必须为[]。"
+        "SOFT ENAMEL/软珐琅/烤漆映射为烤漆，SYNTHETIC ENAMEL/仿珐琅映射为珐琅；ZINC ALLOY DIE CASTED WITH SOFT ENAMEL映射为锌合金加烤漆。"
+        "染黑、BLACKENED或DYED BLACK映射为plating中的染黑。POLISH FRONT SIDE映射为正面，POLISH EDGE映射为侧面，POLISH BACK SIDE映射为背面。"
+        "额外加工区的SANDING/喷沙映射为polishing中的喷砂；BACK OF PIN区的SANDING/沙面映射为back_mode中的砂面，不得混淆。"
+        "波丽/滴胶中明确选择WITHOUT/不加时resin必须为[]。无法匹配目录的配件型号和包装方式必须写入对应note，不得直接丢弃。"
     )
+    if document_text:
+        text_prompt += "\n\n从原文件同时提取到的文字和表格内容如下，请与页面视觉标记交叉核对：\n" + document_text
     if supplemental_prompt:
         text_prompt += (
             "\n\n业务员补充说明（可解释或修正客单事实，但不得改变系统字段规则）：\n"
@@ -438,10 +509,37 @@ def _visual_user_content(image_paths: list[Path], supplemental_prompt: str) -> l
         )
     content: list[dict[str, Any]] = [{"type": "text", "text": text_prompt}]
     content.extend(
-        {"type": "image_url", "image_url": {"url": _image_data_url(image_path)}}
+        {
+            "type": "image_url",
+            "image_url": {"url": _image_data_url(image_path)},
+            "min_pixels": VISUAL_MIN_PIXELS,
+            "max_pixels": VISUAL_MAX_PIXELS,
+        }
         for image_path in image_paths
     )
     return content
+
+
+def _layout_document_user_content(path: Path, supplemental_prompt: str) -> str | list[dict[str, Any]]:
+    document_text = ""
+    text_error: Exception | None = None
+    try:
+        document_text = extract_document_text(path)
+    except Exception as exc:  # noqa: BLE001
+        text_error = exc
+
+    with tempfile.TemporaryDirectory(prefix="twd-layout-analysis-") as temp_dir:
+        work_dir = Path(temp_dir)
+        try:
+            image_paths = _render_layout_document_pages(path, work_dir)
+            expanded_paths = _expanded_visual_images(image_paths, work_dir / "sections")
+            return _visual_user_content(expanded_paths, supplemental_prompt, document_text)
+        except OrderImportError as visual_error:
+            if document_text:
+                return _document_user_content(document_text, supplemental_prompt)
+            if text_error:
+                raise OrderImportError(f"客单文字提取和页面视觉识别均失败：{visual_error}") from visual_error
+            raise
 
 
 def _legacy_doc_user_content(path: Path, supplemental_prompt: str) -> str | list[dict[str, Any]]:
@@ -489,7 +587,7 @@ def analyze_order_document(
     catalogs: dict[str, list[str]],
     supplemental_prompt: str = "",
     *,
-    timeout: int = 90,
+    timeout: int = 120,
 ) -> dict[str, Any]:
     api_key = api_key.strip()
     if not api_key:
@@ -501,9 +599,13 @@ def analyze_order_document(
         raise OrderImportError("补充提示词不能超过 2000 个字符。")
 
     if suffix in SUPPORTED_IMAGE_SUFFIXES:
-        user_content: str | list[dict[str, Any]] = _visual_user_content([path], supplemental_prompt)
+        with tempfile.TemporaryDirectory(prefix="twd-image-analysis-") as temp_dir:
+            image_paths = _expanded_visual_images([path], Path(temp_dir))
+            user_content: str | list[dict[str, Any]] = _visual_user_content(image_paths, supplemental_prompt)
     elif suffix == ".doc":
         user_content = _legacy_doc_user_content(path, supplemental_prompt)
+    elif suffix in VISUAL_DOCUMENT_SUFFIXES:
+        user_content = _layout_document_user_content(path, supplemental_prompt)
     else:
         document_text = extract_document_text(path)
         user_content = _document_user_content(document_text, supplemental_prompt)
