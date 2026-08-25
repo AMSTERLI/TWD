@@ -16,8 +16,9 @@ if (importBox) {
   const fileInput = importBox.querySelector("[data-ai-file]");
   const fileName = importBox.querySelector("[data-ai-file-name]");
   const supplementalPrompt = document.querySelector("#ai-supplemental-prompt");
-  const promptOptions = [...importBox.querySelectorAll("[data-ai-prompt-option]")];
-  const presetPrompts = new Set(promptOptions.map(option => option.value));
+  const promptSelect = importBox.querySelector("[data-ai-prompt-select]");
+  const presetPrompts = [...(promptSelect?.options || [])].map(option => option.value).filter(Boolean);
+  const presetPromptSet = new Set(presetPrompts);
   const allowedOrderImportSuffixes = new Set([
     ".doc", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf", ".png", ".jpg", ".jpeg", ".webp"
   ]);
@@ -47,17 +48,15 @@ if (importBox) {
     return String(supplementalPrompt?.value || "").split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   }
 
-  function fillSelectedPrompts() {
-    if (!supplementalPrompt) return;
-    const selected = promptOptions.filter(option => option.checked).map(option => option.value);
-    const custom = supplementalPromptLines().filter(line => !presetPrompts.has(line));
+  function appendSelectedPrompt() {
+    const selectedPrompt = promptSelect?.value || "";
+    if (!selectedPrompt || !supplementalPrompt) return;
+    const current = supplementalPromptLines();
+    const selected = presetPrompts.filter(prompt => prompt === selectedPrompt || current.includes(prompt));
+    const custom = current.filter(line => !presetPromptSet.has(line));
     supplementalPrompt.value = [...selected, ...custom].join("\n");
+    promptSelect.value = "";
     supplementalPrompt.dispatchEvent(new Event("input", {bubbles: true}));
-  }
-
-  function refreshPromptOptions() {
-    const current = new Set(supplementalPromptLines());
-    promptOptions.forEach(option => { option.checked = current.has(option.value); });
   }
 
   function refreshImportFileName() {
@@ -165,8 +164,7 @@ if (importBox) {
 
   fileButton?.addEventListener("click", () => fileInput.click());
   fileInput?.addEventListener("change", refreshImportFileName);
-  promptOptions.forEach(option => option.addEventListener("change", fillSelectedPrompts));
-  supplementalPrompt?.addEventListener("input", refreshPromptOptions);
+  promptSelect?.addEventListener("change", appendSelectedPrompt);
   button.addEventListener("click", runAiImport);
   importBox.addEventListener("click", event => {
     if (!event.target.closest("button,input,textarea,select,a")) importBox.focus();
