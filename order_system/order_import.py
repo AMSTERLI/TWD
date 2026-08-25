@@ -4,6 +4,7 @@ import base64
 import csv
 from html.parser import HTMLParser
 import json
+import logging
 import os
 import re
 import shutil
@@ -30,6 +31,8 @@ DOC_CONVERSION_TIMEOUT_SECONDS = 60
 SUPPORTED_DOCUMENT_SUFFIXES = {".doc", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf"}
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 VISUAL_DOCUMENT_SUFFIXES = {".docx", ".xlsx", ".xlsm", ".xls", ".pdf"}
+
+logger = logging.getLogger(__name__)
 
 
 class OrderImportError(RuntimeError):
@@ -80,8 +83,9 @@ def extract_document_text(file_path: str | Path) -> str:
 
 def _convert_with_libreoffice(source_path: Path, output_format: str, output_dir: Path) -> Path:
     executable = shutil.which("libreoffice") or shutil.which("soffice")
+    source_label = "Excel" if source_path.suffix.lower() in {".xlsx", ".xlsm", ".xls"} else "Word"
     if not executable:
-        raise OrderImportError("服务器缺少旧版 Word 转换组件，暂时无法读取 .doc 文件。")
+        raise OrderImportError(f"服务器缺少 LibreOffice，无法进行{source_label}页面视觉识别。")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     profile_dir = output_dir / "libreoffice-profile"
@@ -110,14 +114,118 @@ def _convert_with_libreoffice(source_path: Path, output_format: str, output_dir:
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
-        raise OrderImportError("旧版 Word 文件转换超时，请另存为 .docx 或 PDF 后重试。") from exc
+        raise OrderImportError(f"{source_label}页面转换超时，请稍后重试。") from exc
     except OSError as exc:
-        raise OrderImportError("无法启动旧版 Word 转换组件，请联系管理员。") from exc
+        raise OrderImportError("无法启动 LibreOffice，请联系管理员。") from exc
 
     expected_path = output_dir / f"{source_path.stem}.{output_suffix}"
     if result.returncode != 0 or not expected_path.is_file():
-        raise OrderImportError("旧版 Word 文件转换失败，请另存为 .docx 或 PDF 后重试。")
+        detail = _compact_text("\n".join(part for part in (result.stdout, result.stderr) if part))[:500]
+        logger.warning(
+            "LibreOffice conversion failed for %s to %s (exit %s): %s",
+            source_path.suffix.lower(),
+            output_suffix,
+            result.returncode,
+            detail or "no diagnostic output",
+        )
+        raise OrderImportError(f"{source_label}页面转换失败，请联系管理员检查 LibreOffice 组件。")
     return expected_path
+
+
+def _worksheet_visual_bounds(worksheet: Any) -> tuple[int, int, int, int] | None:
+    bounds: list[int] | None = None
+    filled_cells: list[tuple[int, int]] = []
+
+    def include(row: int, column: int) -> None:
+        nonlocal bounds
+        if row <= 0 or column <= 0:
+            return
+        if bounds is None:
+            bounds = [row, column, row, column]
+            return
+        bounds[0] = min(bounds[0], row)
+        bounds[1] = min(bounds[1], column)
+        bounds[2] = max(bounds[2], row)
+        bounds[3] = max(bounds[3], column)
+
+    max_row = min(int(worksheet.max_row or 1), 2_000)
+    max_column = min(int(worksheet.max_column or 1), 80)
+    for row in worksheet.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=max_column):
+        for cell in row:
+            if cell.value not in (None, ""):
+                include(cell.row, cell.column)
+            elif cell.fill.fill_type:
+                filled_cells.append((cell.row, cell.column))
+
+    for merged_range in worksheet.merged_cells.ranges:
+        anchor = worksheet.cell(merged_range.min_row, merged_range.min_col)
+        if anchor.value not in (None, ""):
+            include(merged_range.min_row, merged_range.min_col)
+            include(merged_range.max_row, merged_range.max_col)
+
+    for image in getattr(worksheet, "_images", []):
+        anchor = getattr(image, "anchor", None)
+        start = getattr(anchor, "_from", None)
+        end = getattr(anchor, "to", None)
+        if start is not None:
+            include(int(start.row) + 1, int(start.col) + 1)
+        if end is not None:
+            include(int(end.row) + 1, int(end.col) + 1)
+
+    if bounds:
+        for row, column in filled_cells:
+            if bounds[0] - 2 <= row <= bounds[2] + 2 and bounds[1] - 2 <= column <= bounds[3] + 2:
+                include(row, column)
+    else:
+        for row, column in filled_cells:
+            include(row, column)
+
+    return tuple(bounds) if bounds else None
+
+
+def _prepare_spreadsheet_for_render(source_path: Path, output_dir: Path) -> Path:
+    try:
+        from openpyxl import load_workbook
+        from openpyxl.utils import get_column_letter
+        from openpyxl.worksheet.properties import PageSetupProperties
+    except ImportError:
+        return source_path
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    workbook = None
+    try:
+        workbook = load_workbook(
+            source_path,
+            data_only=False,
+            keep_links=True,
+            keep_vba=source_path.suffix.lower() == ".xlsm",
+        )
+        for worksheet in workbook.worksheets:
+            bounds = _worksheet_visual_bounds(worksheet)
+            if not bounds:
+                continue
+            min_row, min_column, max_row, max_column = bounds
+            worksheet.print_area = (
+                f"{get_column_letter(min_column)}{min_row}:"
+                f"{get_column_letter(max_column)}{max_row}"
+            )
+            if worksheet.sheet_properties.pageSetUpPr is None:
+                worksheet.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
+            else:
+                worksheet.sheet_properties.pageSetUpPr.fitToPage = True
+            worksheet.page_setup.fitToWidth = 1
+            worksheet.page_setup.fitToHeight = 0
+            worksheet.page_setup.scale = None
+
+        target = output_dir / f"{source_path.stem}-visual{source_path.suffix.lower()}"
+        workbook.save(target)
+        return target
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Spreadsheet print normalization failed for %s: %s", source_path.suffix.lower(), exc)
+        return source_path
+    finally:
+        if workbook is not None:
+            workbook.close()
 
 
 def _docx_contains_images(path: Path) -> bool:
@@ -167,7 +275,16 @@ def _render_pdf_pages(pdf_path: Path, output_dir: Path) -> list[Path]:
 
 def _render_layout_document_pages(source_path: Path, output_dir: Path) -> list[Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    pdf_path = source_path if source_path.suffix.lower() == ".pdf" else _convert_with_libreoffice(source_path, "pdf", output_dir)
+    conversion_source = (
+        _prepare_spreadsheet_for_render(source_path, output_dir)
+        if source_path.suffix.lower() in {".xlsx", ".xlsm"}
+        else source_path
+    )
+    pdf_path = (
+        conversion_source
+        if conversion_source.suffix.lower() == ".pdf"
+        else _convert_with_libreoffice(conversion_source, "pdf", output_dir)
+    )
     return _render_pdf_pages(pdf_path, output_dir)
 
 
@@ -460,12 +577,14 @@ def build_extraction_prompt(catalogs: dict[str, list[str]]) -> str:
         "quantity_unit原文未明确时可根据产品、数量表达和上下文从允许值中合理判断。unit_price可结合单价标签、数量和总额关系合理判断产品单价，但不得把总额或附加费当成单价；待报价、未报价和空白均为null。"
         "extra_fee只提取明确标注的附加费、模具费或其他独立费用。production_no仅提取生产编号/生产制号；bi_no仅提取PO号/采购单号。"
         "宽、高、厚、直径按标签分别填写；圆形且明确标注直径时填diameter_mm，不得同时把直径填入width_mm。"
+        "仅写最大尺寸/最大边且只有一个毫米数值时填width_mm；3D全立体等无法归入目录的重要制作要求写入global_note。"
         "size_as_sample优先依据原文和视觉选择标记判断，也可结合尺寸栏及上下文合理判断；无法判断时为null。"
         "materials必须从允许值中选择；烤漆、珐琅、UV、平印、镭雕属于制作工艺，不属于coloring。"
         "铜冲压烤漆、锌合金压铸UV等应去掉冲压/压铸/材质字样，匹配为类似'铜  烤漆'的允许值。"
-        "coloring表示上色依据，只能选择彩图、样品、说明，不表示烤漆或印刷工艺。"
-        "accessories只填写产品配件；蝴蝶帽属于packaging。"
-        "polishing中三面等价于正面+侧面+背面；输出三面后不得再输出正面、侧面、背面。"
+        "证章、襟章按产品品类归为徽章。coloring表示上色依据，只能选择彩图、样品、说明，不表示烤漆或印刷工艺；不入色、不上色表示coloring=[]。"
+        "accessories只填写产品配件；蝴蝶帽属于packaging，蝴夹、蝴蝶夹、蝴蝶扣及其数量写入accessories_note。"
+        "polishing中三面抛、三面抛光、正面+侧面+背面均等价于三面；输出三面后不得再输出正面、侧面、背面。"
+        "包装文字中包含空白袋、夹链袋、OPP袋等允许值时必须提取对应packaging，单件装袋数量等补充要求写入packaging_note。"
         "resin中一般/厚/薄最多选择一个，单面/双面最多选择一个；明确不加树脂时输出[]。"
         "各note只保存所属类别无法匹配目录的有效要求，不重复已结构化内容。global_note只保存无法归类但与生产或交货有关的重要要求。"
         "客户公司、电话、地址、联系人、邮箱等对方信息不得写入任何字段或备注。"
@@ -535,6 +654,11 @@ def _layout_document_user_content(path: Path, supplemental_prompt: str) -> str |
             expanded_paths = _expanded_visual_images(image_paths, work_dir / "sections")
             return _visual_user_content(expanded_paths, supplemental_prompt, document_text)
         except OrderImportError as visual_error:
+            logger.warning(
+                "Layout rendering failed for %s; falling back to extracted text: %s",
+                path.suffix.lower(),
+                visual_error,
+            )
             if document_text:
                 return _document_user_content(document_text, supplemental_prompt)
             if text_error:
@@ -752,6 +876,7 @@ def normalize_order_data(data: dict[str, Any], catalogs: dict[str, list[str]]) -
         normalized["size_as_sample"] = size_as_sample
 
     misplaced_surface_crafts: list[str] = []
+    unmatched_accessories: list[str] = []
     for key in ("materials", "plating", "accessories", "polishing", "coloring", "resin", "packaging"):
         values = data.get(key)
         allowed = catalogs.get(key, [])
@@ -761,19 +886,35 @@ def normalize_order_data(data: dict[str, Any], catalogs: dict[str, list[str]]) -
                 item = str(value).strip()
                 if key == "materials":
                     item = _normalize_material_option(item, allowed)
+                elif key == "plating":
+                    item = _normalize_plating_option(item, allowed)
                 elif key == "accessories":
                     item = _normalize_accessory_option(item, allowed, catalogs.get("packaging", []))
+                elif key == "polishing":
+                    item = _normalize_polishing_option(item, allowed)
                 elif key == "coloring":
+                    if re.search(r"不入色|不上色|不填色|无颜色", item):
+                        continue
                     craft = _surface_craft_from_text(item, catalogs.get("surface_crafts", []))
                     if craft:
                         if craft not in misplaced_surface_crafts:
                             misplaced_surface_crafts.append(craft)
                         continue
+                elif key == "packaging":
+                    item = _normalize_packaging_option(item, allowed)
                 if item in allowed and item not in selected:
                     selected.append(item)
                 elif key == "accessories" and item in catalogs.get("packaging", []) and item not in selected:
                     selected.append(item)
+                elif key == "accessories" and item and item not in unmatched_accessories:
+                    unmatched_accessories.append(item)
             normalized[key] = selected
+
+    if unmatched_accessories:
+        normalized["accessories_note"] = _append_note(
+            normalized.get("accessories_note"),
+            f"配件：{'、'.join(unmatched_accessories)}",
+        )
 
     _normalize_polishing_selection(normalized)
     _normalize_resin_selection(normalized)
@@ -826,6 +967,9 @@ def _normalize_resin_selection(normalized: dict[str, Any]) -> None:
 
 def _product_category_name(value: str) -> str:
     text = re.sub(r"\s+", "", value).strip()
+    for alias in ("证章", "襟章"):
+        if alias in text:
+            return "徽章"
     category_keywords = [
         "双面币", "钥匙扣", "钥匙圈", "纪念币", "挑战币", "奖牌", "徽章",
         "胸章", "胸针", "冰箱贴", "开瓶器", "书签", "吊牌", "袖扣",
@@ -866,6 +1010,41 @@ def _surface_craft_from_text(value: str, allowed: list[str]) -> str:
         if raw in cleaned and normalized in allowed:
             return normalized
     return cleaned if cleaned in allowed else ""
+
+
+def _normalize_plating_option(value: str, allowed: list[str]) -> str:
+    if value in allowed:
+        return value
+    cleaned = re.sub(r"\s+", "", value).replace("电镀", "")
+    if cleaned.startswith("镀"):
+        cleaned = cleaned[1:]
+    return cleaned if cleaned in allowed else value
+
+
+def _normalize_polishing_option(value: str, allowed: list[str]) -> str:
+    if value in allowed:
+        return value
+    cleaned = re.sub(r"\s+", "", value)
+    aliases = {
+        "三面抛": "三面",
+        "三面抛光": "三面",
+        "喷沙": "喷砂",
+        "正面抛光": "正面",
+        "侧面抛光": "侧面",
+        "背面抛光": "背面",
+    }
+    normalized = aliases.get(cleaned, cleaned)
+    return normalized if normalized in allowed else value
+
+
+def _normalize_packaging_option(value: str, allowed: list[str]) -> str:
+    if value in allowed:
+        return value
+    cleaned = re.sub(r"\s+", "", value).upper()
+    for option in allowed:
+        if re.sub(r"\s+", "", option).upper() in cleaned:
+            return option
+    return value
 
 
 def _apply_surface_crafts_to_materials(materials: Any, crafts: list[str], allowed: list[str]) -> list[str]:

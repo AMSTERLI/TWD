@@ -87,7 +87,9 @@ assert "系统字段规则和允许值 > 业务员补充说明" in system_prompt
 assert "行业常见表达和字段关系进行合理推测与补全" in system_prompt
 assert "不推测、不补全" not in system_prompt
 assert "待报价、未报价和空白均为null" in system_prompt
-assert "三面等价于正面+侧面+背面" in system_prompt
+assert "\u6b63\u9762+\u4fa7\u9762+\u80cc\u9762\u5747\u7b49\u4ef7\u4e8e\u4e09\u9762" in system_prompt
+assert "证章、襟章" in system_prompt and "三面抛" in system_prompt
+assert "蝴夹、蝴蝶夹" in system_prompt and "不入色" in system_prompt
 assert "一般/厚/薄最多选择一个" in system_prompt
 content = body["messages"][1]["content"]
 assert isinstance(content, list)

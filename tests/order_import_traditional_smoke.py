@@ -41,6 +41,24 @@ assert category_normalized["product_name"] == "双面币"
 category_fallback = normalize_order_data({"product_name": "台湾铜牌纪念礼品定制"}, catalogs)
 assert category_fallback["product_name"] == "牌"
 
+job_sheet_normalized = normalize_order_data(
+    {
+        "product_name": "证章 Bear",
+        "plating": ["电镀镍"],
+        "accessories": ["蝴夹x1pc"],
+        "polishing": ["三面抛"],
+        "coloring": ["不入色"],
+        "packaging": ["1pc/空白袋"],
+    },
+    catalogs,
+)
+assert job_sheet_normalized["product_name"] == "徽章"
+assert job_sheet_normalized["plating"] == ["镍"]
+assert job_sheet_normalized["polishing"] == ["三面"]
+assert job_sheet_normalized["coloring"] == []
+assert job_sheet_normalized["packaging"] == ["空白袋"]
+assert "蝴夹x1pc" in job_sheet_normalized["accessories_note"]
+
 exclusive_normalized = normalize_order_data(
     {
         "polishing": ["正面", "侧面", "背面", "喷砂"],

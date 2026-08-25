@@ -101,6 +101,36 @@ finally:
     order_import.extract_document_text = original_extract_document_text
     order_import._render_layout_document_pages = original_layout_render
 
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Border, Side
+
+spreadsheet_path = root / "structured-order.xlsx"
+spreadsheet = Workbook()
+sheet = spreadsheet.active
+sheet.title = "Sheet1"
+sheet.merge_cells("A1:H1")
+sheet["A1"] = "测试订单"
+sheet["A5"] = "产品品名"
+sheet["C5"] = "描述"
+sheet["A6"] = "证章"
+sheet["C6"] = "低温锌合金，最大尺寸20mm，电镀镍，三面抛，不入色，配件蝴夹x1pc"
+sheet["A11"] = "备注"
+sheet["H11"] = "测试"
+sheet["M6"].border = Border(left=Side(style="thin"))
+spreadsheet.save(spreadsheet_path)
+
+prepared_path = order_import._prepare_spreadsheet_for_render(spreadsheet_path, root / "prepared")
+assert prepared_path != spreadsheet_path and prepared_path.is_file()
+prepared = load_workbook(prepared_path)
+prepared_sheet = prepared["Sheet1"]
+assert order_import._worksheet_visual_bounds(prepared_sheet) == (1, 1, 11, 8)
+assert str(prepared_sheet.print_area) == "'Sheet1'!$A$1:$H$11"
+assert prepared_sheet.page_setup.fitToWidth == 1
+assert prepared_sheet.page_setup.fitToHeight == 0
+assert prepared_sheet.page_setup.scale is None
+assert prepared_sheet.sheet_properties.pageSetUpPr.fitToPage is True
+prepared.close()
+
 assert ".doc" in order_import.SUPPORTED_DOCUMENT_SUFFIXES
 
 if shutil.which("libreoffice") and shutil.which("pdftoppm"):
