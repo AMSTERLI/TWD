@@ -12,7 +12,7 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     create = sub.add_parser("create-user", help="创建登录账号")
     create.add_argument("username")
-    create.add_argument("--role", choices=["admin", "sales", "finance", "outsource", "production"], default="sales")
+    create.add_argument("--role", choices=["admin", "sales", "finance", "outsource", "production", "workshop", "plating"], default="sales")
     create.add_argument("--password", help="建议省略，由终端安全输入")
     reset = sub.add_parser("reset-password", help="重置账号密码")
     reset.add_argument("username")
@@ -23,7 +23,8 @@ def main() -> int:
     repo = Repository(DB_PATH)
     repo.initialize()
     if args.command == "create-user":
-        password = args.password or getpass.getpass("密码（至少 10 位）: ")
+        minimum_length = 8 if args.role == "plating" else 10
+        password = args.password or getpass.getpass(f"密码（至少 {minimum_length} 位）: ")
         if not args.password:
             confirmation = getpass.getpass("再次输入密码: ")
             if password != confirmation:
@@ -31,7 +32,7 @@ def main() -> int:
         user_id = repo.create_user(args.username, password, args.role)
         print(f"已创建账号 {args.username}（{args.role}，ID {user_id}）")
     elif args.command == "reset-password":
-        password = args.password or getpass.getpass("新密码（至少 10 位）: ")
+        password = args.password or getpass.getpass("新密码（电镀账号至少 8 位，其它账号至少 10 位）: ")
         if not args.password:
             confirmation = getpass.getpass("再次输入新密码: ")
             if password != confirmation:

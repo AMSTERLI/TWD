@@ -11,7 +11,7 @@
 {% if user %}
   <header class="topbar">
     <a class="brand" href="/">TWD &#35746;&#21333;&#31995;&#32479;</a>
-    <button class="nav-toggle" type="button" data-nav-toggle>&#33756;&#21333;</button>
+    {% if user.role != 'plating' %}<button class="nav-toggle" type="button" data-nav-toggle>&#33756;&#21333;</button>
     <nav data-nav>
       {% if user.role in ['admin', 'sales', 'finance', 'production'] %}<a href="/orders">&#35746;&#21333;</a>{% endif %}
       {% if user.role in ['admin', 'sales'] %}<a href="/orders/new">&#19994;&#21153;&#19979;&#21333;</a>{% endif %}
@@ -21,9 +21,10 @@
       {% if user.role == 'outsource' %}<a href="/finance/payables">&#20184;&#27454;</a>{% endif %}
       {% if user.role in ['admin', 'outsource'] %}<a href="/outsource">&#22806;&#21457;</a>{% endif %}
       {% if user.role in ['admin', 'workshop'] %}<a href="/workshop">&#36710;&#38388;</a>{% endif %}
+      {% if user.role == 'admin' %}<a href="/plating">&#30005;&#38208;</a>{% endif %}
       {% if user.role in ['admin', 'sales', 'finance', 'production', 'workshop'] %}<a href="/messages">&#28040;&#24687;{% if user.role == 'admin' and pending_message_count %}<span class="nav-badge">{{ pending_message_count }}</span>{% endif %}</a>{% endif %}
-    </nav>
-    <div class="userbox"><span>{{ user.username }}</span><span class="role">{{ user.role }}</span>
+    </nav>{% endif %}
+    <div class="userbox"><span>{{ user.username }}</span><span class="role">{{ '电镀' if user.role == 'plating' else user.role }}</span>
       <form action="/logout" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link-button">&#36864;&#20986;</button></form>
     </div>
   </header>

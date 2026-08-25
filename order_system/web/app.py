@@ -1003,6 +1003,8 @@ async def login(request: Request):
     await run_in_threadpool(repo.audit, user, "login", "", client_ip(request))
     if user.get("role") == "workshop":
         return RedirectResponse("/workshop", status_code=303)
+    if user.get("role") == "plating":
+        return RedirectResponse("/plating", status_code=303)
     return RedirectResponse("/", status_code=303)
 
 
@@ -1021,7 +1023,66 @@ def dashboard(request: Request):
         return denied
     if user["role"] == "workshop":
         return RedirectResponse("/workshop", status_code=303)
+    if user["role"] == "plating":
+        return RedirectResponse("/plating", status_code=303)
     return templates.TemplateResponse(request, "dashboard.html", page_context(request, stats=repo.dashboard()))
+
+
+@app.get("/plating", response_class=HTMLResponse)
+def plating_page(request: Request, created: int = 0):
+    _, denied = require_page(request, {"plating"})
+    if denied:
+        return denied
+    return templates.TemplateResponse(
+        request,
+        "plating.html",
+        page_context(request, created=max(0, created), error=""),
+    )
+
+
+@app.get("/plating/order-lookup")
+def plating_order_lookup(request: Request, order_no: str = ""):
+    _, denied = require_page(request, {"plating"})
+    if denied:
+        return JSONResponse({"error": "未登录或无权限"}, status_code=401)
+    order = repo.plating_order_lookup(order_no)
+    if not order:
+        return JSONResponse({"error": "订单不存在"}, status_code=404)
+    return {"order": order}
+
+
+@app.post("/plating", response_class=HTMLResponse)
+async def plating_submit(request: Request):
+    user, denied = require_page(request, {"plating"})
+    if denied:
+        return denied
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    processes = form.getlist("process_name")
+    quantities = form.getlist("quantity")
+    unit_prices = form.getlist("unit_price")
+    remarks = form.getlist("remark")
+    rows = []
+    for index, order_no in enumerate(form.getlist("order_no")):
+        rows.append({
+            "order_no": order_no,
+            "process_name": processes[index] if index < len(processes) else "",
+            "quantity": quantities[index] if index < len(quantities) else "",
+            "unit_price": unit_prices[index] if index < len(unit_prices) else "0",
+            "remark": remarks[index] if index < len(remarks) else "",
+        })
+    try:
+        created_ids = await run_in_threadpool(repo.create_plating_records, rows, user)
+        await run_in_threadpool(repo.audit, user, "plating.report", str(len(created_ids)), client_ip(request))
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "plating.html",
+            page_context(request, created=0, error=str(exc)),
+            status_code=422,
+        )
+    return RedirectResponse(f"/plating?created={len(created_ids)}", status_code=303)
 
 
 @app.get("/orders", response_class=HTMLResponse)

@@ -810,6 +810,106 @@ document.querySelectorAll("[data-workshop-scan]").forEach(section => {
   focusEnd(first);
 });
 
+document.querySelectorAll("[data-plating-scan]").forEach(section => {
+  const rows = section.querySelector("[data-plating-rows]");
+  const template = section.querySelector("[data-plating-row-template]");
+  const lookupUrl = section.dataset.lookupUrl || "";
+  const status = section.querySelector("[data-plating-status]");
+  const cleanOrderNo = value => String(value || "").replace(/\s+/g, "").trim();
+  const cleanNumber = value => Number(Number(value || 0).toFixed(4)).toString();
+  const lookupTimers = new WeakMap();
+
+  function resetRow(row) {
+    row.querySelector('[name="order_no"]').value = "";
+    row.querySelector('[name="process_name"]').value = "";
+    row.querySelector('[name="quantity"]').value = "1";
+    row.querySelector('[name="unit_price"]').value = "0";
+    row.querySelector('[name="remark"]').value = "";
+    row.dataset.lookupKey = "";
+  }
+
+  function addRow(focus = true) {
+    rows.appendChild(template.content.cloneNode(true));
+    const input = rows.lastElementChild.querySelector("[data-plating-order]");
+    if (focus) input.focus();
+  }
+
+  async function loadOrder(row) {
+    const input = row?.querySelector("[data-plating-order]");
+    const orderNo = cleanOrderNo(input?.value);
+    if (input && input.value !== orderNo) input.value = orderNo;
+    if (!row || !orderNo || !lookupUrl) return false;
+    if (row.dataset.lookupKey === orderNo) return row.dataset.lookupOk === "1";
+    row.dataset.lookupKey = orderNo;
+    row.dataset.lookupOk = "0";
+    try {
+      const response = await fetch(`${lookupUrl}?order_no=${encodeURIComponent(orderNo)}`);
+      const result = await response.json();
+      if (!response.ok || !result.order) throw new Error(result.error || "订单不存在");
+      input.value = result.order.order_no || orderNo;
+      row.querySelector('[name="process_name"]').value = result.order.process_name || "";
+      row.querySelector('[name="quantity"]').value = cleanNumber(result.order.quantity || 1);
+      row.dataset.lookupOk = "1";
+      if (status) status.textContent = `已读取订单 ${input.value} 的电镀工艺和数量。`;
+      return true;
+    } catch (error) {
+      if (status) status.textContent = `未找到订单 ${orderNo}，请检查订单号。`;
+      return false;
+    }
+  }
+
+  function focusNext(row) {
+    const next = row.nextElementSibling;
+    if (next) next.querySelector("[data-plating-order]")?.focus();
+    else addRow(true);
+  }
+
+  section.querySelector("[data-add-plating-row]")?.addEventListener("click", () => addRow());
+  section.addEventListener("click", event => {
+    const button = event.target.closest("[data-remove-plating-row]");
+    if (!button) return;
+    const row = button.closest("tr");
+    if (rows.children.length === 1) {
+      resetRow(row);
+      row.querySelector("[data-plating-order]")?.focus();
+    } else row.remove();
+  });
+  section.addEventListener("input", event => {
+    if (!event.target.matches("[data-plating-order]")) return;
+    const row = event.target.closest("tr");
+    const orderNo = cleanOrderNo(event.target.value);
+    if (event.target.value !== orderNo) event.target.value = orderNo;
+    row.dataset.lookupKey = "";
+    clearTimeout(lookupTimers.get(row));
+    if (orderNo.length >= 8) lookupTimers.set(row, setTimeout(() => loadOrder(row), 240));
+  });
+  section.addEventListener("change", event => {
+    if (event.target.matches("[data-plating-order]")) loadOrder(event.target.closest("tr"));
+  });
+  section.addEventListener("keydown", event => {
+    if (event.key !== "Enter" || !event.target.matches("[data-plating-order]")) return;
+    event.preventDefault();
+    const row = event.target.closest("tr");
+    if (!cleanOrderNo(event.target.value)) return;
+    loadOrder(row);
+    focusNext(row);
+  });
+  section.querySelector("form")?.addEventListener("submit", event => {
+    const activeRows = [...rows.querySelectorAll("tr")].filter(row => cleanOrderNo(row.querySelector("[data-plating-order]")?.value));
+    if (!activeRows.length) {
+      event.preventDefault();
+      if (status) status.textContent = "请至少扫描一个订单。";
+      rows.querySelector("[data-plating-order]")?.focus();
+      return;
+    }
+    activeRows.forEach(row => {
+      const input = row.querySelector("[data-plating-order]");
+      input.value = cleanOrderNo(input.value);
+    });
+  });
+  rows.querySelector("[data-plating-order]")?.focus();
+});
+
 const orderNumberInput = document.querySelector("[data-order-number]");
 const orderDateInput = document.querySelector("[data-order-date]");
 const orderPrefixInput = document.querySelector("[data-order-prefix]");

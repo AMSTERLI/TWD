@@ -7,8 +7,8 @@ import secrets
 
 
 def hash_password(password: str) -> str:
-    if len(password) < 10:
-        raise ValueError("密码至少需要 10 位。")
+    if len(password) < 8:
+        raise ValueError("密码至少需要 8 位。")
     salt = secrets.token_bytes(16)
     digest = hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1, dklen=32)
     return "scrypt$16384$8$1$" + base64.b64encode(salt).decode() + "$" + base64.b64encode(digest).decode()

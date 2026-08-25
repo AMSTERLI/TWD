@@ -100,6 +100,7 @@ python -m order_system.web.manage create-user admin --role admin
 python -m order_system.web.manage create-user sales01 --role sales
 python -m order_system.web.manage create-user finance01 --role finance
 python -m order_system.web.manage create-user outsource01 --role outsource
+python -m order_system.web.manage create-user plating01 --role plating
 ```
 
 角色说明：
@@ -108,6 +109,7 @@ python -m order_system.web.manage create-user outsource01 --role outsource
 - `sales`: 下单、AI 导入、申请修改、查看审批消息。
 - `finance`: 财务应收管理。
 - `outsource`: 外发和应付相关查看/录入。
+- `plating`: 仅可进入电镀扫码录入页，读取并修改电镀工艺、数量、加工单价和备注。
 
 ### 4. 启动 Web 服务
 

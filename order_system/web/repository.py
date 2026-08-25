@@ -313,10 +313,11 @@ class Repository:
     def create_user(self, username: str, password: str, role: str = "sales", display_name: str = "") -> int:
         username = username.strip()
         display_name = display_name.strip() or username
-        if not username or len(password) < 10:
-            raise ValueError("用户名不能为空，密码至少需要 10 位")
-        if role not in {"admin", "sales", "finance", "outsource", "production", "workshop"}:
+        if role not in {"admin", "sales", "finance", "outsource", "production", "workshop", "plating"}:
             raise ValueError("无效角色")
+        minimum_length = 8 if role == "plating" else 10
+        if not username or len(password) < minimum_length:
+            raise ValueError(f"用户名不能为空，密码至少需要 {minimum_length} 位")
         with self.connect(write=True) as conn:
             cursor = conn.execute(
                 "INSERT INTO web_users (username, display_name, password_hash, role) VALUES (?, ?, ?, ?)",
@@ -326,9 +327,13 @@ class Repository:
 
     def set_password(self, username: str, password: str) -> None:
         username = username.strip()
-        if not username or len(password) < 10:
-            raise ValueError("用户名不能为空，密码至少需要 10 位")
         with self.connect(write=True) as conn:
+            user = conn.execute("SELECT role FROM web_users WHERE username = ?", (username,)).fetchone()
+            if not user:
+                raise ValueError("账号不存在")
+            minimum_length = 8 if str(user["role"] or "") == "plating" else 10
+            if len(password) < minimum_length:
+                raise ValueError(f"密码至少需要 {minimum_length} 位")
             cursor = conn.execute(
                 "UPDATE web_users SET password_hash = ? WHERE username = ?",
                 (hash_password(password), username),
@@ -1352,6 +1357,84 @@ class Repository:
             result["quantity"] = order_quantity
         result["existing_workshop_record"] = bool(row)
         return result
+
+    def plating_order_lookup(self, order_no: str) -> dict[str, Any] | None:
+        order_no = normalize_scanned_order_no(order_no)
+        if not order_no:
+            return None
+        with self.connect() as conn:
+            order = self._find_order_by_scanned_no(conn, order_no)
+        if not order:
+            return None
+        try:
+            raw_processes = json.loads(str(order["plating_json"] or "[]"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            raw_processes = []
+        if not isinstance(raw_processes, list):
+            raw_processes = [raw_processes] if raw_processes else []
+        processes = [str(item or "").strip() for item in raw_processes if str(item or "").strip()]
+        return {
+            "order_no": str(order["order_no"]),
+            "process_name": "、".join(processes),
+            "quantity": float(order["quantity"] or 0) + float(order["spare_quantity"] or 0),
+        }
+
+    def create_plating_records(self, rows: list[dict[str, Any]], user: dict[str, Any]) -> list[int]:
+        clean_rows: list[dict[str, Any]] = []
+        for row in rows:
+            order_no = normalize_scanned_order_no(row.get("order_no"))
+            if not order_no:
+                continue
+            process_name = str(row.get("process_name") or "").strip()
+            remark = str(row.get("remark") or "").strip()
+            try:
+                quantity = float(row.get("quantity") or 0)
+            except (TypeError, ValueError):
+                raise ValueError(f"订单 {order_no} 的数量无效")
+            try:
+                unit_price = float(row.get("unit_price") or 0)
+            except (TypeError, ValueError):
+                raise ValueError(f"订单 {order_no} 的加工单价无效")
+            if not process_name:
+                raise ValueError(f"订单 {order_no} 请填写电镀工艺")
+            if len(process_name) > 200:
+                raise ValueError(f"订单 {order_no} 的电镀工艺不能超过 200 个字")
+            if quantity <= 0:
+                raise ValueError(f"订单 {order_no} 的数量必须大于 0")
+            if unit_price < 0:
+                raise ValueError(f"订单 {order_no} 的加工单价不能小于 0")
+            if len(remark) > 200:
+                raise ValueError(f"订单 {order_no} 的备注不能超过 200 个字")
+            clean_rows.append({
+                "order_no": order_no,
+                "process_name": process_name,
+                "quantity": quantity,
+                "unit_price": unit_price,
+                "remark": remark,
+            })
+        if not clean_rows:
+            raise ValueError("请至少扫描一个订单")
+
+        created_ids: list[int] = []
+        with self.connect(write=True) as conn:
+            operator_id = int(user.get("id") or 0) or None
+            operator_name = str(user.get("display_name") or user.get("username") or "")
+            for row in clean_rows:
+                order = self._find_order_by_scanned_no(conn, row["order_no"])
+                if not order:
+                    raise ValueError(f"订单 {row['order_no']} 不存在")
+                cursor = conn.execute(
+                    """INSERT INTO workshop_records
+                       (order_id, order_no, department_key, department_name, material, note_text,
+                        quantity, unit_price, operator_id, operator_name)
+                       VALUES (?, ?, 'plating', '电镀', ?, ?, ?, ?, ?, ?)""",
+                    (
+                        int(order["id"]), str(order["order_no"]), row["process_name"], row["remark"],
+                        row["quantity"], row["unit_price"], operator_id, operator_name,
+                    ),
+                )
+                created_ids.append(int(cursor.lastrowid))
+        return created_ids
 
     def delete_workshop_record(self, record_id: int, department_key: str = "") -> str:
         department_key = str(department_key or "").strip()
