@@ -630,6 +630,9 @@ class Repository:
         payload["order_type"] = f"补数单（{request_row['requester_name']}）"
         payload["quantity"] = quantity
         payload["spare_quantity"] = 0
+        payload["unit_price"] = 0
+        payload["price_tiers_json"] = "[]"
+        payload["extra_fee"] = 0
         reason = str(request_row["reason"] or "").strip()
         if reason:
             reason_line = f"\u8865\u6570\u539f\u56e0\uff1a{reason}"

@@ -77,7 +77,12 @@ def payload(order_no: str, salesman: str, product_name: str) -> dict[str, object
 with TestClient(app) as client:
     repo.create_user("admin", "admin-pass-123", "admin", display_name="\u7ba1\u7406\u5458")
     repo.create_user("shengguan", "prod-pass-123", "production", display_name="\u9ec4\u519b\u56fd")
-    first_id, first_no = repo.create_order(payload("TWD1-260720901", "\u6768\u5a1f", "\u53cc\u9762\u5e01"))
+    first_payload = payload("TWD1-260720901", "\u6768\u5a1f", "\u53cc\u9762\u5e01")
+    first_payload["price_tiers_json"] = dumps_json([
+        {"quantity": 100, "unit_price": 2.4},
+        {"quantity": 200, "unit_price": 2.3},
+    ])
+    first_id, first_no = repo.create_order(first_payload)
     second_id, second_no = repo.create_order(payload("TWD1-260720902", "\u5ed6\u6625\u51e4", "\u94a5\u5319\u6263"))
 
     login(client, "shengguan", "prod-pass-123")
@@ -117,6 +122,8 @@ with TestClient(app) as client:
     assert new_order["order_no"] == "A1-260720901"
     assert new_order["order_type"] == "\u8865\u6570\u5355\uff08\u9ec4\u519b\u56fd\uff09"
     assert new_order["quantity"] == 25 and new_order["spare_quantity"] == 0
+    assert new_order["unit_price"] == 0 and new_order["extra_fee"] == 0
+    assert new_order["price_tiers_json"] == "[]"
     assert new_order["global_note"] == "\u8865\u6570\u539f\u56e0\uff1a\u5ba2\u6237\u8981\u6c42\u8865\u53d1"
     assert new_order["customer_name"] == original["customer_name"]
     assert new_order["width_mm"] == original["width_mm"]
