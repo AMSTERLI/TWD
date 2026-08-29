@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ order.order_no }} · TWD 订单系统{% endblock %}
 {% block content %}
-{% if user.role == 'workshop' %}
+{% if user.role in ['workshop', 'plating'] %}
 <section class="pdf-preview"><iframe title="订单 PDF" src="/orders/{{ order.id }}/pdf"></iframe></section>
 {% else %}
 {% if created %}<div class="alert success">订单已创建：{{ order.order_no }}</div>{% endif %}

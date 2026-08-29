@@ -1570,6 +1570,63 @@ class Repository:
             conn.execute("DELETE FROM workshop_records WHERE id = ?", (int(record_id),))
             return str(row["order_no"])
 
+    def plating_record(self, record_id: int) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """SELECT w.*, o.product_name
+                   FROM workshop_records w
+                   LEFT JOIN orders o ON o.id = w.order_id
+                   WHERE w.id = ? AND w.department_key = 'plating'""",
+                (int(record_id),),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_plating_record(self, record_id: int, values: dict[str, Any]) -> str:
+        process_name = str(values.get("process_name") or "").strip()
+        process_name_2 = str(values.get("process_name_2") or "").strip()
+        size_text = str(values.get("size_text") or "").strip()
+        remark = str(values.get("remark") or "").strip()
+        if not process_name:
+            raise ValueError("请填写工艺一")
+        if len(process_name) > 200:
+            raise ValueError("工艺一不能超过 200 个字")
+        if process_name_2 and process_name_2 not in PLATING_SECONDARY_PROCESSES:
+            raise ValueError("工艺二选项无效")
+        if len(size_text) > 80:
+            raise ValueError("规格不能超过 80 个字")
+        if remark and remark not in PLATING_REMARKS:
+            raise ValueError("备注选项无效")
+        try:
+            quantity = float(values.get("quantity") or 0)
+            unit_price = float(values.get("unit_price") or 0)
+            amount = float(values.get("amount") or 0)
+        except (TypeError, ValueError):
+            raise ValueError("数量、加工单价和金额必须是有效数字")
+        if not math.isfinite(quantity) or quantity <= 0 or not quantity.is_integer():
+            raise ValueError("数量必须是大于 0 的整数")
+        if not math.isfinite(unit_price) or unit_price < 0:
+            raise ValueError("加工单价必须是大于等于 0 的数字")
+        if not math.isfinite(amount) or amount < 0:
+            raise ValueError("金额必须是大于等于 0 的数字")
+        with self.connect(write=True) as conn:
+            row = conn.execute(
+                "SELECT order_no FROM workshop_records WHERE id = ? AND department_key = 'plating'",
+                (int(record_id),),
+            ).fetchone()
+            if not row:
+                raise ValueError("电镀记录不存在")
+            conn.execute(
+                """UPDATE workshop_records
+                   SET material = ?, spec = ?, size_text = ?, note_text = ?,
+                       quantity = ?, unit_price = ?, manual_amount = ?
+                   WHERE id = ? AND department_key = 'plating'""",
+                (
+                    process_name, process_name_2, size_text, remark,
+                    int(quantity), unit_price, amount, int(record_id),
+                ),
+            )
+            return str(row["order_no"])
+
     def update_workshop_record_values(
         self,
         record_id: int,

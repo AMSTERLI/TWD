@@ -150,8 +150,51 @@ with TestClient(app) as client:
     assert order_no in record_page.text and "测试徽章" in record_page.text
     assert "亮金（修改）" in record_page.text and "封油" in record_page.text
     assert "45*32" in record_page.text and "返工" in record_page.text and "50.00" in record_page.text
+    assert f'href="/orders/{order_id}"' in record_page.text
+    assert f'data-edit-url="/plating/records/{record["id"]}/edit"' in record_page.text
+    assert f'data-delete-url="/plating/records/{record["id"]}/delete"' in record_page.text
 
-    client.post("/logout", data={"csrf": csrf(record_page.text)}, follow_redirects=False)
+    detail_page = client.get(f"/orders/{order_id}")
+    assert detail_page.status_code == 200
+    assert "pdf-preview" in detail_page.text and f'/orders/{order_id}/pdf' in detail_page.text
+    assert "基本信息" not in detail_page.text
+
+    edit_page = client.get(f'/plating/records/{record["id"]}/edit')
+    assert edit_page.status_code == 200
+    assert "修改电镀记录" in edit_page.text and "data-plating-edit" in edit_page.text
+    assert "data-touch-keypad" in edit_page.text
+    updated = client.post(
+        f'/plating/records/{record["id"]}/edit',
+        data={
+            "csrf": csrf(edit_page.text),
+            "process_name": "雾银",
+            "process_name_2": "清洗",
+            "size_text": "46*33",
+            "quantity": "121",
+            "unit_price": "0.4",
+            "amount": "55",
+            "remark": "补数",
+        },
+        follow_redirects=False,
+    )
+    assert updated.status_code == 303 and updated.headers["location"] == "/plating"
+    edited_record = repo.plating_record(record["id"])
+    assert edited_record is not None
+    assert edited_record["material"] == "雾银" and edited_record["spec"] == "清洗"
+    assert edited_record["size_text"] == "46*33" and edited_record["note_text"] == "补数"
+    assert edited_record["quantity"] == 121 and edited_record["unit_price"] == 0.4
+    assert edited_record["manual_amount"] == 55
+
+    after_edit_page = client.get("/plating")
+    deleted = client.post(
+        f'/plating/records/{record["id"]}/delete',
+        data={"csrf": csrf(after_edit_page.text)},
+        follow_redirects=False,
+    )
+    assert deleted.status_code == 303 and deleted.headers["location"] == "/plating"
+    assert repo.plating_record(record["id"]) is None
+
+    client.post("/logout", data={"csrf": csrf(client.get("/plating").text)}, follow_redirects=False)
     admin_login_page = client.get("/login")
     admin_login = client.post(
         "/login",

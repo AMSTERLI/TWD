@@ -999,6 +999,74 @@ document.querySelectorAll("[data-plating-scan]").forEach(section => {
   rows.querySelector("[data-plating-order]")?.focus();
 });
 
+document.querySelectorAll("[data-plating-edit]").forEach(form => {
+  const keypad = form.querySelector("[data-touch-keypad]");
+  const display = form.querySelector("[data-touch-keypad-display]");
+  let activeInput = null;
+
+  function normalize(input, rawValue) {
+    const isInteger = input?.dataset.touchInteger === "1";
+    const scale = Number(input?.dataset.touchScale || 0);
+    let value = String(rawValue || "").replace(/[^0-9.]/g, "");
+    if (isInteger) return value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+    const dot = value.indexOf(".");
+    if (dot < 0) return value.replace(/^0+(?=\d)/, "");
+    const before = value.slice(0, dot).replace(/\./g, "") || "0";
+    const after = value.slice(dot + 1).replace(/\./g, "").slice(0, scale || undefined);
+    return `${before.replace(/^0+(?=\d)/, "")}.${after}`;
+  }
+
+  function refreshDisplay() {
+    if (display) display.textContent = activeInput?.value || "0";
+  }
+
+  function show(input) {
+    if (!input?.matches("[data-touch-number]")) return;
+    activeInput = input;
+    keypad.hidden = false;
+    refreshDisplay();
+  }
+
+  function setValue(value) {
+    if (!activeInput) return;
+    activeInput.value = normalize(activeInput, value);
+    activeInput.dispatchEvent(new Event("input", {bubbles: true}));
+    refreshDisplay();
+    activeInput.focus();
+  }
+
+  form.addEventListener("focusin", event => show(event.target));
+  form.addEventListener("input", event => {
+    if (!event.target.matches("[data-touch-number]")) return;
+    const value = normalize(event.target, event.target.value);
+    if (event.target.value !== value) event.target.value = value;
+    if (event.target === activeInput) refreshDisplay();
+  });
+  form.addEventListener("click", event => {
+    const keyButton = event.target.closest("[data-keypad-key]");
+    if (keyButton) {
+      const key = keyButton.dataset.keypadKey || "";
+      if (key === "." && activeInput?.dataset.touchInteger === "1") return;
+      setValue(`${activeInput?.value || ""}${key}`);
+      return;
+    }
+    if (event.target.closest("[data-keypad-backspace]")) {
+      setValue((activeInput?.value || "").slice(0, -1));
+      return;
+    }
+    if (event.target.closest("[data-keypad-clear]")) {
+      setValue("");
+      return;
+    }
+    if (event.target.closest("[data-keypad-done]")) {
+      keypad.hidden = true;
+      activeInput = null;
+      return;
+    }
+    if (event.target.matches("[data-touch-number]")) show(event.target);
+  });
+});
+
 const orderNumberInput = document.querySelector("[data-order-number]");
 const orderDateInput = document.querySelector("[data-order-date]");
 const orderPrefixInput = document.querySelector("[data-order-prefix]");

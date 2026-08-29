@@ -1114,6 +1114,75 @@ async def plating_submit(request: Request):
     return RedirectResponse(f"/plating?created={len(created_ids)}", status_code=303)
 
 
+@app.get("/plating/records/{record_id}/edit", response_class=HTMLResponse)
+def plating_record_edit_page(request: Request, record_id: int):
+    _, denied = require_page(request, {"plating"})
+    if denied:
+        return denied
+    record = repo.plating_record(record_id)
+    if not record:
+        return templates.TemplateResponse(
+            request,
+            "error.html",
+            page_context(request, status=404, message="电镀记录不存在"),
+            status_code=404,
+        )
+    return templates.TemplateResponse(
+        request,
+        "plating_edit.html",
+        page_context(request, record=record, error=""),
+    )
+
+
+@app.post("/plating/records/{record_id}/edit", response_class=HTMLResponse)
+async def plating_record_edit(request: Request, record_id: int):
+    user, denied = require_page(request, {"plating"})
+    if denied:
+        return denied
+    record = repo.plating_record(record_id)
+    if not record:
+        return Response("电镀记录不存在", status_code=404)
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    values = {
+        "process_name": form.get("process_name"),
+        "process_name_2": form.get("process_name_2"),
+        "size_text": form.get("size_text"),
+        "quantity": form.get("quantity"),
+        "unit_price": form.get("unit_price"),
+        "amount": form.get("amount"),
+        "remark": form.get("remark"),
+    }
+    try:
+        order_no = await run_in_threadpool(repo.update_plating_record, record_id, values)
+        await run_in_threadpool(repo.audit, user, "plating.update", f"{record_id}:{order_no}", client_ip(request))
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "plating_edit.html",
+            page_context(request, record={**record, **values}, error=str(exc)),
+            status_code=422,
+        )
+    return RedirectResponse("/plating", status_code=303)
+
+
+@app.post("/plating/records/{record_id}/delete")
+async def plating_record_delete(request: Request, record_id: int):
+    user, denied = require_page(request, {"plating"})
+    if denied:
+        return denied
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    try:
+        order_no = await run_in_threadpool(repo.delete_workshop_record, record_id, "plating")
+    except ValueError as exc:
+        return Response(str(exc), status_code=404)
+    await run_in_threadpool(repo.audit, user, "plating.delete", f"{record_id}:{order_no}", client_ip(request))
+    return RedirectResponse("/plating", status_code=303)
+
+
 @app.get("/orders", response_class=HTMLResponse)
 def orders(request: Request, q: str = "", page: int = 1):
     user, denied = require_page(request, {"admin", "sales", "finance", "production"})

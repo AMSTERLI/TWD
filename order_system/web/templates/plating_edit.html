@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}修改电镀记录 · TWD 订单系统{% endblock %}
+{% block body_class %}plating-page{% endblock %}
+{% block content %}
+{% set process_two_options = ["打铜底", "清洗", "退镀", "封油", "＋雾漆", "＋喷漆", "＋雾金", "＋雾黑", "其他"] %}
+{% set remark_options = ["多款", "异形", "配件", "返工", "补数"] %}
+<div class="page-head"><div><h1>修改电镀记录</h1><p>{{ record.order_no }} · {{ record.product_name or '未填写产品名称' }}</p></div><a class="button" href="/plating">返回电镀</a></div>
+{% if error %}<div class="alert error">保存失败：{{ error }}</div>{% endif %}
+<form method="post" class="form-section plating-edit-form" data-plating-edit>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="form-grid cols-2">
+    <label>订单号<input value="{{ record.order_no }}" readonly></label>
+    <label>工艺一<input name="process_name" maxlength="200" value="{{ record.process_name if record.process_name is defined else record.material or '' }}" required></label>
+    <label>工艺二<select name="process_name_2"><option value="">请选择</option>{% set process_two_value = record.process_name_2 if record.process_name_2 is defined else record.spec or '' %}{% for option in process_two_options %}<option value="{{ option }}"{% if process_two_value == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+    <label>规格<input name="size_text" maxlength="80" value="{{ record.size_text or '' }}" placeholder="长*宽"></label>
+    <label>数量<input type="text" name="quantity" value="{{ record.quantity }}" required inputmode="numeric" pattern="[1-9][0-9]*" data-touch-number data-touch-integer="1"></label>
+    <label>加工单价<input type="text" name="unit_price" value="{{ record.unit_price or 0 }}" required inputmode="decimal" data-touch-number data-touch-scale="4"></label>
+    <label>金额<input type="text" name="amount" value="{{ record.amount if record.amount is defined else record.manual_amount or 0 }}" required inputmode="decimal" data-touch-number data-touch-scale="4"></label>
+    <label>备注<select name="remark"><option value="">请选择</option>{% set remark_value = record.remark if record.remark is defined else record.note_text or '' %}{% for option in remark_options %}<option value="{{ option }}"{% if remark_value == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+  </div>
+  <div class="touch-keypad" data-touch-keypad hidden><div class="touch-keypad-display" data-touch-keypad-display>0</div><div class="touch-keypad-grid">{% for key in ["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", "."] %}<button type="button" data-keypad-key="{{ key }}">{{ key }}</button>{% endfor %}<button type="button" data-keypad-backspace>退格</button><button type="button" data-keypad-clear>清空</button><button type="button" class="primary" data-keypad-done>确定</button></div></div>
+  <div class="form-actions"><a class="button" href="/plating">取消</a><button class="button primary">保存修改</button></div>
+</form>
+{% endblock %}
