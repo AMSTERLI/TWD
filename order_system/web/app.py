@@ -526,7 +526,7 @@ def workshop_report_departments() -> list[dict[str, Any]]:
     return [
         {"key": key, "name": str(department.get("name") or key), "employees": list(department.get("employees") or [])}
         for key, department in WORKSHOP_DEPARTMENTS.items()
-        if department.get("piecework")
+        if department.get("piecework") or department.get("tooling")
     ]
 
 

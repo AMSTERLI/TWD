@@ -149,10 +149,15 @@ with TestClient(app) as client:
     assert old_order in payables_page.text and new_order in payables_page.text
     workshop_report_page = client.get("/finance/workshop-reports?department_key=press&employee_name=%E5%BE%90%E5%B1%B1%E7%AB%8B&reported_from=1900-01-01&reported_to=2999-12-31")
     assert workshop_report_page.status_code == 200
+    assert '<option value="mold">\u523b\u6a21</option>' in workshop_report_page.text
+    assert '<option value="cutter">\u5207\u5200</option>' in workshop_report_page.text
     assert "/finance/workshop-reports/export" in workshop_report_page.text
     assert 'name="export_columns"' in workshop_report_page.text
     assert 'value="unit_price_anomaly"' in workshop_report_page.text
     assert new_order in workshop_report_page.text and anomaly_order in workshop_report_page.text and old_order not in workshop_report_page.text
+    mold_report_page = client.get("/finance/workshop-reports?department_key=mold&reported_from=1900-01-01&reported_to=2999-12-31")
+    assert mold_report_page.status_code == 200
+    assert '<option value="mold" selected>\u523b\u6a21</option>' in mold_report_page.text
     workshop_export = client.post(
         "/finance/workshop-reports/export",
         data={
