@@ -18,6 +18,8 @@ from fastapi.testclient import TestClient  # noqa: E402
 from pypdf import PdfReader  # noqa: E402
 from order_system.database import loads_json  # noqa: E402
 from order_system.web.app import app, repo  # noqa: E402
+from order_system.web.image_thumbnails import backfill_order_thumbnails, cached_thumbnail_path  # noqa: E402
+from order_system.web.settings import IMAGES_DIR, THUMBNAILS_DIR  # noqa: E402
 
 
 def csrf(html: str) -> str:
@@ -101,6 +103,13 @@ with TestClient(app) as client:
     image_names = loads_json(stored_order["image_paths_json"])
     assert len(image_names) == 1
     assert client.get(f"/images/{image_names[0]}").status_code == 200
+    image_path = IMAGES_DIR / image_names[0]
+    cached_path = cached_thumbnail_path(image_path, THUMBNAILS_DIR)
+    assert cached_path is not None
+    cached_path.unlink()
+    backfill_stats = backfill_order_thumbnails(repo.db_path, IMAGES_DIR, THUMBNAILS_DIR)
+    assert backfill_stats["created"] == 1 and not backfill_stats["failed"]
+    assert cached_thumbnail_path(image_path, THUMBNAILS_DIR) is not None
     component_parts = loads_json(stored_order["component_parts_json"])
     assert component_parts and component_parts[0]["text"] == "component note"
     assert client.get(f"/images/{component_parts[0]['image']}").status_code == 200

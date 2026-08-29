@@ -25,7 +25,8 @@ from order_system.web.app import app, repo  # noqa: E402
 from order_system.web.repository import ORDER_COLUMNS  # noqa: E402
 from openpyxl import load_workbook  # noqa: E402
 from PIL import Image as PilImage  # noqa: E402
-from order_system.web.settings import IMAGES_DIR  # noqa: E402
+from order_system.web.image_thumbnails import create_image_thumbnail  # noqa: E402
+from order_system.web.settings import IMAGES_DIR, THUMBNAILS_DIR  # noqa: E402
 
 
 def csrf(html: str) -> str:
@@ -81,7 +82,12 @@ with TestClient(app) as client:
     repo.create_user("workshop", "workshop-pass-123", "workshop", display_name="\u8f66\u95f4")
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     press_thumb_name = "press-thumb.png"
-    PilImage.new("RGB", (24, 18), color=(20, 120, 200)).save(IMAGES_DIR / press_thumb_name)
+    press_image_path = IMAGES_DIR / press_thumb_name
+    PilImage.new("RGB", (240, 180), color=(20, 120, 200)).save(press_image_path)
+    cached_press_thumb = create_image_thumbnail(press_image_path, THUMBNAILS_DIR)
+    assert cached_press_thumb is not None
+    with PilImage.open(cached_press_thumb) as cached_image:
+        assert cached_image.size == (72, 54)
     mold_payload = payload("TWD1-260721101")
     mold_payload["height_mm"] = "1"
     mold_payload["width_mm"] = "20"
@@ -310,6 +316,7 @@ with TestClient(app) as client:
     assert press_sheet.cell(row=1, column=7).value == "\u53c2\u8003\u6570\u91cf"
     assert press_sheet.cell(row=1, column=12).value == "\u4ea7\u54c1\u7f29\u7565\u56fe"
     assert len(getattr(press_sheet, "_images", [])) == 2
+    assert all(image.width == 72 and image.height == 54 for image in press_sheet._images)
     assert press_sheet.cell(row=2, column=1).value == press_order_no
     assert {press_sheet.cell(row=row_index, column=5).value for row_index in (2, 3)} == {"\u5f90\u5c71\u7acb", "\u5218\u9053\u6797"}
     assert press_sheet.cell(row=2, column=6).value == 60

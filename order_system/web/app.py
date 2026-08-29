@@ -26,12 +26,14 @@ from order_system.excel_export import export_rows_to_excel
 from order_system.order_import import OrderImportError, analyze_order_document
 
 from .catalogs import import_catalogs
+from .image_thumbnails import cached_thumbnail_path, create_image_thumbnail, remove_image_thumbnail
 from .pdf import merge_order_pdfs, render_order_pdf
 from .repository import ORDER_COLUMNS, Repository, normalize_scanned_order_no, price_tier_label, price_tiers_from_json
 from .security import csrf_token, valid_csrf
 from .settings import (
     DB_PATH, IMAGES_DIR, MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES, SESSION_HTTPS_ONLY,
     STATIC_DIR, TEMPLATES_DIR, TMP_DIR, ensure_directories, session_secret,
+    THUMBNAILS_DIR,
 )
 
 
@@ -471,6 +473,13 @@ def first_order_image_path(row: dict[str, Any]) -> Path | None:
     return None
 
 
+def first_order_thumbnail_path(row: dict[str, Any]) -> Path | None:
+    image_path = first_order_image_path(row)
+    if not image_path:
+        return None
+    return cached_thumbnail_path(image_path, THUMBNAILS_DIR)
+
+
 def order_size_text(row: dict[str, Any]) -> str:
     parts: list[str] = []
     for label, key in (("\u9ad8", "height_mm"), ("\u5bbd", "width_mm"), ("\u539a", "thickness_mm"), ("\u76f4\u5f84", "diameter_mm")):
@@ -489,7 +498,7 @@ def export_with_images(
 ) -> Response:
     image_headers = [*headers, "\u4ea7\u54c1\u7f29\u7565\u56fe"]
     image_rows = [[*row, ""] for row in rows]
-    thumbnail_paths = [first_order_image_path(row) for row in source_rows]
+    thumbnail_paths = [first_order_thumbnail_path(row) for row in source_rows]
     return excel_response_with_thumbnails(sheet_name, image_headers, image_rows, thumbnail_paths, prefix)
 
 
@@ -618,7 +627,7 @@ def excel_response_with_filename(
             sheet = workbook.active
             image_column = len(final_headers)
             sheet.column_dimensions[_excel_column_name(image_column)].width = 14
-            for row_index, image_path in enumerate([first_order_image_path(row) for row in source_rows], start=2):
+            for row_index, image_path in enumerate([first_order_thumbnail_path(row) for row in source_rows], start=2):
                 if not image_path or not image_path.is_file():
                     continue
                 try:
@@ -661,6 +670,8 @@ async def save_image_upload(upload: UploadFile, *, preview: bool = False) -> str
                 target.unlink(missing_ok=True)
                 raise ValueError("\u5355\u5f20\u56fe\u7247\u4e0d\u80fd\u8d85\u8fc7 5 MB")
             output.write(chunk)
+    if not preview:
+        await run_in_threadpool(create_image_thumbnail, target, THUMBNAILS_DIR)
     return target.name
 
 
@@ -1433,7 +1444,9 @@ async def edit_order(request: Request, order_id: int):
             if not await run_in_threadpool(repo.update_order, order_id, payload, int(user.get("id") or 0) or None):
                 return Response(status_code=404)
             for image_name in removed_images + removed_component_images:
-                (IMAGES_DIR / image_name).unlink(missing_ok=True)
+                image_path = IMAGES_DIR / image_name
+                image_path.unlink(missing_ok=True)
+                remove_image_thumbnail(image_path, THUMBNAILS_DIR)
             await run_in_threadpool(repo.audit, user, "order.update", str(order_id), client_ip(request))
             return RedirectResponse(f"/orders/{order_id}", status_code=303)
         change_summary = summarize_order_changes(existing, payload)
