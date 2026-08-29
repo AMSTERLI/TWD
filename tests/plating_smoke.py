@@ -85,7 +85,7 @@ with TestClient(app) as client:
     assert 'pattern="[1-9][0-9]*"' in page.text
     assert "plating-record-list" in page.text
     assert "订单列表" not in page.text
-    assert "data-nav-toggle" not in page.text and "/messages" not in page.text
+    assert "data-nav-toggle" in page.text and "/messages" in page.text
     assert client.get("/orders").status_code == 403
     assert client.get("/workshop").status_code == 403
 
@@ -151,8 +151,16 @@ with TestClient(app) as client:
     assert "亮金（修改）" in record_page.text and "封油" in record_page.text
     assert "45*32" in record_page.text and "返工" in record_page.text and "50.00" in record_page.text
     assert f'href="/orders/{order_id}"' in record_page.text
-    assert f'data-edit-url="/plating/records/{record["id"]}/edit"' in record_page.text
-    assert f'data-delete-url="/plating/records/{record["id"]}/delete"' in record_page.text
+    assert f'data-request-edit-url="/plating/records/{record["id"]}/edit"' in record_page.text
+    assert f'data-request-delete-url="/plating/records/{record["id"]}/delete-request"' in record_page.text
+    assert f'data-edit-url="/plating/records/{record["id"]}/edit"' not in record_page.text
+    assert 'type="date" name="reported_from"' in record_page.text
+    assert 'type="date" name="reported_to"' in record_page.text
+    assert 'data-selection-total="1"' in record_page.text
+    assert 'data-selection-amount-total-all="50.00"' in record_page.text
+    assert 'data-select-all' in record_page.text and 'data-selected-amount-total' in record_page.text
+    assert client.get("/plating?reported_from=1900-01-01&reported_to=2999-12-31").text.count(order_no) >= 1
+    assert order_no not in client.get("/plating?reported_from=1900-01-01&reported_to=1900-01-01").text
 
     detail_page = client.get(f"/orders/{order_id}")
     assert detail_page.status_code == 200
@@ -163,6 +171,7 @@ with TestClient(app) as client:
     assert edit_page.status_code == 200
     assert "修改电镀记录" in edit_page.text and "data-plating-edit" in edit_page.text
     assert "data-touch-keypad" in edit_page.text
+    assert "申请原因" in edit_page.text and "提交修改申请" in edit_page.text
     updated = client.post(
         f'/plating/records/{record["id"]}/edit',
         data={
@@ -174,27 +183,24 @@ with TestClient(app) as client:
             "unit_price": "0.4",
             "amount": "55",
             "remark": "补数",
+            "reason": "工艺和数量录入错误",
         },
         follow_redirects=False,
     )
-    assert updated.status_code == 303 and updated.headers["location"] == "/plating"
-    edited_record = repo.plating_record(record["id"])
-    assert edited_record is not None
-    assert edited_record["material"] == "雾银" and edited_record["spec"] == "清洗"
-    assert edited_record["size_text"] == "46*33" and edited_record["note_text"] == "补数"
-    assert edited_record["quantity"] == 121 and edited_record["unit_price"] == 0.4
-    assert edited_record["manual_amount"] == 55
-
-    after_edit_page = client.get("/plating")
-    deleted = client.post(
+    assert updated.status_code == 303 and updated.headers["location"] == "/messages"
+    pending_record = repo.plating_record(record["id"])
+    assert pending_record is not None and pending_record["material"] == "亮金（修改）"
+    plating_messages = client.get("/messages")
+    assert plating_messages.status_code == 200
+    assert "电镀记录修改" in plating_messages.text and "工艺一从亮金（修改）修改为雾银" in plating_messages.text
+    direct_delete = client.post(
         f'/plating/records/{record["id"]}/delete',
-        data={"csrf": csrf(after_edit_page.text)},
+        data={"csrf": csrf(record_page.text)},
         follow_redirects=False,
     )
-    assert deleted.status_code == 303 and deleted.headers["location"] == "/plating"
-    assert repo.plating_record(record["id"]) is None
+    assert direct_delete.status_code == 403 and repo.plating_record(record["id"]) is not None
 
-    client.post("/logout", data={"csrf": csrf(client.get("/plating").text)}, follow_redirects=False)
+    client.post("/logout", data={"csrf": csrf(plating_messages.text)}, follow_redirects=False)
     admin_login_page = client.get("/login")
     admin_login = client.post(
         "/login",
@@ -202,6 +208,59 @@ with TestClient(app) as client:
         follow_redirects=False,
     )
     assert admin_login.status_code == 303
+    admin_messages = client.get("/messages")
+    assert "电镀记录修改" in admin_messages.text
+    approve_update = client.post(
+        "/messages/1/review",
+        data={"csrf": csrf(admin_messages.text), "decision": "approve", "review_note": "同意修改"},
+        follow_redirects=False,
+    )
+    assert approve_update.status_code == 303
+    edited_record = repo.plating_record(record["id"])
+    assert edited_record is not None
+    assert edited_record["material"] == "雾银" and edited_record["spec"] == "清洗"
+    assert edited_record["size_text"] == "46*33" and edited_record["note_text"] == "补数"
+    assert edited_record["quantity"] == 121 and edited_record["unit_price"] == 0.4
+    assert edited_record["manual_amount"] == 55
+    admin_plating_page = client.get("/plating")
+    assert f'data-edit-url="/plating/records/{record["id"]}/edit"' in admin_plating_page.text
+    assert f'data-delete-url="/plating/records/{record["id"]}/delete"' in admin_plating_page.text
+
+    client.post("/logout", data={"csrf": csrf(admin_plating_page.text)}, follow_redirects=False)
+    qixin_login_page = client.get("/login")
+    qixin_login = client.post(
+        "/login",
+        data={"csrf": csrf(qixin_login_page.text), "username": "qixin", "password": "qixin888"},
+        follow_redirects=False,
+    )
+    assert qixin_login.status_code == 303
+    qixin_page = client.get("/plating")
+    delete_request = client.post(
+        f'/plating/records/{record["id"]}/delete-request',
+        data={"csrf": csrf(qixin_page.text), "reason": "重复录入"},
+        follow_redirects=False,
+    )
+    assert delete_request.status_code == 303 and delete_request.headers["location"] == "/messages"
+    assert repo.plating_record(record["id"]) is not None
+    delete_messages = client.get("/messages")
+    assert "电镀记录删除" in delete_messages.text and "重复录入" in delete_messages.text
+
+    client.post("/logout", data={"csrf": csrf(delete_messages.text)}, follow_redirects=False)
+    final_admin_login_page = client.get("/login")
+    final_admin_login = client.post(
+        "/login",
+        data={"csrf": csrf(final_admin_login_page.text), "username": "admin", "password": "admin-password"},
+        follow_redirects=False,
+    )
+    assert final_admin_login.status_code == 303
+    final_admin_messages = client.get("/messages")
+    approve_delete = client.post(
+        "/messages/2/review",
+        data={"csrf": csrf(final_admin_messages.text), "decision": "approve", "review_note": "同意删除"},
+        follow_redirects=False,
+    )
+    assert approve_delete.status_code == 303
+    assert repo.plating_record(record["id"]) is None
     admin_page = client.get("/")
     assert admin_page.status_code == 200
     assert '<a href="/plating">&#30005;&#38208;</a>' in admin_page.text

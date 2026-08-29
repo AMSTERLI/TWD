@@ -1040,7 +1040,14 @@ def dashboard(request: Request):
 
 
 @app.get("/plating", response_class=HTMLResponse)
-def plating_page(request: Request, q: str = "", page: int = 1, created: int = 0):
+def plating_page(
+    request: Request,
+    q: str = "",
+    page: int = 1,
+    created: int = 0,
+    reported_from: str = "",
+    reported_to: str = "",
+):
     _, denied = require_page(request, {"plating"})
     if denied:
         return denied
@@ -1051,8 +1058,12 @@ def plating_page(request: Request, q: str = "", page: int = 1, created: int = 0)
             request,
             created=max(0, created),
             error="",
-            result=repo.workshop_records(q, "plating", page),
+            result=repo.workshop_records(
+                q, "plating", page, reported_from=reported_from, reported_to=reported_to,
+            ),
             q=q,
+            reported_from=reported_from,
+            reported_to=reported_to,
         ),
     )
 
@@ -1108,6 +1119,8 @@ async def plating_submit(request: Request):
                 error=str(exc),
                 result=repo.workshop_records("", "plating", 1),
                 q="",
+                reported_from="",
+                reported_to="",
             ),
             status_code=422,
         )
@@ -1155,21 +1168,38 @@ async def plating_record_edit(request: Request, record_id: int):
         "remark": form.get("remark"),
     }
     try:
-        order_no = await run_in_threadpool(repo.update_plating_record, record_id, values)
-        await run_in_threadpool(repo.audit, user, "plating.update", f"{record_id}:{order_no}", client_ip(request))
+        if user.get("role") == "admin":
+            order_no = await run_in_threadpool(repo.update_plating_record, record_id, values)
+            await run_in_threadpool(repo.audit, user, "plating.update", f"{record_id}:{order_no}", client_ip(request))
+            redirect_url = "/plating"
+        else:
+            request_id = await run_in_threadpool(
+                repo.create_plating_record_request,
+                record_id,
+                user,
+                "update",
+                str(form.get("reason") or "").strip(),
+                values,
+            )
+            await run_in_threadpool(repo.audit, user, "plating.update_request", str(request_id), client_ip(request))
+            redirect_url = "/messages"
     except ValueError as exc:
         return templates.TemplateResponse(
             request,
             "plating_edit.html",
-            page_context(request, record={**record, **values}, error=str(exc)),
+            page_context(
+                request,
+                record={**record, **values, "reason": str(form.get("reason") or "").strip()},
+                error=str(exc),
+            ),
             status_code=422,
         )
-    return RedirectResponse("/plating", status_code=303)
+    return RedirectResponse(redirect_url, status_code=303)
 
 
 @app.post("/plating/records/{record_id}/delete")
 async def plating_record_delete(request: Request, record_id: int):
-    user, denied = require_page(request, {"plating"})
+    user, denied = require_page(request, {"admin"})
     if denied:
         return denied
     form = await request.form()
@@ -1181,6 +1211,36 @@ async def plating_record_delete(request: Request, record_id: int):
         return Response(str(exc), status_code=404)
     await run_in_threadpool(repo.audit, user, "plating.delete", f"{record_id}:{order_no}", client_ip(request))
     return RedirectResponse("/plating", status_code=303)
+
+
+@app.post("/plating/records/{record_id}/delete-request")
+async def plating_record_delete_request(request: Request, record_id: int):
+    user, denied = require_page(request, {"plating"})
+    if denied:
+        return denied
+    if user.get("role") == "admin":
+        return Response("管理员请直接删除记录", status_code=400)
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    try:
+        request_id = await run_in_threadpool(
+            repo.create_plating_record_request,
+            record_id,
+            user,
+            "delete",
+            str(form.get("reason") or "").strip(),
+            None,
+        )
+        await run_in_threadpool(repo.audit, user, "plating.delete_request", str(request_id), client_ip(request))
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "error.html",
+            page_context(request, status=400, message=str(exc)),
+            status_code=400,
+        )
+    return RedirectResponse("/messages", status_code=303)
 
 
 @app.get("/orders", response_class=HTMLResponse)
@@ -1300,7 +1360,7 @@ def production_orders(request: Request, q: str = "", page: int = 1):
 
 @app.get("/messages", response_class=HTMLResponse)
 def messages(request: Request, status: str = ""):
-    user, denied = require_page(request, {"admin", "sales", "finance", "production", "workshop"})
+    user, denied = require_page(request, {"admin", "sales", "finance", "production", "workshop", "plating"})
     if denied:
         return denied
     default_status = "pending" if user["role"] == "admin" and status == "" else status

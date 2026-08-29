@@ -2139,7 +2139,7 @@ if (contextRows.length) {
   const menu = document.createElement("div");
   menu.className = "admin-context-menu";
   menu.hidden = true;
-  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-workshop-edit>\u4fee\u6539\u8ba1\u4ef6</button><button type="button" data-context-workshop-quantity>申请改数量/金额</button><button type="button" data-context-replenish>申请补数</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-delete>删除</button>';
+  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-workshop-edit>\u4fee\u6539\u8ba1\u4ef6</button><button type="button" data-context-workshop-quantity>申请改数量/金额</button><button type="button" data-context-replenish>申请补数</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-request-delete>申请删除</button><button type="button" class="danger-button" data-context-delete>删除</button>';
   document.body.appendChild(menu);
   let activeRow = null;
 
@@ -2156,6 +2156,7 @@ if (contextRows.length) {
     const stashButton = menu.querySelector("[data-context-stash]");
     if (stashButton) stashButton.hidden = !activeRow?.dataset.stashId;
     menu.querySelector("[data-context-replenish]").hidden = !activeRow?.dataset.replenishmentUrl;
+    menu.querySelector("[data-context-request-delete]").hidden = !activeRow?.dataset.requestDeleteUrl;
     const shipButton = menu.querySelector("[data-context-ship]");
     shipButton.hidden = !activeRow?.dataset.shipUrl;
     if (!shipButton.hidden) shipButton.textContent = activeRow.dataset.shipped === "1" ? "撤回出货" : "出货";
@@ -2179,6 +2180,27 @@ if (contextRows.length) {
   menu.querySelector("[data-context-request]").addEventListener("click", () => {
     if (!activeRow?.dataset.requestEditUrl) return;
     window.location.href = activeRow.dataset.requestEditUrl;
+  });
+  menu.querySelector("[data-context-request-delete]").addEventListener("click", () => {
+    if (!activeRow?.dataset.requestDeleteUrl) return;
+    const label = activeRow.dataset.recordLabel || "该记录";
+    const rawReason = window.prompt(`请输入申请删除${label}的原因`);
+    if (!rawReason || !rawReason.trim()) {
+      window.alert("请填写申请删除原因");
+      return;
+    }
+    const form = document.createElement("form");
+    form.method = "post";
+    form.action = activeRow.dataset.requestDeleteUrl;
+    for (const [name, value] of [["csrf", activeRow.dataset.csrf || ""], ["reason", rawReason.trim()]]) {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = name;
+      input.value = value;
+      form.appendChild(input);
+    }
+    document.body.appendChild(form);
+    form.submit();
   });
   menu.querySelector("[data-context-workshop-edit]").addEventListener("click", () => {
     if (!activeRow?.dataset.workshopEditUrl) return;

@@ -17,8 +17,9 @@
     <label>加工单价<input type="text" name="unit_price" value="{{ record.unit_price or 0 }}" required inputmode="decimal" data-touch-number data-touch-scale="4"></label>
     <label>金额<input type="text" name="amount" value="{{ record.amount if record.amount is defined else record.manual_amount or 0 }}" required inputmode="decimal" data-touch-number data-touch-scale="4"></label>
     <label>备注<select name="remark"><option value="">请选择</option>{% set remark_value = record.remark if record.remark is defined else record.note_text or '' %}{% for option in remark_options %}<option value="{{ option }}"{% if remark_value == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+    {% if user.role == 'plating' %}<label class="span-2">申请原因<textarea name="reason" rows="3" maxlength="1000" required placeholder="请说明需要修改的原因">{{ record.reason if record.reason is defined else '' }}</textarea></label>{% endif %}
   </div>
   <div class="touch-keypad" data-touch-keypad hidden><div class="touch-keypad-display" data-touch-keypad-display>0</div><div class="touch-keypad-grid">{% for key in ["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", "."] %}<button type="button" data-keypad-key="{{ key }}">{{ key }}</button>{% endfor %}<button type="button" data-keypad-backspace>退格</button><button type="button" data-keypad-clear>清空</button><button type="button" class="primary" data-keypad-done>确定</button></div></div>
-  <div class="form-actions"><a class="button" href="/plating">取消</a><button class="button primary">保存修改</button></div>
+  <div class="form-actions"><a class="button" href="/plating">取消</a><button class="button primary">{{ '提交修改申请' if user.role == 'plating' else '保存修改' }}</button></div>
 </form>
 {% endblock %}

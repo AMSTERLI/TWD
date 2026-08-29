@@ -691,6 +691,29 @@ class Repository:
                 )
                 if cursor.rowcount != 1:
                     raise ValueError("车间报到记录不存在")
+            elif approved and request_type == "plating_update":
+                payload = self._clean_plating_record_values(json.loads(str(row["proposed_payload_json"] or "{}")))
+                cursor = conn.execute(
+                    """UPDATE workshop_records
+                       SET material = ?, spec = ?, size_text = ?, note_text = ?,
+                           quantity = ?, unit_price = ?, manual_amount = ?
+                       WHERE id = ? AND order_id = ? AND department_key = 'plating'""",
+                    (
+                        payload["process_name"], payload["process_name_2"], payload["size_text"], payload["remark"],
+                        payload["quantity"], payload["unit_price"], payload["amount"],
+                        int(row["workshop_record_id"] or 0), int(row["order_id"]),
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError("电镀记录不存在")
+            elif approved and request_type == "plating_delete":
+                cursor = conn.execute(
+                    """DELETE FROM workshop_records
+                       WHERE id = ? AND order_id = ? AND department_key = 'plating'""",
+                    (int(row["workshop_record_id"] or 0), int(row["order_id"])),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError("电镀记录不存在")
             conn.execute(
                 """UPDATE order_edit_requests
                    SET status = ?, reviewer_id = ?, reviewer_name = ?, review_note = ?,
@@ -1581,7 +1604,7 @@ class Repository:
             ).fetchone()
         return dict(row) if row else None
 
-    def update_plating_record(self, record_id: int, values: dict[str, Any]) -> str:
+    def _clean_plating_record_values(self, values: dict[str, Any]) -> dict[str, Any]:
         process_name = str(values.get("process_name") or "").strip()
         process_name_2 = str(values.get("process_name_2") or "").strip()
         size_text = str(values.get("size_text") or "").strip()
@@ -1608,6 +1631,18 @@ class Repository:
             raise ValueError("加工单价必须是大于等于 0 的数字")
         if not math.isfinite(amount) or amount < 0:
             raise ValueError("金额必须是大于等于 0 的数字")
+        return {
+            "process_name": process_name,
+            "process_name_2": process_name_2,
+            "size_text": size_text,
+            "remark": remark,
+            "quantity": int(quantity),
+            "unit_price": unit_price,
+            "amount": amount,
+        }
+
+    def update_plating_record(self, record_id: int, values: dict[str, Any]) -> str:
+        clean = self._clean_plating_record_values(values)
         with self.connect(write=True) as conn:
             row = conn.execute(
                 "SELECT order_no FROM workshop_records WHERE id = ? AND department_key = 'plating'",
@@ -1621,11 +1656,88 @@ class Repository:
                        quantity = ?, unit_price = ?, manual_amount = ?
                    WHERE id = ? AND department_key = 'plating'""",
                 (
-                    process_name, process_name_2, size_text, remark,
-                    int(quantity), unit_price, amount, int(record_id),
+                    clean["process_name"], clean["process_name_2"], clean["size_text"], clean["remark"],
+                    clean["quantity"], clean["unit_price"], clean["amount"], int(record_id),
                 ),
             )
             return str(row["order_no"])
+
+    def create_plating_record_request(
+        self,
+        record_id: int,
+        user: dict[str, Any],
+        action: str,
+        reason: str,
+        values: dict[str, Any] | None = None,
+    ) -> int:
+        action = str(action or "").strip()
+        reason = str(reason or "").strip()
+        if action not in {"update", "delete"}:
+            raise ValueError("申请类型无效")
+        if not reason:
+            raise ValueError("请填写申请原因")
+        if len(reason) > 1000:
+            raise ValueError("申请原因不能超过 1000 个字")
+        clean = self._clean_plating_record_values(values or {}) if action == "update" else {"action": "delete"}
+        with self.connect(write=True) as conn:
+            record = conn.execute(
+                """SELECT id, order_id, order_no, material, spec, size_text, note_text,
+                          quantity, unit_price, manual_amount
+                   FROM workshop_records
+                   WHERE id = ? AND department_key = 'plating'""",
+                (int(record_id),),
+            ).fetchone()
+            if not record:
+                raise ValueError("电镀记录不存在")
+            existing = conn.execute(
+                """SELECT id FROM order_edit_requests
+                   WHERE workshop_record_id = ? AND requester_id = ? AND status = 'pending'
+                     AND request_type IN ('plating_update', 'plating_delete')
+                   LIMIT 1""",
+                (int(record_id), int(user.get("id") or 0)),
+            ).fetchone()
+            if existing:
+                raise ValueError("这条电镀记录已有待审批申请")
+            if action == "delete":
+                request_type = "plating_delete"
+                summary = f"申请删除电镀记录；原因：{reason}"
+            else:
+                request_type = "plating_update"
+                changes: list[str] = []
+                comparisons = (
+                    ("工艺一", str(record["material"] or ""), clean["process_name"]),
+                    ("工艺二", str(record["spec"] or ""), clean["process_name_2"]),
+                    ("规格", str(record["size_text"] or ""), clean["size_text"]),
+                    ("数量", int(record["quantity"] or 0), clean["quantity"]),
+                    ("加工单价", float(record["unit_price"] or 0), clean["unit_price"]),
+                    ("金额", float(record["manual_amount"] or 0), clean["amount"]),
+                    ("备注", str(record["note_text"] or ""), clean["remark"]),
+                )
+                for label, old_value, new_value in comparisons:
+                    if old_value != new_value:
+                        old_text = old_value if old_value != "" else "空"
+                        new_text = new_value if new_value != "" else "空"
+                        changes.append(f"{label}从{old_text}修改为{new_text}")
+                if not changes:
+                    raise ValueError("没有检测到修改内容")
+                summary = "电镀记录修改：" + "；".join(changes) + f"；原因：{reason}"
+            cursor = conn.execute(
+                """INSERT INTO order_edit_requests
+                   (order_id, order_no, requester_id, requester_name, reason, request_type,
+                    workshop_record_id, proposed_payload_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    int(record["order_id"]),
+                    str(record["order_no"]),
+                    int(user.get("id") or 0),
+                    str(user.get("display_name") or user.get("username") or ""),
+                    summary[:1000],
+                    request_type,
+                    int(record_id),
+                    json.dumps(clean, ensure_ascii=False, separators=(",", ":")),
+                ),
+            )
+            return int(cursor.lastrowid)
 
     def update_workshop_record_values(
         self,
