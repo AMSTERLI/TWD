@@ -31,7 +31,7 @@ from .pdf import merge_order_pdfs, render_order_pdf
 from .repository import ORDER_COLUMNS, Repository, normalize_scanned_order_no, price_tier_label, price_tiers_from_json
 from .security import csrf_token, valid_csrf
 from .settings import (
-    DB_PATH, IMAGES_DIR, MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES, SESSION_HTTPS_ONLY,
+    CUSTOMER_ORDER_PENDING_DIR, CUSTOMER_ORDERS_DIR, DB_PATH, IMAGES_DIR, MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES, SESSION_HTTPS_ONLY,
     STATIC_DIR, TEMPLATES_DIR, TMP_DIR, ensure_directories, session_secret,
     THUMBNAILS_DIR,
 )
@@ -1496,6 +1496,14 @@ async def create_order(request: Request):
             raise ValueError("产品名称、有效数量和备品数量为必填项")
         order_id, order_no = await run_in_threadpool(repo.create_order, payload)
         await run_in_threadpool(repo.audit, user, "order.create", order_no, client_ip(request))
+        stored_customer_file = await run_in_threadpool(
+            finalize_customer_order_file,
+            str(form.get("customer_file_token") or ""),
+            user,
+            order_no,
+        )
+        if stored_customer_file:
+            await run_in_threadpool(repo.audit, user, "order.customer_file.store", stored_customer_file, client_ip(request))
     except ValueError as exc:
         return templates.TemplateResponse(
             request, "order_form.html",
@@ -1506,6 +1514,7 @@ async def create_order(request: Request):
                 today=date.today().isoformat(),
                 order_no=str(form.get("order_no") or "").strip(),
                 customer_selection=str(form.get("customer_selection") or "").strip(),
+                customer_file_token=str(form.get("customer_file_token") or "").strip(),
                 default_salesman=user_display_name(user),
                 error=str(exc),
             ),
@@ -1775,6 +1784,37 @@ async def order_pdf(request: Request, order_id: int):
     )
 
 
+def pending_customer_order_file(token: str, user: dict[str, Any]) -> Path | None:
+    name = Path(str(token or "")).name
+    prefix = f"user-{int(user.get('id') or 0)}-"
+    if not name or name != str(token or "") or not name.startswith(prefix):
+        return None
+    path = CUSTOMER_ORDER_PENDING_DIR / name
+    return path if path.suffix.lower() in {".doc", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf", ".png", ".jpg", ".jpeg", ".webp"} else None
+
+
+def finalize_customer_order_file(token: str, user: dict[str, Any], order_no: str) -> str:
+    source = pending_customer_order_file(token, user)
+    if not source or not source.is_file():
+        return ""
+    target_dir = CUSTOMER_ORDERS_DIR / datetime.now(BEIJING_TZ).strftime("%Y/%m/%d") / f"user-{int(user.get('id') or 0)}"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    safe_order_no = safe_download_filename(order_no)[:80]
+    target = target_dir / f"{safe_order_no}-{source.name}"
+    os.replace(source, target)
+    return target.relative_to(CUSTOMER_ORDERS_DIR).as_posix()
+
+
+def cleanup_stale_customer_order_files() -> None:
+    cutoff = datetime.now().timestamp() - 24 * 60 * 60
+    for path in CUSTOMER_ORDER_PENDING_DIR.glob("*"):
+        try:
+            if path.is_file() and path.stat().st_mtime < cutoff:
+                path.unlink()
+        except OSError:
+            continue
+
+
 @app.post("/api/import-order")
 async def import_order(request: Request):
     user, denied = require_page(request, {"sales"})
@@ -1785,13 +1825,19 @@ async def import_order(request: Request):
     form = await request.form()
     upload = form.get("file")
     supplemental_prompt = str(form.get("supplemental_prompt", "")).strip()
+    previous_token = str(form.get("previous_customer_file_token") or "").strip()
     if not isinstance(upload, UploadFile) or not upload.filename:
         return JSONResponse({"error": "请选择客单文件"}, status_code=400)
     suffix = Path(upload.filename).suffix.lower()
     if suffix not in {".doc", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf", ".png", ".jpg", ".jpeg", ".webp"}:
         return JSONResponse({"error": "仅支持 DOC、DOCX、Excel、CSV、TSV、HTML、PDF、PNG、JPG 或 WEBP"}, status_code=415)
-    target = TMP_DIR / f"{uuid4().hex}{suffix}"
+    original_name = Path(str(upload.filename).replace("\\", "/")).name
+    cleaned_stem = "".join(character if character.isalnum() or character in "-_." else "_" for character in Path(original_name).stem)
+    cleaned_stem = cleaned_stem.strip("-_.")[:80] or "customer-order"
+    await run_in_threadpool(cleanup_stale_customer_order_files)
+    target = CUSTOMER_ORDER_PENDING_DIR / f"user-{int(user.get('id') or 0)}-{uuid4().hex}-{cleaned_stem}{suffix}"
     size = 0
+    recognition_complete = False
     try:
         with target.open("wb") as output:
             while chunk := await upload.read(1024 * 1024):
@@ -1808,12 +1854,17 @@ async def import_order(request: Request):
                 import_catalogs(),
                 supplemental_prompt,
             )
+        recognition_complete = True
+        previous_path = pending_customer_order_file(previous_token, user)
+        if previous_path and previous_path != target:
+            previous_path.unlink(missing_ok=True)
         await run_in_threadpool(repo.audit, user, "order.ai_import", upload.filename, client_ip(request))
-        return {"data": data}
+        return {"data": data, "customer_file_token": target.name}
     except OrderImportError as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
     finally:
-        target.unlink(missing_ok=True)
+        if not recognition_complete:
+            target.unlink(missing_ok=True)
 
 
 

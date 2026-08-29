@@ -17,6 +17,7 @@ if (importBox) {
   const fileName = importBox.querySelector("[data-ai-file-name]");
   const supplementalPrompt = document.querySelector("#ai-supplemental-prompt");
   const promptSelect = importBox.querySelector("[data-ai-prompt-select]");
+  const customerFileToken = document.querySelector("[data-customer-file-token]");
   const presetPrompts = [...(promptSelect?.options || [])].map(option => option.value).filter(Boolean);
   const presetPromptSet = new Set(presetPrompts);
   const allowedOrderImportSuffixes = new Set([
@@ -80,6 +81,7 @@ if (importBox) {
     const body = new FormData();
     body.append("file", fileInput.files[0]);
     body.append("supplemental_prompt", supplementalPrompt?.value.trim() || "");
+    body.append("previous_customer_file_token", customerFileToken?.value || "");
     try {
       const response = await fetch("/api/import-order", {
         method: "POST", body,
@@ -88,6 +90,7 @@ if (importBox) {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "识别失败");
       fillOrderForm(result.data);
+      if (customerFileToken) customerFileToken.value = result.customer_file_token || "";
       setImportStatus("识别完成，已自动填入。请核对后保存。", false, true);
     } catch (error) {
       setImportStatus(error.message, true);

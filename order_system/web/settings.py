@@ -12,7 +12,9 @@ DATA_DIR = DATA_ROOT / "data"
 DB_PATH = DATA_DIR / "orders.db"
 IMAGES_DIR = DATA_ROOT / "images"
 THUMBNAILS_DIR = DATA_ROOT / "thumbnails"
+CUSTOMER_ORDERS_DIR = DATA_ROOT / "customer_orders"
 TMP_DIR = DATA_ROOT / "tmp" / "web"
+CUSTOMER_ORDER_PENDING_DIR = TMP_DIR / "customer_orders"
 OUTPUT_DIR = DATA_ROOT / "output" / "pdf"
 TEMPLATE_PATH = APP_ROOT / "order_temp.pdf"
 WEB_ROOT = Path(__file__).resolve().parent
@@ -24,7 +26,7 @@ SESSION_HTTPS_ONLY = os.environ.get("TWD_COOKIE_HTTPS_ONLY", "0") == "1"
 
 
 def ensure_directories() -> None:
-    for path in (DATA_DIR, IMAGES_DIR, THUMBNAILS_DIR, TMP_DIR, OUTPUT_DIR):
+    for path in (DATA_DIR, IMAGES_DIR, THUMBNAILS_DIR, CUSTOMER_ORDERS_DIR, TMP_DIR, CUSTOMER_ORDER_PENDING_DIR, OUTPUT_DIR):
         path.mkdir(parents=True, exist_ok=True)
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import importlib
 from io import BytesIO
 import os
 import re
@@ -19,7 +20,7 @@ from pypdf import PdfReader  # noqa: E402
 from order_system.database import loads_json  # noqa: E402
 from order_system.web.app import app, repo  # noqa: E402
 from order_system.web.image_thumbnails import backfill_order_thumbnails, cached_thumbnail_path  # noqa: E402
-from order_system.web.settings import IMAGES_DIR, THUMBNAILS_DIR  # noqa: E402
+from order_system.web.settings import CUSTOMER_ORDER_PENDING_DIR, CUSTOMER_ORDERS_DIR, IMAGES_DIR, THUMBNAILS_DIR  # noqa: E402
 
 
 def csrf(html: str) -> str:
@@ -57,6 +58,7 @@ with TestClient(app) as client:
     assert 'name="order_no"' in form_page.text
     assert 'readonly data-order-number' not in form_page.text
     assert 'name="spare_quantity"' in form_page.text
+    assert 'name="customer_file_token"' in form_page.text
     assert 'data-ai-file hidden' in form_page.text
     assert 'data-ai-file-button' in form_page.text
     assert 'data-ai-paste-image' not in form_page.text
@@ -72,6 +74,57 @@ with TestClient(app) as client:
     assert "提交自动填好的表格前，必须人工核对。" in form_page.text
     assert 'data-paste-image-target="#product-images"' in form_page.text
     assert 'data-customer-name' in form_page.text and "程炬（编码 1）" in form_page.text
+    web_app_module = importlib.import_module("order_system.web.app")
+    original_analyze_order_document = web_app_module.analyze_order_document
+    web_app_module.analyze_order_document = lambda *_args, **_kwargs: {"product_name": "AI test"}
+    try:
+        imported = client.post(
+            "/api/import-order",
+            files={"file": ("customer order.xlsx", b"customer-order-content", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"supplemental_prompt": ""},
+            headers={"X-CSRF-Token": csrf(form_page.text)},
+        )
+    finally:
+        web_app_module.analyze_order_document = original_analyze_order_document
+    assert imported.status_code == 200 and imported.json()["data"]["product_name"] == "AI test"
+    customer_file_token = imported.json()["customer_file_token"]
+    pending_customer_files = list(CUSTOMER_ORDER_PENDING_DIR.glob("*.xlsx"))
+    assert len(pending_customer_files) == 1
+    assert pending_customer_files[0].read_bytes() == b"customer-order-content"
+    assert "customer_order.xlsx" in pending_customer_files[0].name
+    assert not list(CUSTOMER_ORDERS_DIR.rglob("*.*"))
+
+    def failed_import(*_args, **_kwargs):
+        raise web_app_module.OrderImportError("test import failure")
+
+    web_app_module.analyze_order_document = failed_import
+    try:
+        failed = client.post(
+            "/api/import-order",
+            files={"file": ("failed.pdf", b"failed-customer-order", "application/pdf")},
+            data={"supplemental_prompt": ""},
+            headers={"X-CSRF-Token": csrf(form_page.text)},
+        )
+    finally:
+        web_app_module.analyze_order_document = original_analyze_order_document
+    assert failed.status_code == 422
+    assert len(list(CUSTOMER_ORDER_PENDING_DIR.glob("*.*"))) == 1
+    assert not list(CUSTOMER_ORDERS_DIR.rglob("*.*"))
+    web_app_module.analyze_order_document = lambda *_args, **_kwargs: {"product_name": "AI test updated"}
+    try:
+        imported_again = client.post(
+            "/api/import-order",
+            files={"file": ("customer order updated.xlsx", b"latest-customer-order-content", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"supplemental_prompt": "", "previous_customer_file_token": customer_file_token},
+            headers={"X-CSRF-Token": csrf(form_page.text)},
+        )
+    finally:
+        web_app_module.analyze_order_document = original_analyze_order_document
+    assert imported_again.status_code == 200
+    customer_file_token = imported_again.json()["customer_file_token"]
+    pending_customer_files = list(CUSTOMER_ORDER_PENDING_DIR.glob("*.xlsx"))
+    assert len(pending_customer_files) == 1
+    assert pending_customer_files[0].read_bytes() == b"latest-customer-order-content"
     customers = repo.list_customers()
     customer_names = {row["code"]: row["name"] for row in customers}
     assert len(customers) == 63
@@ -90,6 +143,7 @@ with TestClient(app) as client:
             "product_name": "测试产品", "order_date": "2026-07-15", "delivery_date": "2026-07-20",
             "quantity": "100", "spare_quantity": "15", "quantity_unit": "个", "order_prefix_no": "1",
             "order_no": "TWD1-260715001",
+            "customer_file_token": customer_file_token,
             "bi_no": "PO-001", "production_no": "SC-001", "global_note": "红字备注",
             "component_text": ["component note"], "component_existing_image": [""],
         },
@@ -97,6 +151,11 @@ with TestClient(app) as client:
         follow_redirects=False,
     )
     assert response.status_code == 303, response.text
+    stored_customer_files = list(CUSTOMER_ORDERS_DIR.rglob("*.xlsx"))
+    assert len(stored_customer_files) == 1
+    assert stored_customer_files[0].read_bytes() == b"latest-customer-order-content"
+    assert "TWD1-260715001" in stored_customer_files[0].name
+    assert not list(CUSTOMER_ORDER_PENDING_DIR.glob("*.*"))
     detail_url = response.headers["location"]
     detail = client.get(detail_url)
     assert detail.status_code == 200 and "TWD1-260715001" in detail.text
