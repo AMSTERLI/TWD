@@ -816,6 +816,46 @@ document.querySelectorAll("[data-plating-scan]").forEach(section => {
   const cleanOrderNo = value => String(value || "").replace(/\s+/g, "").trim();
   const cleanNumber = value => Number(Number(value || 0).toFixed(4)).toString();
   const lookupTimers = new WeakMap();
+  const touchKeypad = section.querySelector("[data-touch-keypad]");
+  const touchKeypadDisplay = section.querySelector("[data-touch-keypad-display]");
+  let activeTouchNumber = null;
+
+  function normalizedTouchValue(input, rawValue) {
+    const isInteger = input?.dataset.touchInteger === "1";
+    const scale = Number(input?.dataset.touchScale || 0);
+    let value = String(rawValue || "").replace(/[^0-9.]/g, "");
+    if (isInteger) {
+      value = value.replace(/\D/g, "");
+      return value.replace(/^0+(?=\d)/, "");
+    }
+    const firstDot = value.indexOf(".");
+    if (firstDot >= 0) {
+      const before = value.slice(0, firstDot).replace(/\./g, "") || "0";
+      let after = value.slice(firstDot + 1).replace(/\./g, "");
+      if (scale > 0) after = after.slice(0, scale);
+      return `${before.replace(/^0+(?=\d)/, "")}.${after}`;
+    }
+    return value.replace(/^0+(?=\d)/, "");
+  }
+
+  function updateTouchKeypadDisplay() {
+    if (touchKeypadDisplay) touchKeypadDisplay.textContent = activeTouchNumber?.value || "0";
+  }
+
+  function showTouchKeypad(input) {
+    if (!touchKeypad || !input?.matches("[data-touch-number]")) return;
+    activeTouchNumber = input;
+    touchKeypad.hidden = false;
+    updateTouchKeypadDisplay();
+  }
+
+  function setTouchNumberValue(value) {
+    if (!activeTouchNumber) return;
+    activeTouchNumber.value = normalizedTouchValue(activeTouchNumber, value);
+    activeTouchNumber.dispatchEvent(new Event("input", {bubbles: true}));
+    updateTouchKeypadDisplay();
+    activeTouchNumber.focus();
+  }
 
   function updateAmount(row) {
     const quantity = Number(row?.querySelector('[name="quantity"]')?.value || 0);
@@ -827,6 +867,8 @@ document.querySelectorAll("[data-plating-scan]").forEach(section => {
   function resetRow(row) {
     row.querySelector('[name="order_no"]').value = "";
     row.querySelector('[name="process_name"]').value = "";
+    row.querySelector('[name="process_name_2"]').value = "";
+    row.querySelector('[name="size_text"]').value = "";
     row.querySelector('[name="quantity"]').value = "1";
     row.querySelector('[name="unit_price"]').value = "0";
     row.querySelector('[name="amount"]').value = "0";
@@ -854,8 +896,10 @@ document.querySelectorAll("[data-plating-scan]").forEach(section => {
       if (!response.ok || !result.order) throw new Error(result.error || "订单不存在");
       input.value = result.order.order_no || orderNo;
       row.querySelector('[name="process_name"]').value = result.order.process_name || "";
+      row.querySelector('[name="process_name_2"]').value = "";
+      row.querySelector('[name="size_text"]').value = result.order.size_text || "";
       row.querySelector('[name="quantity"]').value = cleanNumber(result.order.quantity || 1);
-      row.querySelector('[name="remark"]').value = result.order.remark || "";
+      row.querySelector('[name="remark"]').value = "";
       updateAmount(row);
       row.dataset.lookupOk = "1";
       if (status) status.textContent = `已读取订单 ${input.value} 的电镀工艺和数量。`;
@@ -874,6 +918,27 @@ document.querySelectorAll("[data-plating-scan]").forEach(section => {
 
   section.querySelector("[data-add-plating-row]")?.addEventListener("click", () => addRow());
   section.addEventListener("click", event => {
+    const keypadKey = event.target.closest("[data-keypad-key]");
+    if (keypadKey) {
+      const key = keypadKey.dataset.keypadKey || "";
+      if (key === "." && activeTouchNumber?.dataset.touchInteger === "1") return;
+      setTouchNumberValue(`${activeTouchNumber?.value || ""}${key}`);
+      return;
+    }
+    if (event.target.closest("[data-keypad-backspace]")) {
+      setTouchNumberValue((activeTouchNumber?.value || "").slice(0, -1));
+      return;
+    }
+    if (event.target.closest("[data-keypad-clear]")) {
+      setTouchNumberValue("");
+      return;
+    }
+    if (event.target.closest("[data-keypad-done]")) {
+      if (touchKeypad) touchKeypad.hidden = true;
+      activeTouchNumber = null;
+      return;
+    }
+    if (event.target.matches("[data-touch-number]")) showTouchKeypad(event.target);
     const button = event.target.closest("[data-remove-plating-row]");
     if (!button) return;
     const row = button.closest("tr");
@@ -883,6 +948,11 @@ document.querySelectorAll("[data-plating-scan]").forEach(section => {
     } else row.remove();
   });
   section.addEventListener("input", event => {
+    if (event.target.matches("[data-touch-number]")) {
+      const normalized = normalizedTouchValue(event.target, event.target.value);
+      if (event.target.value !== normalized) event.target.value = normalized;
+      if (event.target === activeTouchNumber) updateTouchKeypadDisplay();
+    }
     if (event.target.matches('[name="quantity"], [name="unit_price"]')) {
       updateAmount(event.target.closest("tr"));
       return;
@@ -895,6 +965,7 @@ document.querySelectorAll("[data-plating-scan]").forEach(section => {
     clearTimeout(lookupTimers.get(row));
     if (orderNo.length >= 8) lookupTimers.set(row, setTimeout(() => loadOrder(row), 240));
   });
+  section.addEventListener("focusin", event => showTouchKeypad(event.target));
   section.addEventListener("change", event => {
     if (event.target.matches("[data-plating-order]")) loadOrder(event.target.closest("tr"));
   });
@@ -918,6 +989,12 @@ document.querySelectorAll("[data-plating-scan]").forEach(section => {
       const input = row.querySelector("[data-plating-order]");
       input.value = cleanOrderNo(input.value);
     });
+    const invalidQuantity = activeRows.find(row => !/^[1-9]\d*$/.test(row.querySelector('[name="quantity"]')?.value || ""));
+    if (invalidQuantity) {
+      event.preventDefault();
+      if (status) status.textContent = "数量必须是大于 0 的整数。";
+      invalidQuantity.querySelector('[name="quantity"]')?.focus();
+    }
   });
   rows.querySelector("[data-plating-order]")?.focus();
 });

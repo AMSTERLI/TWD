@@ -16,6 +16,8 @@ from .security import hash_password, verify_password
 
 REQUIRED_WEB_PROCESSES = ["\u51b2\u538b", "\u4e0a\u8272", "\u6bdb\u8fb9", "\u5305\u88c5", "\u5370\u5237/UV", "\u8f66\u7ec7\u5e26", "\u956d\u96d5", "\u6811\u8102", "\u4f4e\u6e29\u950c\u5408\u91d1", "\u76ae\u9769", "\u78e8\u77f3"]
 REQUIRED_WEB_FACTORIES = [("\u6bdb\u8fb9", "\u6797\u4e16\u57f9"), ("\u956d\u96d5", "\u5f20\u5c55\u5c71"), ("\u76ae\u9769", "\u8001\u96f7")]
+PLATING_SECONDARY_PROCESSES = {"打铜底", "清洗", "退镀", "封油", "＋雾漆", "＋喷漆", "＋雾金", "＋雾黑", "其他"}
+PLATING_REMARKS = {"多款", "异形", "配件", "返工", "补数"}
 
 ORDER_COLUMNS = [
     "order_type", "salesman", "order_no", "product_name", "order_date",
@@ -1453,10 +1455,26 @@ class Repository:
             raw_processes = [raw_processes] if raw_processes else []
         processes = [str(item or "").strip() for item in raw_processes if str(item or "").strip()]
         plating_note = str(order["plating_note"] or "").strip()
+
+        def clean_dimension(value: Any) -> str:
+            text = str(value or "").strip()
+            if not text:
+                return ""
+            try:
+                number = float(text)
+                return f"{number:g}" if math.isfinite(number) else text
+            except (TypeError, ValueError):
+                return text
+
+        length = clean_dimension(order["height_mm"])
+        width = clean_dimension(order["width_mm"])
+        size_text = f"{length}*{width}" if length and width else length or width
         return {
             "order_no": str(order["order_no"]),
             "process_name": "、".join(processes) if processes else plating_note,
-            "remark": plating_note if processes else "",
+            "process_name_2": "",
+            "size_text": size_text,
+            "remark": "",
             "quantity": float(order["quantity"] or 0) + float(order["spare_quantity"] or 0),
         }
 
@@ -1467,6 +1485,8 @@ class Repository:
             if not order_no:
                 continue
             process_name = str(row.get("process_name") or "").strip()
+            process_name_2 = str(row.get("process_name_2") or "").strip()
+            size_text = str(row.get("size_text") or "").strip()
             remark = str(row.get("remark") or "").strip()
             try:
                 quantity = float(row.get("quantity") or 0)
@@ -1485,17 +1505,28 @@ class Repository:
                 raise ValueError(f"订单 {order_no} 请填写电镀工艺")
             if len(process_name) > 200:
                 raise ValueError(f"订单 {order_no} 的电镀工艺不能超过 200 个字")
-            if quantity <= 0:
-                raise ValueError(f"订单 {order_no} 的数量必须大于 0")
+            if process_name_2 and process_name_2 not in PLATING_SECONDARY_PROCESSES:
+                raise ValueError(f"订单 {order_no} 的工艺二选项无效")
+            if len(size_text) > 80:
+                raise ValueError(f"订单 {order_no} 的规格不能超过 80 个字")
+            if not math.isfinite(quantity) or quantity <= 0 or not quantity.is_integer():
+                raise ValueError(f"订单 {order_no} 的数量必须是大于 0 的整数")
+            quantity = int(quantity)
+            if not math.isfinite(unit_price):
+                raise ValueError(f"订单 {order_no} 的加工单价无效")
+            if not math.isfinite(amount):
+                raise ValueError(f"订单 {order_no} 的金额无效")
             if unit_price < 0:
                 raise ValueError(f"订单 {order_no} 的加工单价不能小于 0")
             if amount < 0:
                 raise ValueError(f"订单 {order_no} 的金额不能小于 0")
-            if len(remark) > 200:
-                raise ValueError(f"订单 {order_no} 的备注不能超过 200 个字")
+            if remark and remark not in PLATING_REMARKS:
+                raise ValueError(f"订单 {order_no} 的备注选项无效")
             clean_rows.append({
                 "order_no": order_no,
                 "process_name": process_name,
+                "process_name_2": process_name_2,
+                "size_text": size_text,
                 "quantity": quantity,
                 "unit_price": unit_price,
                 "amount": amount,
@@ -1514,11 +1545,12 @@ class Repository:
                     raise ValueError(f"订单 {row['order_no']} 不存在")
                 cursor = conn.execute(
                     """INSERT INTO workshop_records
-                       (order_id, order_no, department_key, department_name, material, note_text,
+                       (order_id, order_no, department_key, department_name, material, size_text, spec, note_text,
                         quantity, unit_price, manual_amount, operator_id, operator_name)
-                       VALUES (?, ?, 'plating', '电镀', ?, ?, ?, ?, ?, ?, ?)""",
+                       VALUES (?, ?, 'plating', '电镀', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
-                        int(order["id"]), str(order["order_no"]), row["process_name"], row["remark"],
+                        int(order["id"]), str(order["order_no"]), row["process_name"], row["size_text"],
+                        row["process_name_2"], row["remark"],
                         row["quantity"], row["unit_price"], row["amount"], operator_id, operator_name,
                     ),
                 )

@@ -2,28 +2,32 @@
 {% block title %}电镀 · TWD 订单系统{% endblock %}
 {% block body_class %}plating-page{% endblock %}
 {% block content %}
+{% set process_two_options = ["打铜底", "清洗", "退镀", "封油", "＋雾漆", "＋喷漆", "＋雾金", "＋雾黑", "其他"] %}
+{% set remark_options = ["多款", "异形", "配件", "返工", "补数"] %}
 <div class="page-head">
-  <div><h1>电镀</h1><p>扫描或输入订单号后，系统会自动读取电镀工艺和订单数量；读取后仍可修改。</p></div>
+  <div><h1>电镀</h1><p>扫描或输入订单号后，系统会自动读取工艺一、规格和整数数量；读取后仍可修改。</p></div>
 </div>
 {% if error %}<div class="alert error">保存失败：{{ error }}</div>{% endif %}
 {% if created %}<div class="alert success">已保存 {{ created }} 条电镀记录。</div>{% endif %}
 <section class="panel create-panel plating-create-panel" data-plating-scan data-lookup-url="/plating/order-lookup">
   <div class="padded">
-    <div class="scan-tip"><strong>扫码录入</strong><span data-plating-status>扫描订单号后按回车，自动读取电镀工艺和数量。</span></div>
+    <div class="scan-tip"><strong>扫码录入</strong><span data-plating-status>扫描订单号后按回车，自动读取工艺一、规格和数量。</span></div>
     <form method="post" class="plating-scan-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <div class="table-wrap batch-table plating-table">
         <table>
-          <colgroup><col class="plating-col-order"><col class="plating-col-process"><col class="plating-col-quantity"><col class="plating-col-price"><col class="plating-col-amount"><col class="plating-col-remark"><col class="plating-col-action"></colgroup>
-          <thead><tr><th>订单号</th><th>电镀工艺</th><th>数量</th><th>加工单价</th><th>金额</th><th>备注</th><th aria-label="操作"></th></tr></thead>
+          <colgroup><col class="plating-col-order"><col class="plating-col-process-one"><col class="plating-col-process-two"><col class="plating-col-size"><col class="plating-col-quantity"><col class="plating-col-price"><col class="plating-col-amount"><col class="plating-col-remark"><col class="plating-col-action"></colgroup>
+          <thead><tr><th>订单号</th><th>工艺一</th><th>工艺二</th><th>规格</th><th>数量</th><th>加工单价</th><th>金额</th><th>备注</th><th aria-label="操作"></th></tr></thead>
           <tbody data-plating-rows>
             <tr>
               <td><input name="order_no" autocomplete="off" data-plating-order placeholder="扫描或手动输入"></td>
               <td><input name="process_name" maxlength="200" autocomplete="off" placeholder="自动读取，可修改"></td>
-              <td><input type="number" name="quantity" step="1" min="0.0001" value="1" required></td>
-              <td><input type="number" name="unit_price" step="0.0001" min="0" value="0" required></td>
-              <td><input type="number" name="amount" step="0.0001" min="0" value="0" required></td>
-              <td><input name="remark" maxlength="200" autocomplete="off" placeholder="选填"></td>
+              <td><select name="process_name_2"><option value="">请选择</option>{% for option in process_two_options %}<option value="{{ option }}">{{ option }}</option>{% endfor %}</select></td>
+              <td><input name="size_text" maxlength="80" autocomplete="off" placeholder="长*宽"></td>
+              <td><input type="text" name="quantity" value="1" required inputmode="numeric" pattern="[1-9][0-9]*" data-touch-number data-touch-integer="1"></td>
+              <td><input type="text" name="unit_price" value="0" required inputmode="decimal" data-touch-number data-touch-scale="4"></td>
+              <td><input type="text" name="amount" value="0" required inputmode="decimal" data-touch-number data-touch-scale="4"></td>
+              <td><select name="remark"><option value="">请选择</option>{% for option in remark_options %}<option value="{{ option }}">{{ option }}</option>{% endfor %}</select></td>
               <td><button type="button" class="small danger-button" data-remove-plating-row>删除</button></td>
             </tr>
           </tbody>
@@ -33,15 +37,29 @@
         <tr>
           <td><input name="order_no" autocomplete="off" data-plating-order placeholder="扫描或手动输入"></td>
           <td><input name="process_name" maxlength="200" autocomplete="off" placeholder="自动读取，可修改"></td>
-          <td><input type="number" name="quantity" step="1" min="0.0001" value="1" required></td>
-          <td><input type="number" name="unit_price" step="0.0001" min="0" value="0" required></td>
-          <td><input type="number" name="amount" step="0.0001" min="0" value="0" required></td>
-          <td><input name="remark" maxlength="200" autocomplete="off" placeholder="选填"></td>
+          <td><select name="process_name_2"><option value="">请选择</option>{% for option in process_two_options %}<option value="{{ option }}">{{ option }}</option>{% endfor %}</select></td>
+          <td><input name="size_text" maxlength="80" autocomplete="off" placeholder="长*宽"></td>
+          <td><input type="text" name="quantity" value="1" required inputmode="numeric" pattern="[1-9][0-9]*" data-touch-number data-touch-integer="1"></td>
+          <td><input type="text" name="unit_price" value="0" required inputmode="decimal" data-touch-number data-touch-scale="4"></td>
+          <td><input type="text" name="amount" value="0" required inputmode="decimal" data-touch-number data-touch-scale="4"></td>
+          <td><select name="remark"><option value="">请选择</option>{% for option in remark_options %}<option value="{{ option }}">{{ option }}</option>{% endfor %}</select></td>
           <td><button type="button" class="small danger-button" data-remove-plating-row>删除</button></td>
         </tr>
       </template>
+      <div class="touch-keypad" data-touch-keypad hidden><div class="touch-keypad-display" data-touch-keypad-display>0</div><div class="touch-keypad-grid">{% for key in ["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", "."] %}<button type="button" data-keypad-key="{{ key }}">{{ key }}</button>{% endfor %}<button type="button" data-keypad-backspace>退格</button><button type="button" data-keypad-clear>清空</button><button type="button" class="primary" data-keypad-done>确定</button></div></div>
       <div class="batch-actions"><button type="button" class="button" data-add-plating-row>+ 新增一行</button><button class="button primary">保存电镀记录</button></div>
     </form>
   </div>
+</section>
+<form class="searchbar plating-filterbar" method="get">
+  <input name="q" value="{{ q }}" placeholder="搜索订单号或产品">
+  <button>搜索</button>
+</form>
+<section class="workshop-record-list plating-record-list">
+  <div class="panel table-wrap"><table><thead><tr><th>订单号</th><th>产品</th><th>工艺一</th><th>工艺二</th><th>规格</th><th>数量</th><th>加工单价</th><th>金额</th><th>备注</th><th>录入时间</th></tr></thead><tbody>
+    {% for row in result.rows %}<tr><td>{{ row.order_no }}</td><td>{{ row.product_name or '' }}</td><td>{{ row.material or '' }}</td><td>{{ row.spec or '' }}</td><td>{{ row.size_text or '' }}</td><td>{{ row.quantity|int if row.quantity == row.quantity|int else row.quantity }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td><td>{{ '%.2f'|format(row.amount or 0) }}</td><td>{{ row.note_text or '' }}</td><td>{{ row.reported_at|beijing_time }}</td></tr>
+    {% else %}<tr><td colspan="10" class="muted center">暂无电镀记录</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% include "_pager.html" %}
 </section>
 {% endblock %}

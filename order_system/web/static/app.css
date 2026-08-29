@@ -14,7 +14,7 @@
 .batch-table td{padding:5px 4px}
 .batch-table input,.batch-table select{width:74px;min-width:0;padding:7px 5px;font-size:13px}
 .batch-table input[type="number"]{width:66px}
-.plating-create-panel{max-width:1280px;margin:0 auto}.plating-create-panel .scan-tip{margin-bottom:14px}.plating-table table{width:100%;min-width:1050px;table-layout:fixed}.plating-table .plating-col-order{width:19%}.plating-table .plating-col-process{width:26%}.plating-table .plating-col-quantity{width:10%}.plating-table .plating-col-price{width:11%}.plating-table .plating-col-amount{width:11%}.plating-table .plating-col-remark{width:17%}.plating-table .plating-col-action{width:6%}.plating-table td{vertical-align:middle}.plating-table td:last-child{text-align:center}.plating-table .danger-button{width:auto;min-width:0}
+.plating-create-panel{width:100%;margin:0}.plating-create-panel .scan-tip{margin-bottom:14px}.plating-table table{width:100%;min-width:1250px;table-layout:fixed}.plating-table .plating-col-order{width:15%}.plating-table .plating-col-process-one{width:17%}.plating-table .plating-col-process-two{width:13%}.plating-table .plating-col-size{width:10%}.plating-table .plating-col-quantity{width:8%}.plating-table .plating-col-price{width:10%}.plating-table .plating-col-amount{width:10%}.plating-table .plating-col-remark{width:11%}.plating-table .plating-col-action{width:6%}.plating-table td{vertical-align:middle}.plating-table td:last-child{text-align:center}.plating-table .danger-button{width:auto;min-width:0}
 .batch-table [name="order_no"]{width:142px;min-width:142px;text-align:right;direction:ltr;font-variant-numeric:tabular-nums}
 .batch-table [name="remark"]{width:96px;min-width:96px}
 .batch-table [name="flag_type"]{width:74px}
@@ -52,4 +52,4 @@
 .receive-table table{table-layout:fixed;min-width:620px}.receive-table th:nth-child(1),.receive-table td:nth-child(1){width:310px}.receive-table th:nth-child(2),.receive-table td:nth-child(2){width:220px}.receive-table th:nth-child(3),.receive-table td:nth-child(3){width:90px}.receive-table [name="receive_order_no"],.receive-table [name="receive_factory_name"]{width:100%;min-width:0}
 .workshop-report-export{margin-bottom:18px}.export-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}.export-head h3{margin:0}.export-head p{margin:4px 0 0;color:var(--muted)}.export-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 14px}.export-options .check{margin:0}
 .ai-prompt-select select{font-weight:400}
-.batch-table.plating-table input{display:block;width:100%;min-width:0;box-sizing:border-box}
+.batch-table.plating-table input,.batch-table.plating-table select{display:block;width:100%;min-width:0;box-sizing:border-box}.plating-filterbar{max-width:760px}.plating-record-list table{min-width:1100px}

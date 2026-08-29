@@ -1040,14 +1040,20 @@ def dashboard(request: Request):
 
 
 @app.get("/plating", response_class=HTMLResponse)
-def plating_page(request: Request, created: int = 0):
+def plating_page(request: Request, q: str = "", page: int = 1, created: int = 0):
     _, denied = require_page(request, {"plating"})
     if denied:
         return denied
     return templates.TemplateResponse(
         request,
         "plating.html",
-        page_context(request, created=max(0, created), error=""),
+        page_context(
+            request,
+            created=max(0, created),
+            error="",
+            result=repo.workshop_records(q, "plating", page),
+            q=q,
+        ),
     )
 
 
@@ -1071,6 +1077,8 @@ async def plating_submit(request: Request):
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
     processes = form.getlist("process_name")
+    secondary_processes = form.getlist("process_name_2")
+    sizes = form.getlist("size_text")
     quantities = form.getlist("quantity")
     unit_prices = form.getlist("unit_price")
     amounts = form.getlist("amount")
@@ -1080,6 +1088,8 @@ async def plating_submit(request: Request):
         rows.append({
             "order_no": order_no,
             "process_name": processes[index] if index < len(processes) else "",
+            "process_name_2": secondary_processes[index] if index < len(secondary_processes) else "",
+            "size_text": sizes[index] if index < len(sizes) else "",
             "quantity": quantities[index] if index < len(quantities) else "",
             "unit_price": unit_prices[index] if index < len(unit_prices) else "0",
             "amount": amounts[index] if index < len(amounts) else "",
@@ -1092,7 +1102,13 @@ async def plating_submit(request: Request):
         return templates.TemplateResponse(
             request,
             "plating.html",
-            page_context(request, created=0, error=str(exc)),
+            page_context(
+                request,
+                created=0,
+                error=str(exc),
+                result=repo.workshop_records("", "plating", 1),
+                q="",
+            ),
             status_code=422,
         )
     return RedirectResponse(f"/plating?created={len(created_ids)}", status_code=303)
