@@ -1738,7 +1738,7 @@ def order_detail(request: Request, order_id: int, created: int = 0):
         record[key] = loads_json(record.get(key) or "[]")
     outsource_records = repo.order_outsource_records(order_id)
     workshop_records = repo.order_workshop_records(order_id)
-    workflow_steps = build_order_workflow(workshop_records, outsource_records)
+    workflow_steps = build_order_workflow(workshop_records, outsource_records, record)
     return templates.TemplateResponse(
         request,
         "order_detail.html",
@@ -1921,7 +1921,11 @@ def workshop_unlocked(request: Request, department_key: str) -> bool:
     return request.session.get(f"workshop:{department_key}:unlocked") is True
 
 
-def build_order_workflow(workshop_records: list[dict[str, Any]], outsource_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def build_order_workflow(
+    workshop_records: list[dict[str, Any]],
+    outsource_records: list[dict[str, Any]],
+    order: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     for index, record in enumerate(workshop_records):
         name = str(record.get("department_name") or "").strip()
@@ -1939,6 +1943,8 @@ def build_order_workflow(workshop_records: list[dict[str, Any]], outsource_recor
             continue
         seen.add(event["name"])
         steps.append({"name": event["name"], "done": True, "at": event["at"], "source": event["source"]})
+    if order and int(order.get("shipped_status") or 0):
+        steps.append({"name": "\u51fa\u8d27", "done": True, "at": order.get("shipped_at") or "", "source": "shipping"})
     if steps:
         steps[-1]["current"] = True
     return steps

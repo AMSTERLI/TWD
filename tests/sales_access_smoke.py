@@ -195,6 +195,9 @@ with TestClient(app) as client:
     )
     assert shipped.status_code == 303
     assert repo.get_order(own_id)["shipped_status"] == 1
+    shipped_detail = client.get(f"/orders/{own_id}")
+    assert shipped_detail.status_code == 200
+    assert "<span>\u51fa\u8d27</span>" in shipped_detail.text
     shipped_orders = client.get("/orders")
     assert "已出货" in shipped_orders.text and 'data-shipped="1"' in shipped_orders.text
     cross_sales_ship = client.post(
@@ -211,6 +214,8 @@ with TestClient(app) as client:
     )
     assert unshipped.status_code == 303
     assert repo.get_order(own_id)["shipped_status"] == 0
+    unshipped_detail = client.get(f"/orders/{own_id}")
+    assert "<span>\u51fa\u8d27</span>" not in unshipped_detail.text
     orders = client.get("/orders")
 
     assert f'data-request-edit-url="/orders/{own_id}/edit"' in orders.text

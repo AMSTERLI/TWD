@@ -795,11 +795,14 @@ with TestClient(app) as client:
     assert repo.order_workshop_records(order_id)[0]["quantity"] == 5
     assert abs(repo.order_workshop_records(order_id)[0]["unit_price"] - 12.5) < 1e-9
 
+    repo.set_order_shipped(order_id, True)
     admin_detail = client.get(f"/orders/{order_id}")
     assert admin_detail.status_code == 200
     assert "workflow-line" in admin_detail.text
     assert "current" in admin_detail.text
     assert "刻模" in admin_detail.text
+    assert "<span>\u51fa\u8d27</span>" in admin_detail.text
+    assert admin_detail.text.rfind("<span>\u523b\u6a21</span>") < admin_detail.text.rfind("<span>\u51fa\u8d27</span>")
     assert "冲压" not in admin_detail.text
     assert "12.5000" in admin_detail.text
     assert ">5<" in admin_detail.text
