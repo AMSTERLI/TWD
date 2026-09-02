@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}申请修改{{ department.name }}记录 · TWD 订单系统{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>申请修改{{ department.name }}记录</h1><p>{{ record.order_no }} · {{ record.product_name or '未填写产品名称' }}</p></div><a class="button" href="/workshop/{{ department.key }}">返回{{ department.name }}</a></div>
+{% if error %}<div class="alert error">提交失败：{{ error }}</div>{% endif %}
+<form method="post" class="form-section">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="form-grid cols-2">
+    <label>订单号<input value="{{ record.order_no }}" readonly></label>
+    <label>数量<input type="number" name="quantity" min="1" step="1" value="{{ record.quantity }}" required></label>
+    <label>单价<input type="number" name="unit_price" min="0" step="0.0001" value="{{ record.unit_price or 0 }}" required></label>
+    <label>{{ department.mold_fee_label }}<input type="number" name="mold_fee" min="0" step="0.0001" value="{{ record.mold_fee or 0 }}" required></label>
+    <label>订单类型<select name="record_type"><option value="normal"{% if record.record_type != 'rework' %} selected{% endif %}>正常</option><option value="rework"{% if record.record_type == 'rework' %} selected{% endif %}>{{ department.record_type_rework_label }}</option></select></label>
+    <label class="span-2">备注<input name="note_text" maxlength="80" value="{{ record.note_text or '' }}"></label>
+    <label class="span-2">申请原因<textarea name="reason" rows="3" maxlength="1000" required placeholder="请说明需要修改的原因">{{ record.reason or '' }}</textarea></label>
+  </div>
+  <div class="form-actions"><a class="button" href="/workshop/{{ department.key }}">取消</a><button class="button primary">提交修改申请</button></div>
+</form>
+{% endblock %}

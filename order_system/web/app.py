@@ -136,6 +136,8 @@ WORKSHOP_DEPARTMENTS = {
     "uv": {
         "name": "UV\uff08\u5434\u53cc\u5a25\uff09",
         "piecework": True,
+        "touch_keypad": False,
+        "approval_requests": True,
         "fixed_operator": "UV",
         "mold_fee": True,
         "mold_fee_label": "\u7248\u8d39",
@@ -1878,6 +1880,8 @@ def workshop_department(name: str) -> dict[str, Any] | None:
         "name": department["name"],
         "employees": list(department.get("employees") or []),
         "piecework": bool(department.get("piecework")),
+        "touch_keypad": bool(department.get("touch_keypad", department.get("piecework"))),
+        "approval_requests": bool(department.get("approval_requests")),
         "quantity_only": bool(department.get("quantity_only")),
         "mold_fee": bool(department.get("mold_fee")),
         "unit_price_label": str(department.get("unit_price_label") or "\u52a0\u5de5\u5355\u4ef7"),
@@ -2060,13 +2064,107 @@ async def workshop_record_delete(request: Request, department_key: str, record_i
     if not valid_form_csrf(request, str(form.get("csrf") or "")):
         return Response(status_code=400)
     try:
-        if department.get("tooling") and user.get("role") != "admin":
-            return Response("刻模订单只能申请修改，删除请联系管理员", status_code=403)
+        if (department.get("tooling") or department.get("approval_requests")) and user.get("role") != "admin":
+            return Response("\u8be5\u8bb0\u5f55\u53ea\u80fd\u63d0\u4ea4\u4fee\u6539\u6216\u5220\u9664\u7533\u8bf7", status_code=403)
         order_no = await run_in_threadpool(repo.delete_workshop_record, record_id, department_key)
     except ValueError as exc:
         return Response(str(exc), status_code=404)
     await run_in_threadpool(repo.audit, user, "workshop.delete", f"{department_key}:{order_no}", client_ip(request))
     return RedirectResponse(f"/workshop/{department_key}", status_code=303)
+
+
+@app.get("/workshop/{department_key}/records/{record_id}/edit-request", response_class=HTMLResponse)
+def workshop_record_edit_request_page(request: Request, department_key: str, record_id: int):
+    _, denied = require_page(request, {"workshop"})
+    if denied:
+        return denied
+    department = workshop_department(department_key)
+    if not department or not department.get("approval_requests"):
+        return Response(status_code=404)
+    if not workshop_unlocked(request, department_key):
+        return RedirectResponse("/workshop", status_code=303)
+    rows = repo.workshop_record_rows([record_id], department_key)
+    if not rows:
+        return Response("车间记录不存在", status_code=404)
+    return templates.TemplateResponse(
+        request,
+        "workshop_record_edit.html",
+        page_context(request, department=department, record=rows[0], error=""),
+    )
+
+
+@app.post("/workshop/{department_key}/records/{record_id}/edit-request", response_class=HTMLResponse)
+async def workshop_record_edit_request(request: Request, department_key: str, record_id: int):
+    user, denied = require_page(request, {"workshop"})
+    if denied:
+        return denied
+    department = workshop_department(department_key)
+    if not department or not department.get("approval_requests"):
+        return Response(status_code=404)
+    if not workshop_unlocked(request, department_key):
+        return RedirectResponse("/workshop", status_code=303)
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    values = {
+        "quantity": form.get("quantity"),
+        "unit_price": form.get("unit_price"),
+        "mold_fee": form.get("mold_fee"),
+        "note_text": form.get("note_text"),
+        "record_type": form.get("record_type"),
+    }
+    try:
+        request_id = await run_in_threadpool(
+            repo.create_workshop_record_request,
+            record_id,
+            department_key,
+            user,
+            "update",
+            str(form.get("reason") or "").strip(),
+            values,
+        )
+        await run_in_threadpool(repo.audit, user, "workshop.update_request", f"{department_key}:{record_id}:{request_id}", client_ip(request))
+    except ValueError as exc:
+        rows = await run_in_threadpool(repo.workshop_record_rows, [record_id], department_key)
+        record = {**(rows[0] if rows else {}), **values, "reason": str(form.get("reason") or "").strip()}
+        return templates.TemplateResponse(
+            request,
+            "workshop_record_edit.html",
+            page_context(request, department=department, record=record, error=str(exc)),
+            status_code=422,
+        )
+    return RedirectResponse("/messages", status_code=303)
+
+
+@app.post("/workshop/{department_key}/records/{record_id}/delete-request")
+async def workshop_record_delete_request(request: Request, department_key: str, record_id: int):
+    user, denied = require_page(request, {"workshop"})
+    if denied:
+        return denied
+    department = workshop_department(department_key)
+    if not department or not department.get("approval_requests"):
+        return Response(status_code=404)
+    if not workshop_unlocked(request, department_key):
+        return RedirectResponse("/workshop", status_code=303)
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    try:
+        request_id = await run_in_threadpool(
+            repo.create_workshop_record_request,
+            record_id,
+            department_key,
+            user,
+            "delete",
+            str(form.get("reason") or "").strip(),
+            None,
+        )
+        await run_in_threadpool(repo.audit, user, "workshop.delete_request", f"{department_key}:{record_id}:{request_id}", client_ip(request))
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request, "error.html", page_context(request, status=400, message=str(exc)), status_code=400
+        )
+    return RedirectResponse("/messages", status_code=303)
 
 
 @app.post("/workshop/{department_key}/records/{record_id}/update")

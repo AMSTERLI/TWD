@@ -474,6 +474,7 @@ with TestClient(app) as client:
     assert 'data-employee-value="UV"' not in uv.text and "\u7248\u8d39" in uv.text and 'data-batch-workshop-price' in uv.text
     assert "data-workshop-employees" not in uv.text and "<th>\u5de5\u827a</th>" not in uv.text
     assert "&#22791;&#27880;" in uv.text and "\u8fd4\u5de5" in uv.text
+    assert "data-touch-keypad" not in uv.text and "data-touch-number" not in uv.text
     uv_report = client.post(
         "/workshop/uv",
         data={"csrf": csrf(uv.text), "order_no": [uv_order_no], "quantity": ["20"], "unit_price": ["0.5"], "mold_fee": ["8"], "note_text": ["uv-note"], "record_type": ["rework"]},
@@ -493,6 +494,9 @@ with TestClient(app) as client:
     uv_list = client.get("/workshop/uv")
     assert uv_list.status_code == 200 and 'data-selection-amount-total-all="18.00"' in uv_list.text
     assert "uv-note" in uv_list.text and "\u8fd4\u5de5" in uv_list.text and "\u5de5\u827a" not in uv_list.text
+    assert f'data-request-edit-url="/workshop/uv/records/{uv_records[0]["id"]}/edit-request"' in uv_list.text
+    assert f'data-request-delete-url="/workshop/uv/records/{uv_records[0]["id"]}/delete-request"' in uv_list.text
+    assert f'data-delete-url="/workshop/uv/records/{uv_records[0]["id"]}/delete"' not in uv_list.text
     uv_export = client.post(
         "/workshop/uv/export",
         data={"csrf": csrf(uv_list.text), "selected_ids": [str(row["id"]) for row in uv_records]},
@@ -507,6 +511,37 @@ with TestClient(app) as client:
     assert uv_sheet.cell(row=2, column=4).value == "uv-note"
     assert uv_sheet.cell(row=2, column=9).value == 18
     assert uv_sheet.cell(row=2, column=10).value == "\u8fd4\u5de5"
+    uv_edit_page = client.get(f"/workshop/uv/records/{uv_records[0]['id']}/edit-request")
+    assert uv_edit_page.status_code == 200 and "\u63d0\u4ea4\u4fee\u6539\u7533\u8bf7" in uv_edit_page.text
+    assert "data-touch-keypad" not in uv_edit_page.text
+    uv_update_request = client.post(
+        f"/workshop/uv/records/{uv_records[0]['id']}/edit-request",
+        data={"csrf": csrf(uv_edit_page.text), "quantity": "25", "unit_price": "0.6", "mold_fee": "9", "note_text": "updated-note", "record_type": "normal", "reason": "\u5f55\u5165\u6709\u8bef"},
+        follow_redirects=False,
+    )
+    assert uv_update_request.status_code == 303 and uv_update_request.headers["location"] == "/messages"
+    assert repo.order_workshop_records(uv_order_id)[0]["quantity"] == 20
+    pending_uv_update = next(item for item in repo.list_edit_requests("pending") if item["request_type"] == "workshop_update")
+    repo.review_edit_request(int(pending_uv_update["id"]), repo.get_user(1), True, "\u540c\u610f")
+    updated_uv_record = repo.order_workshop_records(uv_order_id)[0]
+    assert updated_uv_record["quantity"] == 25 and updated_uv_record["note_text"] == "updated-note"
+    assert abs(updated_uv_record["unit_price"] - 0.6) < 1e-9 and abs(updated_uv_record["mold_fee"] - 9) < 1e-9
+    direct_uv_delete = client.post(
+        f"/workshop/uv/records/{uv_records[0]['id']}/delete",
+        data={"csrf": csrf(uv_list.text)},
+        follow_redirects=False,
+    )
+    assert direct_uv_delete.status_code == 403
+    uv_delete_request = client.post(
+        f"/workshop/uv/records/{uv_records[0]['id']}/delete-request",
+        data={"csrf": csrf(uv_list.text), "reason": "\u91cd\u590d\u8bb0\u5f55"},
+        follow_redirects=False,
+    )
+    assert uv_delete_request.status_code == 303 and uv_delete_request.headers["location"] == "/messages"
+    assert len(repo.order_workshop_records(uv_order_id)) == 1
+    pending_uv_delete = next(item for item in repo.list_edit_requests("pending") if item["request_type"] == "workshop_delete")
+    repo.review_edit_request(int(pending_uv_delete["id"]), repo.get_user(1), True, "\u540c\u610f")
+    assert not repo.order_workshop_records(uv_order_id)
     packaging_unlock = client.post(
         "/workshop/packaging/unlock",
         data={"csrf": csrf(home.text), "password": "packaging-pass-123"},
@@ -750,8 +785,9 @@ with TestClient(app) as client:
 
     admin_messages = client.get("/messages")
     assert admin_messages.status_code == 200 and "刻模数量修改" in admin_messages.text
+    pending_quantity_request = next(item for item in repo.list_edit_requests("pending") if item["request_type"] == "workshop_quantity")
     review = client.post(
-        "/messages/1/review",
+        f"/messages/{pending_quantity_request['id']}/review",
         data={"csrf": csrf(admin_messages.text), "decision": "approve", "review_note": "同意"},
         follow_redirects=False,
     )

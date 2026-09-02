@@ -714,6 +714,27 @@ class Repository:
                 )
                 if cursor.rowcount != 1:
                     raise ValueError("电镀记录不存在")
+            elif approved and request_type == "workshop_update":
+                payload = self._clean_workshop_record_request_values(json.loads(str(row["proposed_payload_json"] or "{}")))
+                cursor = conn.execute(
+                    """UPDATE workshop_records
+                       SET quantity = ?, unit_price = ?, mold_fee = ?, note_text = ?, record_type = ?
+                       WHERE id = ? AND order_id = ? AND department_key = 'uv'""",
+                    (
+                        payload["quantity"], payload["unit_price"], payload["mold_fee"],
+                        payload["note_text"], payload["record_type"],
+                        int(row["workshop_record_id"] or 0), int(row["order_id"]),
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError("UV记录不存在")
+            elif approved and request_type == "workshop_delete":
+                cursor = conn.execute(
+                    "DELETE FROM workshop_records WHERE id = ? AND order_id = ? AND department_key = 'uv'",
+                    (int(row["workshop_record_id"] or 0), int(row["order_id"])),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError("UV记录不存在")
             conn.execute(
                 """UPDATE order_edit_requests
                    SET status = ?, reviewer_id = ?, reviewer_name = ?, review_note = ?,
@@ -1734,6 +1755,104 @@ class Repository:
                     summary[:1000],
                     request_type,
                     int(record_id),
+                    json.dumps(clean, ensure_ascii=False, separators=(",", ":")),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def _clean_workshop_record_request_values(self, values: dict[str, Any]) -> dict[str, Any]:
+        try:
+            quantity = float(values.get("quantity") or 0)
+            unit_price = float(values.get("unit_price") or 0)
+            mold_fee = float(values.get("mold_fee") or 0)
+        except (TypeError, ValueError):
+            raise ValueError("数量、单价和版费必须是有效数字") from None
+        if not math.isfinite(quantity) or quantity <= 0 or not quantity.is_integer():
+            raise ValueError("数量必须是大于 0 的整数")
+        if not math.isfinite(unit_price) or unit_price < 0:
+            raise ValueError("单价不能小于 0")
+        if not math.isfinite(mold_fee) or mold_fee < 0:
+            raise ValueError("版费不能小于 0")
+        note_text = str(values.get("note_text") or "").strip()
+        if len(note_text) > 80:
+            raise ValueError("备注不能超过 80 个字")
+        record_type = str(values.get("record_type") or "normal").strip()
+        if record_type not in {"normal", "rework"}:
+            raise ValueError("订单类型无效")
+        return {
+            "quantity": int(quantity),
+            "unit_price": unit_price,
+            "mold_fee": mold_fee,
+            "note_text": note_text,
+            "record_type": record_type,
+        }
+
+    def create_workshop_record_request(
+        self,
+        record_id: int,
+        department_key: str,
+        user: dict[str, Any],
+        action: str,
+        reason: str,
+        values: dict[str, Any] | None = None,
+    ) -> int:
+        department_key = str(department_key or "").strip()
+        action = str(action or "").strip()
+        reason = str(reason or "").strip()
+        if department_key != "uv" or action not in {"update", "delete"}:
+            raise ValueError("申请类型无效")
+        if not reason:
+            raise ValueError("请填写申请原因")
+        if len(reason) > 1000:
+            raise ValueError("申请原因不能超过 1000 个字")
+        clean = self._clean_workshop_record_request_values(values or {}) if action == "update" else {"action": "delete"}
+        with self.connect(write=True) as conn:
+            record = conn.execute(
+                """SELECT id, order_id, order_no, department_name, quantity, unit_price,
+                          mold_fee, note_text, record_type
+                   FROM workshop_records WHERE id = ? AND department_key = ?""",
+                (int(record_id), department_key),
+            ).fetchone()
+            if not record:
+                raise ValueError("UV记录不存在")
+            existing = conn.execute(
+                """SELECT id FROM order_edit_requests
+                   WHERE workshop_record_id = ? AND requester_id = ? AND status = 'pending'
+                     AND request_type IN ('workshop_update', 'workshop_delete') LIMIT 1""",
+                (int(record_id), int(user.get("id") or 0)),
+            ).fetchone()
+            if existing:
+                raise ValueError("这条UV记录已有待审批申请")
+            if action == "delete":
+                request_type = "workshop_delete"
+                summary = f"申请删除{record['department_name']}记录；原因：{reason}"
+            else:
+                request_type = "workshop_update"
+                changes: list[str] = []
+                comparisons = (
+                    ("数量", int(record["quantity"] or 0), clean["quantity"]),
+                    ("单价", float(record["unit_price"] or 0), clean["unit_price"]),
+                    ("版费", float(record["mold_fee"] or 0), clean["mold_fee"]),
+                    ("备注", str(record["note_text"] or ""), clean["note_text"]),
+                    ("订单类型", str(record["record_type"] or "normal"), clean["record_type"]),
+                )
+                for label, old_value, new_value in comparisons:
+                    if old_value != new_value:
+                        old_text = old_value if old_value != "" else "空"
+                        new_text = new_value if new_value != "" else "空"
+                        changes.append(f"{label}从{old_text}修改为{new_text}")
+                if not changes:
+                    raise ValueError("没有检测到修改内容")
+                summary = f"{record['department_name']}记录修改：" + "；".join(changes) + f"；原因：{reason}"
+            cursor = conn.execute(
+                """INSERT INTO order_edit_requests
+                   (order_id, order_no, requester_id, requester_name, reason, request_type,
+                    workshop_record_id, proposed_payload_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    int(record["order_id"]), str(record["order_no"]), int(user.get("id") or 0),
+                    str(user.get("display_name") or user.get("username") or ""), summary[:1000],
+                    request_type, int(record_id),
                     json.dumps(clean, ensure_ascii=False, separators=(",", ":")),
                 ),
             )
