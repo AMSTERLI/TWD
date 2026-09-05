@@ -73,7 +73,7 @@ WORKSHOP_DEPARTMENTS = {
         "default_password": "888888",
         "tooling": True,
         "cutter": True,
-        "notes": ["\u65e0", "\u7279\u6b8a"],
+        "notes": ["\u65e0", "\u7279\u6b8a", "\u4e0d\u6253\u6298"],
     },
     "press": {
         "name": "\u51b2\u538b",

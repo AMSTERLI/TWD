@@ -183,6 +183,7 @@ with TestClient(app) as client:
     assert '<select name="note_text" required>' in cutter.text and 'data-note-preset' not in cutter.text
     assert '<option value="\u65e0">\u65e0</option>' in cutter.text
     assert '<option value="\u7279\u6b8a">\u7279\u6b8a</option>' in cutter.text
+    assert '<option value="\u4e0d\u6253\u6298">\u4e0d\u6253\u6298</option>' in cutter.text
     assert "\u5185\u52071\u652f" not in cutter.text
     cutter_report = client.post(
         "/workshop/cutter",
