@@ -69,6 +69,7 @@ with TestClient(app) as client:
     assert 'class="ai-import-upload"' in form_page.text
     assert form_page.text.count("data-ai-prompt-select") == 1
     assert "data-ai-prompt-option" not in form_page.text
+    assert "仅识别第1款产品" in form_page.text
     assert "把客单中的品名识别成PO号" in form_page.text
     assert "精炼订单总备注中的内容，但是要保留关键工艺信息" in form_page.text
     assert "提交自动填好的表格前，必须人工核对。" in form_page.text
