@@ -19,7 +19,7 @@ from typing import Any
 
 
 QWEN_BASE_URL = os.environ.get("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1").rstrip("/")
-QWEN_MODEL = os.environ.get("QWEN_MODEL", "qwen3.7-plus")
+QWEN_MODEL = os.environ.get("QWEN_MODEL", "qwen3.7-flash")
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_DOCUMENT_CHARS = 50_000
 MAX_SUPPLEMENTAL_PROMPT_CHARS = 2_000

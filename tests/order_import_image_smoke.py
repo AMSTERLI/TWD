@@ -81,7 +81,7 @@ finally:
     order_import.urllib.request.urlopen = original_urlopen
 
 body = captured["body"]
-assert body["model"] == "qwen3.7-plus"
+assert body["model"] == "qwen3.7-flash"
 system_prompt = body["messages"][0]["content"]
 assert "系统字段规则和允许值 > 业务员补充说明" in system_prompt
 assert "行业常见表达和字段关系进行合理推测与补全" in system_prompt

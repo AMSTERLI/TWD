@@ -87,7 +87,7 @@ Copy-Item .env.example .env
 
 - `QWEN_API_KEY`: AI 客单识别 API Key。
 - `QWEN_BASE_URL`: 默认 `https://dashscope.aliyuncs.com/compatible-mode/v1`。
-- `QWEN_MODEL`: 默认 `qwen3.7-plus`。
+- `QWEN_MODEL`: 默认 `qwen3.7-flash`。
 - `TWD_DATA_DIR`: 数据目录；不设置时使用项目内默认目录。
 - `TWD_SESSION_SECRET`: Web session 密钥，生产环境必须设置。
 
