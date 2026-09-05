@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}补数单 · TWD 订单系统{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>补数单</h1><p>查看已审批生成的补数记录，并按时间范围导出。</p></div>
+  <form method="post" action="/replenishments/export">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="reported_from" value="{{ reported_from }}">
+    <input type="hidden" name="reported_to" value="{{ reported_to }}">
+    <button class="button primary">导出当前时间范围</button>
+  </form>
+</div>
+<form class="filterbar replenishment-filterbar" method="get">
+  <label>开始时间<input type="date" name="reported_from" value="{{ reported_from }}"></label>
+  <label>结束时间<input type="date" name="reported_to" value="{{ reported_to }}"></label>
+  <div class="filter-actions"><button>查询</button><a class="button" href="/replenishments">清除</a></div>
+</form>
+<section class="panel table-wrap">
+  <table><thead><tr><th>流水号</th><th>数量</th><th>补数人</th><th>原因</th><th>时间</th></tr></thead><tbody>
+    {% for row in result.rows %}<tr><td><a href="/orders/{{ row.created_order_id }}">{{ row.serial_no }}</a></td><td>{{ row.quantity }}</td><td>{{ row.requester_name }}</td><td class="wrap-cell">{{ row.reason }}</td><td>{{ row.occurred_at|beijing_time }}</td></tr>
+    {% else %}<tr><td colspan="5" class="muted center">暂无补数记录</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% include "_pager.html" %}
+{% endblock %}

@@ -1468,6 +1468,73 @@ def production_orders(request: Request, q: str = "", page: int = 1):
     return templates.TemplateResponse(request, "orders.html", page_context(request, result=result, q=q, list_mode="production"))
 
 
+@app.get("/replenishments", response_class=HTMLResponse)
+def replenishment_orders(
+    request: Request,
+    reported_from: str = "",
+    reported_to: str = "",
+    page: int = 1,
+):
+    user, denied = require_page(request, {"admin", "production", "sales"})
+    if denied:
+        return denied
+    salesman = user_display_name(user) if user.get("role") == "sales" else None
+    result = repo.replenishment_records(reported_from, reported_to, salesman, page)
+    return templates.TemplateResponse(
+        request,
+        "replenishments.html",
+        page_context(
+            request,
+            result=result,
+            q="",
+            reported_from=reported_from,
+            reported_to=reported_to,
+        ),
+    )
+
+
+@app.post("/replenishments/export")
+async def replenishment_orders_export(request: Request):
+    user, denied = require_page(request, {"admin", "production", "sales"})
+    if denied:
+        return denied
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    reported_from = str(form.get("reported_from") or "").strip()
+    reported_to = str(form.get("reported_to") or "").strip()
+    salesman = user_display_name(user) if user.get("role") == "sales" else None
+    result = await run_in_threadpool(
+        repo.replenishment_records,
+        reported_from,
+        reported_to,
+        salesman,
+        1,
+        100000,
+    )
+    rows = [[
+        row.get("serial_no") or "",
+        int(row.get("quantity") or 0),
+        row.get("requester_name") or "",
+        row.get("reason") or "",
+        beijing_time(row.get("occurred_at") or ""),
+    ] for row in result["rows"]]
+    await run_in_threadpool(
+        repo.audit,
+        user,
+        "replenishment.export",
+        f"{reported_from or 'all'}:{reported_to or 'all'}:{len(rows)}",
+        client_ip(request),
+    )
+    return await run_in_threadpool(
+        excel_response,
+        "补数单",
+        ["流水号", "数量", "补数人", "原因", "时间"],
+        rows,
+        "replenishment_orders",
+    )
+
+
 @app.get("/messages", response_class=HTMLResponse)
 def messages(request: Request, status: str = ""):
     user, denied = require_page(request, {"admin", "sales", "finance", "production", "workshop", "plating"})

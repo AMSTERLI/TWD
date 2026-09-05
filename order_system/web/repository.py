@@ -462,6 +462,59 @@ class Repository:
                 args,
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def replenishment_records(
+        self,
+        reported_from: str = "",
+        reported_to: str = "",
+        salesman: str | None = None,
+        page: int = 1,
+        page_size: int = 40,
+    ) -> dict[str, Any]:
+        reported_from = str(reported_from or "").strip()
+        reported_to = str(reported_to or "").strip()
+        page = max(int(page or 1), 1)
+        page_size = max(int(page_size or 40), 1)
+        offset = (page - 1) * page_size
+        where = (
+            "WHERE r.request_type = 'replenishment' AND r.status = 'approved' "
+            "AND r.created_order_id IS NOT NULL "
+            "AND (? = '' OR date(COALESCE(r.reviewed_at, r.created_at), '+8 hours') >= ?) "
+            "AND (? = '' OR date(COALESCE(r.reviewed_at, r.created_at), '+8 hours') <= ?)"
+        )
+        args: list[Any] = [reported_from, reported_from, reported_to, reported_to]
+        if salesman is not None:
+            where += " AND COALESCE(o.salesman, '') = ?"
+            args.append(str(salesman or "").strip())
+        with self.connect() as conn:
+            total = int(conn.execute(
+                f"""SELECT COUNT(*)
+                    FROM order_edit_requests r
+                    LEFT JOIN orders o ON o.id = r.order_id
+                    {where}""",
+                args,
+            ).fetchone()[0])
+            rows = conn.execute(
+                f"""SELECT r.id, r.order_id, r.order_no, r.created_order_id,
+                           r.created_order_no AS serial_no,
+                           r.supplement_quantity AS quantity,
+                           r.requester_name, r.reason,
+                           COALESCE(r.reviewed_at, r.created_at) AS occurred_at,
+                           o.salesman
+                    FROM order_edit_requests r
+                    LEFT JOIN orders o ON o.id = r.order_id
+                    {where}
+                    ORDER BY COALESCE(r.reviewed_at, r.created_at) DESC, r.id DESC
+                    LIMIT ? OFFSET ?""",
+                (*args, page_size, offset),
+            ).fetchall()
+        return {
+            "rows": [dict(row) for row in rows],
+            "total": total,
+            "page": page,
+            "pages": max(1, (total + page_size - 1) // page_size),
+        }
+
     def _check_edit_request_allowed(self, conn: sqlite3.Connection, order_id: int, user: dict[str, Any]) -> sqlite3.Row:
         order = conn.execute(
             "SELECT id, order_no, salesman FROM orders WHERE id = ?", (order_id,)
