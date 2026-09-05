@@ -1510,9 +1510,10 @@ class Repository:
             except (TypeError, ValueError):
                 return text
 
+        diameter = clean_dimension(order["diameter_mm"])
         length = clean_dimension(order["height_mm"])
         width = clean_dimension(order["width_mm"])
-        size_text = f"{length}*{width}" if length and width else length or width
+        size_text = diameter or (f"{length}*{width}" if length and width else length or width)
         return {
             "order_no": str(order["order_no"]),
             "process_name": "、".join(processes) if processes else plating_note,

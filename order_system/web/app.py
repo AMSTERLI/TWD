@@ -1245,6 +1245,42 @@ async def plating_record_delete_request(request: Request, record_id: int):
     return RedirectResponse("/messages", status_code=303)
 
 
+@app.post("/plating/export")
+async def plating_export(request: Request):
+    user, denied = require_page(request, {"plating"})
+    if denied:
+        return denied
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    record_ids = await selected_workshop_record_ids(form, "plating")
+    rows = await run_in_threadpool(repo.workshop_record_rows, record_ids, "plating")
+    if not rows:
+        return Response("请至少选择一条电镀记录", status_code=400)
+    data = [[
+        row.get("order_no") or "",
+        row.get("product_name") or "",
+        row.get("material") or "",
+        row.get("spec") or "",
+        row.get("size_text") or "",
+        row.get("quantity") or 1,
+        row.get("unit_price") or 0,
+        row.get("amount") or 0,
+        row.get("note_text") or "",
+        beijing_time(row.get("reported_at") or ""),
+    ] for row in rows]
+    headers = ["订单号", "产品", "工艺一", "工艺二", "规格", "数量", "加工单价", "金额", "备注", "录入时间"]
+    await run_in_threadpool(repo.audit, user, "plating.export", str(len(rows)), client_ip(request))
+    return await run_in_threadpool(
+        export_with_images,
+        "电镀",
+        headers,
+        data,
+        rows,
+        "plating_records",
+    )
+
+
 @app.get("/orders", response_class=HTMLResponse)
 def orders(request: Request, q: str = "", page: int = 1):
     user, denied = require_page(request, {"admin", "sales", "finance", "production"})

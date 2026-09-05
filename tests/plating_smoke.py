@@ -12,6 +12,7 @@ os.environ["TWD_DATA_DIR"] = str(root)
 os.environ["TWD_SESSION_SECRET"] = "plating-test-secret-long-enough"
 
 from fastapi.testclient import TestClient  # noqa: E402
+from openpyxl import load_workbook  # noqa: E402
 from order_system.database import dumps_json  # noqa: E402
 from order_system.web.app import app, repo  # noqa: E402
 from order_system.web.repository import ORDER_COLUMNS  # noqa: E402
@@ -62,6 +63,9 @@ with TestClient(app) as client:
     note_only_payload["plating_json"] = dumps_json([])
     note_only_payload["plating_note"] = "按样品电镀"
     _, note_only_order_no = repo.create_order(note_only_payload)
+    diameter_payload = payload("TWD1-260825503")
+    diameter_payload["diameter_mm"] = 38
+    _, diameter_order_no = repo.create_order(diameter_payload)
 
     login_page = client.get("/login")
     login = client.post(
@@ -96,6 +100,9 @@ with TestClient(app) as client:
     assert lookup.json()["order"]["size_text"] == "45*32"
     assert lookup.json()["order"]["remark"] == ""
     assert lookup.json()["order"]["quantity"] == 115
+    diameter_lookup = client.get(f"/plating/order-lookup?order_no={diameter_order_no}")
+    assert diameter_lookup.status_code == 200
+    assert diameter_lookup.json()["order"]["size_text"] == "38"
     note_only_lookup = client.get(f"/plating/order-lookup?order_no={note_only_order_no}")
     assert note_only_lookup.status_code == 200
     assert note_only_lookup.json()["order"]["process_name"] == "按样品电镀"
@@ -159,6 +166,22 @@ with TestClient(app) as client:
     assert 'data-selection-total="1"' in record_page.text
     assert 'data-selection-amount-total-all="50.00"' in record_page.text
     assert 'data-select-all' in record_page.text and 'data-selected-amount-total' in record_page.text
+    assert 'action="/plating/export"' in record_page.text and "导出选中" in record_page.text
+    export = client.post(
+        "/plating/export",
+        data={"csrf": csrf(record_page.text), "select_scope": "page", "selected_ids": [record["id"]]},
+    )
+    assert export.status_code == 200
+    assert "spreadsheetml.sheet" in export.headers["content-type"]
+    export_path = root / "plating-export.xlsx"
+    export_path.write_bytes(export.content)
+    export_sheet = load_workbook(export_path).active
+    assert [cell.value for cell in export_sheet[1]][:10] == [
+        "订单号", "产品", "工艺一", "工艺二", "规格", "数量", "加工单价", "金额", "备注", "录入时间",
+    ]
+    assert [cell.value for cell in export_sheet[2]][:9] == [
+        order_no, "测试徽章", "亮金（修改）", "封油", "45*32", 120, 0.35, 50, "返工",
+    ]
     assert client.get("/plating?reported_from=1900-01-01&reported_to=2999-12-31").text.count(order_no) >= 1
     assert order_no not in client.get("/plating?reported_from=1900-01-01&reported_to=1900-01-01").text
 
