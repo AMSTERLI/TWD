@@ -19,6 +19,33 @@ REQUIRED_WEB_FACTORIES = [("\u6bdb\u8fb9", "\u6797\u4e16\u57f9"), ("\u956d\u96d5
 PLATING_SECONDARY_PROCESSES = {"打铜底", "清洗", "退镀", "封油", "＋雾漆", "＋喷漆", "＋雾金", "＋雾黑", "其他"}
 PLATING_REMARKS = {"多款", "异形", "配件", "返工", "补数"}
 
+FINANCE_PAYABLES_CTE = """
+WITH finance_payables AS (
+    SELECT 'outsource:' || r.id AS id, r.id AS source_id, 'outsource' AS payment_source,
+           r.order_id, r.order_no, o.product_name, r.process_name, r.factory_name,
+           r.product_quantity, r.spare_quantity, r.quantity, r.unit_price,
+           r.processing_fee, r.length_mm, r.width_mm, r.thickness_mm, r.density,
+           r.weight, r.material_unit_price, r.color_count, r.plate_fee, r.mold_fee,
+           r.amount, r.outsource_date, r.paid_status, r.remark
+    FROM outsource_records r
+    LEFT JOIN orders o ON o.id = r.order_id
+    UNION ALL
+    SELECT 'plating:' || w.id AS id, w.id AS source_id, 'plating' AS payment_source,
+           w.order_id, w.order_no, o.product_name, '电镀' AS process_name,
+           COALESCE(NULLIF(w.operator_name, ''), '电镀') AS factory_name,
+           w.quantity AS product_quantity, 0 AS spare_quantity, w.quantity,
+           w.unit_price, 0 AS processing_fee, 0 AS length_mm, 0 AS width_mm,
+           0 AS thickness_mm, 0 AS density, 0 AS weight, 0 AS material_unit_price,
+           NULL AS color_count, 0 AS plate_fee, 0 AS mold_fee,
+           COALESCE(w.manual_amount, w.quantity * w.unit_price) AS amount,
+           date(w.reported_at, '+8 hours') AS outsource_date, w.paid_status,
+           TRIM(COALESCE(w.material, '') || CASE WHEN TRIM(COALESCE(w.spec, '')) <> '' THEN '、' || w.spec ELSE '' END || CASE WHEN TRIM(COALESCE(w.note_text, '')) <> '' THEN '；' || w.note_text ELSE '' END) AS remark
+    FROM workshop_records w
+    LEFT JOIN orders o ON o.id = w.order_id
+    WHERE w.department_key = 'plating'
+)
+"""
+
 ORDER_COLUMNS = [
     "order_type", "salesman", "order_no", "product_name", "order_date",
     "delivery_date", "quantity", "spare_quantity", "quantity_unit", "unit_price", "price_tiers_json", "extra_fee",
@@ -170,6 +197,7 @@ class Repository:
                     manual_amount REAL,
                     mold_fee REAL NOT NULL DEFAULT 0,
                     shipped_status INTEGER NOT NULL DEFAULT 0,
+                    paid_status INTEGER NOT NULL DEFAULT 0,
                     operator_id INTEGER,
                     operator_name TEXT,
                     reported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -238,6 +266,8 @@ class Repository:
                 conn.execute("ALTER TABLE workshop_records ADD COLUMN mold_fee REAL NOT NULL DEFAULT 0")
             if "manual_amount" not in existing_workshop_columns:
                 conn.execute("ALTER TABLE workshop_records ADD COLUMN manual_amount REAL")
+            if "paid_status" not in existing_workshop_columns:
+                conn.execute("ALTER TABLE workshop_records ADD COLUMN paid_status INTEGER NOT NULL DEFAULT 0")
             conn.execute(
                 "UPDATE web_users SET display_name = username "
                 "WHERE display_name IS NULL OR TRIM(display_name) = ''"
@@ -2370,10 +2400,10 @@ class Repository:
         date_to = date_to.strip()
         page = max(page, 1)
         offset = (page - 1) * page_size
-        where = """WHERE (? = '' OR r.order_no LIKE ? OR r.process_name LIKE ? OR r.factory_name LIKE ?)
-                   AND (? = '' OR r.factory_name = ?)
-                   AND (? = '' OR r.outsource_date >= ?)
-                   AND (? = '' OR r.outsource_date <= ?)"""
+        where = """WHERE (? = '' OR p.order_no LIKE ? OR p.process_name LIKE ? OR p.factory_name LIKE ?)
+                   AND (? = '' OR p.factory_name = ?)
+                   AND (? = '' OR p.outsource_date >= ?)
+                   AND (? = '' OR p.outsource_date <= ?)"""
         like = f"%{keyword}%"
         args = (
             keyword, like, like, like, factory_name, factory_name,
@@ -2381,44 +2411,75 @@ class Repository:
         )
         with self.connect() as conn:
             total = int(conn.execute(
-                f"SELECT COUNT(*) FROM outsource_records r {where}", args
+                f"{FINANCE_PAYABLES_CTE} SELECT COUNT(*) FROM finance_payables p {where}", args
             ).fetchone()[0])
             rows = conn.execute(
-                f"""SELECT r.*, o.product_name FROM outsource_records r
-                    LEFT JOIN orders o ON o.id = r.order_id {where}
-                    ORDER BY r.outsource_date DESC, r.id DESC LIMIT ? OFFSET ?""",
+                f"""{FINANCE_PAYABLES_CTE}
+                    SELECT p.* FROM finance_payables p {where}
+                    ORDER BY p.outsource_date DESC, p.payment_source ASC, p.source_id DESC LIMIT ? OFFSET ?""",
                 (*args, page_size, offset),
             ).fetchall()
         return {"rows": [dict(row) for row in rows], "total": total, "page": page,
                 "pages": max(1, (total + page_size - 1) // page_size)}
 
-    def finance_outsource_rows(self, record_ids: list[int]) -> list[dict[str, Any]]:
-        ids = self._normalized_ids(record_ids)
-        if not ids:
+    def _finance_payable_ids(self, record_ids: list[Any]) -> tuple[list[int], list[int]]:
+        outsource_ids: list[int] = []
+        plating_ids: list[int] = []
+        for raw in record_ids:
+            value = str(raw or "").strip()
+            source, separator, raw_id = value.partition(":")
+            if not separator:
+                source, raw_id = "outsource", value
+            try:
+                record_id = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            target = plating_ids if source == "plating" else outsource_ids if source == "outsource" else None
+            if target is not None and record_id > 0 and record_id not in target:
+                target.append(record_id)
+        return outsource_ids, plating_ids
+
+    def finance_outsource_rows(self, record_ids: list[Any]) -> list[dict[str, Any]]:
+        outsource_ids, plating_ids = self._finance_payable_ids(record_ids)
+        if not outsource_ids and not plating_ids:
             return []
-        rows: list[Any] = []
+        conditions: list[str] = []
+        args: list[Any] = []
+        if outsource_ids:
+            conditions.append(f"(payment_source = 'outsource' AND source_id IN ({', '.join('?' for _ in outsource_ids)}))")
+            args.extend(outsource_ids)
+        if plating_ids:
+            conditions.append(f"(payment_source = 'plating' AND source_id IN ({', '.join('?' for _ in plating_ids)}))")
+            args.extend(plating_ids)
         with self.connect() as conn:
-            for chunk in self._id_chunks(ids):
-                placeholders = ", ".join("?" for _ in chunk)
-                rows.extend(conn.execute(
-                    f"""SELECT r.*, o.product_name FROM outsource_records r
-                        LEFT JOIN orders o ON o.id = r.order_id
-                        WHERE r.id IN ({placeholders})""",
-                    chunk,
-                ).fetchall())
+            rows = conn.execute(
+                f"{FINANCE_PAYABLES_CTE} SELECT * FROM finance_payables WHERE {' OR '.join(conditions)}",
+                args,
+            ).fetchall()
         result_rows = [dict(row) for row in rows]
-        result_rows.sort(key=lambda item: (item.get("outsource_date") or "", int(item.get("id") or 0)), reverse=True)
+        result_rows.sort(
+            key=lambda item: (item.get("outsource_date") or "", int(item.get("source_id") or 0)),
+            reverse=True,
+        )
         return result_rows
-    def set_outsource_paid_many(self, record_ids: list[int], paid: bool) -> int:
-        ids = self._normalized_ids(record_ids)
-        if not ids:
+
+    def set_outsource_paid_many(self, record_ids: list[Any], paid: bool) -> int:
+        outsource_ids, plating_ids = self._finance_payable_ids(record_ids)
+        if not outsource_ids and not plating_ids:
             return 0
         changed = 0
         with self.connect(write=True) as conn:
-            for chunk in self._id_chunks(ids):
+            for chunk in self._id_chunks(outsource_ids):
                 placeholders = ", ".join("?" for _ in chunk)
                 cursor = conn.execute(
                     f"UPDATE outsource_records SET paid_status = ? WHERE id IN ({placeholders})",
+                    (int(paid), *chunk),
+                )
+                changed += int(cursor.rowcount)
+            for chunk in self._id_chunks(plating_ids):
+                placeholders = ", ".join("?" for _ in chunk)
+                cursor = conn.execute(
+                    f"UPDATE workshop_records SET paid_status = ? WHERE department_key = 'plating' AND id IN ({placeholders})",
                     (int(paid), *chunk),
                 )
                 changed += int(cursor.rowcount)
@@ -2485,8 +2546,13 @@ class Repository:
     def finance_factory_names(self) -> list[str]:
         with self.connect() as conn:
             rows = conn.execute(
-                """SELECT DISTINCT factory_name FROM outsource_records
-                   WHERE TRIM(COALESCE(factory_name, '')) <> '' ORDER BY factory_name"""
+                """SELECT factory_name FROM (
+                       SELECT DISTINCT factory_name FROM outsource_records
+                       WHERE TRIM(COALESCE(factory_name, '')) <> ''
+                       UNION
+                       SELECT DISTINCT COALESCE(NULLIF(operator_name, ''), '电镀') AS factory_name
+                       FROM workshop_records WHERE department_key = 'plating'
+                   ) ORDER BY factory_name"""
             ).fetchall()
         return [str(row[0]) for row in rows]
     def create_outsource(self, payload: dict[str, Any]) -> int:

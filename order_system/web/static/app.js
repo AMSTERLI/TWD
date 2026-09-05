@@ -1663,6 +1663,15 @@ document.querySelectorAll("[data-outsource-receive]").forEach(form => {
   showEnd(first);
 });
 
+document.querySelectorAll("[data-workshop-report-filter]").forEach(form => {
+  const department = form.querySelector("[data-report-department]");
+  const employee = form.querySelector("[data-report-employee]");
+  department?.addEventListener("change", () => {
+    if (employee) employee.value = "";
+    form.submit();
+  });
+});
+
 document.querySelectorAll("[data-selection-form]").forEach(form => {
   const selectAll = form.querySelector("[data-select-all]");
   const scopeInput = form.querySelector("[data-select-scope]");

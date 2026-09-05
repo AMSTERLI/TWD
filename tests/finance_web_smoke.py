@@ -9,6 +9,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 from pypdf import PdfReader
+from openpyxl import load_workbook
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -18,7 +19,7 @@ os.environ["TWD_SESSION_SECRET"] = "finance-test-secret-that-is-long-enough"
 
 from fastapi.testclient import TestClient  # noqa: E402
 from order_system.database import dumps_json  # noqa: E402
-from order_system.web.app import app, repo  # noqa: E402
+from order_system.web.app import app, repo, workshop_report_column_labels  # noqa: E402
 from order_system.web.repository import ORDER_COLUMNS  # noqa: E402
 
 
@@ -95,6 +96,7 @@ with TestClient(app) as client:
     repo.create_user("admin", "admin-password", "admin")
     repo.create_user("finance", "finance-password", "finance")
     repo.create_user("outsource", "outsource-password", "outsource")
+    repo.create_user("qixin", "qixin-password", "plating")
     login(client, "admin", "admin-password")
     old_order = create_order(client, "2026-07-01", "旧订单", 1)
     new_order = create_order(client, "2026-07-15", "新订单", 2)
@@ -107,6 +109,13 @@ with TestClient(app) as client:
     second_record = repo.create_outsource_batch(
         {"process_name": "plating", "factory_name": "factory-b", "outsource_date": "2026-07-15", "paid_status": 0},
         [{"order_no": new_order, "product_quantity": 10, "spare_quantity": 2, "unit_price": 0.6}],
+    )[0]
+    plating_record = repo.create_plating_records(
+        [{
+            "order_no": new_order, "process_name": "亮铬", "process_name_2": "封油",
+            "size_text": "32", "quantity": 12, "unit_price": 0.8, "amount": 9.6, "remark": "",
+        }],
+        repo.get_user(4),
     )[0]
     workshop_record = repo.create_workshop_records(
         "press",
@@ -125,6 +134,12 @@ with TestClient(app) as client:
         ],
         repo.get_user(1),
     )
+    painting_record = repo.create_workshop_records(
+        "painting",
+        "上色",
+        [{"order_no": new_order, "employee_name": "刘进", "quantity": 10, "unit_price": 0.15, "mold_fee": 3}],
+        repo.get_user(1),
+    )[0]
 
     page = client.get("/")
     client.post("/logout", data={"csrf": csrf(page.text)})
@@ -147,6 +162,7 @@ with TestClient(app) as client:
     payables_page = client.get("/finance/payables")
     assert payables_page.status_code == 200
     assert old_order in payables_page.text and new_order in payables_page.text
+    assert "电镀" in payables_page.text and "qixin" in payables_page.text
     workshop_report_page = client.get("/finance/workshop-reports?department_key=press&employee_name=%E5%BE%90%E5%B1%B1%E7%AB%8B&reported_from=1900-01-01&reported_to=2999-12-31")
     assert workshop_report_page.status_code == 200
     assert '<option value="mold">\u523b\u6a21</option>' in workshop_report_page.text
@@ -154,7 +170,24 @@ with TestClient(app) as client:
     assert "/finance/workshop-reports/export" in workshop_report_page.text
     assert 'name="export_columns"' in workshop_report_page.text
     assert 'value="unit_price_anomaly"' in workshop_report_page.text
+    assert 'data-workshop-report-filter' in workshop_report_page.text
+    assert 'data-report-department' in workshop_report_page.text and 'data-report-employee' in workshop_report_page.text
+    assert '<option value="徐山立" selected>' in workshop_report_page.text
+    assert '<option value="刘进">' not in workshop_report_page.text
     assert new_order in workshop_report_page.text and anomaly_order in workshop_report_page.text and old_order not in workshop_report_page.text
+    painting_report_page = client.get("/finance/workshop-reports?department_key=painting&reported_from=1900-01-01&reported_to=2999-12-31")
+    assert painting_report_page.status_code == 200
+    assert '<option value="painting" selected>上色</option>' in painting_report_page.text
+    assert '<option value="刘进">' in painting_report_page.text and '<option value="徐山立">' not in painting_report_page.text
+    assert 'value="unit_price" checked> 颜色单价' in painting_report_page.text
+    assert 'value="mold_fee" checked> 颜色数量' in painting_report_page.text
+    assert 'value="calculated_unit_price" checked> 单价' in painting_report_page.text
+    assert workshop_report_column_labels("press")["mold_fee"] == "装模费"
+    assert workshop_report_column_labels("diecast")["mold_fee"] == "装模费"
+    assert workshop_report_column_labels("polishing")["mold_fee"] == "打样费"
+    assert workshop_report_column_labels("uv")["mold_fee"] == "版费"
+    assert {"material", "spec", "order_type"} <= set(workshop_report_column_labels("mold"))
+    assert {"note", "order_type"} <= set(workshop_report_column_labels("cutter"))
     mold_report_page = client.get("/finance/workshop-reports?department_key=mold&reported_from=1900-01-01&reported_to=2999-12-31")
     assert mold_report_page.status_code == 200
     assert '<option value="mold" selected>\u523b\u6a21</option>' in mold_report_page.text
@@ -176,6 +209,23 @@ with TestClient(app) as client:
     assert new_order in strings and anomaly_order in strings and "\u5f90\u5c71\u7acb" in strings and "\u51b2\u538b" in strings
     assert "\u5355\u4ef7\u5f02\u5e38" in strings and "\u662f" in strings
     assert "\u4ea7\u54c1" not in strings
+    painting_export = client.post(
+        "/finance/workshop-reports/export",
+        data={
+            "csrf": csrf(painting_report_page.text),
+            "department_key": "painting",
+            "reported_from": "1900-01-01",
+            "reported_to": "2999-12-31",
+            "export_columns": ["unit_price", "mold_fee", "calculated_unit_price", "amount"],
+        },
+    )
+    assert painting_export.status_code == 200
+    painting_sheet = load_workbook(BytesIO(painting_export.content), data_only=True).active
+    assert [cell.value for cell in painting_sheet[1]] == ["颜色单价", "颜色数量", "单价", "金额"]
+    painting_values = [cell.value for cell in painting_sheet[2]]
+    assert painting_values[:2] == [0.15, 3]
+    assert abs(painting_values[2] - 0.45) < 1e-9 and abs(painting_values[3] - 4.5) < 1e-9
+    assert painting_record > 0
 
     filtered_customer = client.get(f"/finance/receivables?receivable_q=TWD2&receivable_q2=260715")
     receivable_html = filtered_customer.text
@@ -194,6 +244,9 @@ with TestClient(app) as client:
     filtered_payable = client.get("/finance/payables?payable_factory=factory-b")
     payable_body = filtered_payable.text.split("<tbody>")[1].split("</tbody>")[0]
     assert "factory-b" in payable_body and "factory-a" not in payable_body
+    plating_payable = client.get("/finance/payables?payable_factory=qixin")
+    plating_payable_body = plating_payable.text.split("<tbody>")[1].split("</tbody>")[0]
+    assert "电镀" in plating_payable_body and "qixin" in plating_payable_body and "factory-b" not in plating_payable_body
 
     token = csrf(finance_page.text)
     response = client.post(
@@ -305,6 +358,13 @@ with TestClient(app) as client:
     assert response.status_code == 303
     assert repo.legacy.get_outsource_record(first_record)["paid_status"] == 1
     assert repo.legacy.get_outsource_record(second_record)["paid_status"] == 1
+    plating_paid = client.post(
+        "/finance/payables/status",
+        data={"csrf": token, "selected_ids": f"plating:{plating_record}", "paid": "1"},
+        follow_redirects=False,
+    )
+    assert plating_paid.status_code == 303
+    assert repo.plating_record(plating_record)["paid_status"] == 1
 
     income_export = client.post(
         "/finance/receivables/export",
@@ -329,6 +389,13 @@ with TestClient(app) as client:
     assert payable_export.status_code == 200
     strings = xlsx_strings(payable_export.content)
     assert new_order in strings and "factory-b" in strings and old_order not in strings
+    plating_export = client.post(
+        "/finance/payables/export",
+        data={"csrf": token, "selected_ids": f"plating:{plating_record}"},
+    )
+    assert plating_export.status_code == 200
+    strings = xlsx_strings(plating_export.content)
+    assert new_order in strings and "电镀" in strings and "qixin" in strings
 
     page = client.get("/")
     client.post("/logout", data={"csrf": csrf(page.text)})

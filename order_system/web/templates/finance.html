@@ -63,9 +63,9 @@
 {% if active_finance_page == 'workshop_reports' %}
 <section class="finance-section" id="workshop-reports">
   <div class="section-title"><div><h2>&#36710;&#38388;&#25253;&#34920;</h2><p>&#25353;&#37096;&#38376;&#12289;&#21592;&#24037;&#21644;&#24405;&#20837;&#26085;&#26399;&#26597;&#35810;&#35745;&#20214;&#35760;&#24405;</p></div></div>
-  <form class="filterbar" method="get" action="/finance/workshop-reports">
-    <label>&#37096;&#38376;<select name="department_key"><option value="">&#20840;&#37096;&#37096;&#38376;</option>{% for item in report_departments %}<option value="{{ item.key }}"{% if department_key == item.key %} selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
-    <label>&#21592;&#24037;<select name="employee_name"><option value="">&#20840;&#37096;&#21592;&#24037;</option>{% for employee in report_employee_options %}<option value="{{ employee }}"{% if employee_name == employee %} selected{% endif %}>{{ employee }}</option>{% endfor %}</select></label>
+  <form class="filterbar" method="get" action="/finance/workshop-reports" data-workshop-report-filter>
+    <label>&#37096;&#38376;<select name="department_key" data-report-department><option value="">&#20840;&#37096;&#37096;&#38376;</option>{% for item in report_departments %}<option value="{{ item.key }}"{% if department_key == item.key %} selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+    <label>&#21592;&#24037;<select name="employee_name" data-report-employee><option value="">&#20840;&#37096;&#21592;&#24037;</option>{% for employee in report_employee_options %}<option value="{{ employee }}"{% if employee_name == employee %} selected{% endif %}>{{ employee }}</option>{% endfor %}</select></label>
     <label>&#24405;&#20837;&#26085;&#26399;&#20174;<input type="date" name="reported_from" value="{{ reported_from }}"></label>
     <label>&#33267;<input type="date" name="reported_to" value="{{ reported_to }}"></label>
     <div class="filter-actions"><button class="primary">&#26597;&#35810;&#25253;&#34920;</button><a class="button" href="/finance/workshop-reports">&#20170;&#26085;</a></div>
@@ -101,7 +101,7 @@
 {% endif %}
 {% if active_finance_page == 'payables' %}
 <section class="finance-section" id="payables">
-  <div class="section-title"><div><h2>加工厂付款</h2><p>共 {{ payables.total }} 条，财务可查看全部外发记录</p></div></div>
+  <div class="section-title"><div><h2>加工厂付款</h2><p>共 {{ payables.total }} 条，财务可查看全部外发及电镀记录</p></div></div>
   <form class="filterbar" method="get" action="/finance/payables">
     <label>外发关键词<input name="payable_q" value="{{ payable_q }}" placeholder="订单号、工艺或加工厂"></label>
     <label>加工厂<select name="payable_factory"><option value="">全部加工厂</option>{% for name in factories %}<option value="{{ name }}" {% if payable_factory == name %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
@@ -126,7 +126,7 @@
       <thead><tr><th><input type="checkbox" data-select-all aria-label="&#20840;&#36873;&#24403;&#21069;&#39029;"></th><th>&#35746;&#21333;&#21495;</th><th>&#20135;&#21697;</th><th>&#24037;&#33402;</th><th>&#21152;&#24037;&#21378;</th><th>&#20135;&#21697;/&#22791;&#21697;</th><th>&#21152;&#24037;&#21333;&#20215;</th><th>&#24037;&#33402;&#36153;&#29992;</th><th>&#37329;&#39069;</th><th>&#22806;&#21457;&#26085;&#26399;</th><th>&#29366;&#24577;</th></tr></thead>
       <tbody>
       {% for row in payables.rows %}<tr>
-        <td><input type="checkbox" name="selected_ids" value="{{ row.id }}" data-select-item aria-label="选择外发记录 {{ row.order_no }}"></td>
+        <td><input type="checkbox" name="selected_ids" value="{{ row.id }}" data-select-item aria-label="选择付款记录 {{ row.order_no }}"></td>
         <td><a href="/orders/{{ row.order_id }}">{{ row.order_no }}</a></td><td>{{ row.product_name or '-' }}</td><td>{{ row.process_name }}</td><td>{{ row.factory_name }}</td>
         <td>{{ row.product_quantity or 0 }} / {{ row.spare_quantity or 0 }}</td><td>{{ '%.4f'|format(row.unit_price or 0) }}</td>
         <td>{% if row.process_name == '冲压' %}加工费 {{ '%.2f'|format(row.processing_fee or 0) }}；材料 {{ '%.6f'|format(row.material_unit_price or 0) }}{% elif row.process_name == '上色' %}{{ row.color_count or 0 }} 色{% elif row.process_name == '印刷/UV' %}版费 {{ '%.2f'|format(row.plate_fee or 0) }}{% elif row.process_name == '低温锌合金' %}模具费 {{ '%.2f'|format(row.mold_fee or 0) }}{% else %}-{% endif %}</td>

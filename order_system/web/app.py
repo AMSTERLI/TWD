@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -329,9 +330,13 @@ async def selected_receivable_ids(form: Any) -> list[int]:
     return [int(row["id"]) for row in result["rows"]]
 
 
-async def selected_payable_ids(form: Any) -> list[int]:
+async def selected_payable_ids(form: Any) -> list[str]:
     if not all_matching_selected(form):
-        return selected_ids(form, "selected_ids")
+        return [
+            str(raw or "").strip()
+            for raw in form.getlist("selected_ids")
+            if re.fullmatch(r"(?:(?:outsource|plating):)?[1-9][0-9]*", str(raw or "").strip())
+        ]
     result = await run_in_threadpool(
         repo.finance_outsource_records,
         str(form.get("payable_q") or ""),
@@ -341,7 +346,7 @@ async def selected_payable_ids(form: Any) -> list[int]:
         1,
         BULK_MATCHING_LIMIT,
     )
-    return [int(row["id"]) for row in result["rows"]]
+    return [str(row["id"]) for row in result["rows"]]
 
 
 async def selected_workshop_record_ids(form: Any, department_key: str) -> list[int]:
@@ -510,18 +515,72 @@ WORKSHOP_REPORT_COLUMN_LABELS = {
     "employee": "\u5458\u5de5",
     "order_no": "\u8ba2\u5355\u53f7",
     "product": "\u4ea7\u54c1",
+    "material": "\u6750\u8d28",
     "size": "\u5c3a\u5bf8",
+    "spec": "\u89c4\u683c",
     "quantity": "\u6570\u91cf",
     "reference_quantity": "\u53c2\u8003\u6570\u91cf",
     "unit_price": "\u5355\u4ef7",
     "unit_price_anomaly": "\u5355\u4ef7\u5f02\u5e38",
     "mold_fee": "\u88c5\u6a21/\u6253\u6837\u8d39",
+    "calculated_unit_price": "\u5355\u4ef7",
     "amount": "\u91d1\u989d",
     "order_type": "\u8ba2\u5355\u7c7b\u522b",
     "note": "\u5907\u6ce8",
     "reported_at": "\u5f55\u5165\u65f6\u95f4",
     "product_image": "\u4ea7\u54c1\u7f29\u7565\u56fe",
 }
+
+
+def workshop_report_column_labels(department_key: str = "") -> dict[str, str]:
+    labels = dict(WORKSHOP_REPORT_COLUMN_LABELS)
+    if not department_key:
+        labels["calculated_unit_price"] = "\u4e0a\u8272\u5355\u4ef7"
+        return labels
+    department = WORKSHOP_DEPARTMENTS.get(department_key, {})
+    allowed = {
+        "department", "order_no", "product", "quantity", "amount", "reported_at", "product_image",
+    }
+    if department.get("employees") or department.get("fixed_operator"):
+        allowed.add("employee")
+    if department_key in {"mold", "cutter", "press", "polishing", "painting", "diecast"}:
+        allowed.add("size")
+    if department.get("mold"):
+        allowed.update({"material", "spec"})
+    if department.get("piecework"):
+        allowed.update({"reference_quantity", "unit_price", "unit_price_anomaly"})
+    if department.get("mold_fee"):
+        allowed.add("mold_fee")
+    if department_key == "painting":
+        allowed.add("calculated_unit_price")
+        labels["unit_price"] = "\u989c\u8272\u5355\u4ef7"
+        labels["mold_fee"] = "\u989c\u8272\u6570\u91cf"
+    elif department_key == "uv":
+        labels["mold_fee"] = "\u7248\u8d39"
+    elif department_key in {"press", "diecast"}:
+        labels["mold_fee"] = "\u88c5\u6a21\u8d39"
+    elif department_key == "polishing":
+        labels["mold_fee"] = "\u6253\u6837\u8d39"
+    if department.get("tooling") or department.get("record_type"):
+        allowed.add("order_type")
+    if department.get("notes") or department.get("note_text"):
+        allowed.add("note")
+    return {key: label for key, label in labels.items() if key in allowed}
+
+
+def workshop_report_default_columns(department_key: str = "") -> list[str]:
+    labels = workshop_report_column_labels(department_key)
+    columns = [column for column in WORKSHOP_REPORT_DEFAULT_COLUMNS if column in labels]
+    extras = {
+        "mold": ["material", "spec", "order_type"],
+        "cutter": ["note", "order_type"],
+        "press": ["mold_fee"],
+        "polishing": ["mold_fee", "note"],
+        "painting": ["mold_fee", "calculated_unit_price"],
+        "diecast": ["mold_fee"],
+        "uv": ["mold_fee", "note", "order_type"],
+    }.get(department_key, [])
+    return list(dict.fromkeys([*columns, *(column for column in extras if column in labels)]))
 
 
 def workshop_report_departments() -> list[dict[str, Any]]:
@@ -554,12 +613,12 @@ def workshop_report_department_name(department_key: str = "") -> str:
     return "\u5168\u90e8\u90e8\u95e8"
 
 
-def selected_workshop_report_columns(form: Any) -> list[str]:
-    allowed = set(WORKSHOP_REPORT_COLUMN_LABELS)
+def selected_workshop_report_columns(form: Any, department_key: str = "") -> list[str]:
+    allowed = set(workshop_report_column_labels(department_key))
     columns = [str(item or "").strip() for item in form.getlist("export_columns")]
     columns = [item for item in columns if item in allowed]
     if not columns:
-        columns = WORKSHOP_REPORT_DEFAULT_COLUMNS.copy()
+        columns = workshop_report_default_columns(department_key)
     return list(dict.fromkeys(columns))
 
 
@@ -572,8 +631,12 @@ def workshop_report_cell(row: dict[str, Any], column: str) -> Any:
         return row.get("order_no") or ""
     if column == "product":
         return row.get("product_name") or ""
+    if column == "material":
+        return row.get("material") or ""
     if column == "size":
         return row.get("size_text") or order_size_text(row)
+    if column == "spec":
+        return row.get("spec") or ""
     if column == "quantity":
         return row.get("quantity") or 0
     if column == "reference_quantity":
@@ -584,6 +647,10 @@ def workshop_report_cell(row: dict[str, Any], column: str) -> Any:
         return "\u662f" if row.get("unit_price_anomaly") else ""
     if column == "mold_fee":
         return row.get("mold_fee") or 0
+    if column == "calculated_unit_price":
+        if row.get("department_key") != "painting":
+            return ""
+        return float(row.get("unit_price") or 0) * float(row.get("mold_fee") or 0)
     if column == "amount":
         return row.get("amount") or 0
     if column == "order_type":
@@ -595,10 +662,15 @@ def workshop_report_cell(row: dict[str, Any], column: str) -> Any:
     return ""
 
 
-def workshop_report_export_payload(rows: list[dict[str, Any]], columns: list[str]) -> tuple[list[str], list[list[Any]], bool]:
+def workshop_report_export_payload(
+    rows: list[dict[str, Any]],
+    columns: list[str],
+    column_labels: dict[str, str] | None = None,
+) -> tuple[list[str], list[list[Any]], bool]:
     include_image = "product_image" in columns
     data_columns = [column for column in columns if column != "product_image"]
-    headers = [WORKSHOP_REPORT_COLUMN_LABELS[column] for column in data_columns]
+    labels = column_labels or WORKSHOP_REPORT_COLUMN_LABELS
+    headers = [labels[column] for column in data_columns]
     data = [[workshop_report_cell(row, column) for column in data_columns] for row in rows]
     return headers, data, include_image
 
@@ -2628,6 +2700,9 @@ def finance_workshop_reports(
     valid_departments = {item["key"] for item in workshop_report_departments()}
     if department_key not in valid_departments:
         department_key = ""
+    employee_options = workshop_report_employee_options(department_key)
+    if employee_name not in employee_options:
+        employee_name = ""
     if not reported_from and not reported_to:
         reported_from = date.today().isoformat()
         reported_to = date.today().isoformat()
@@ -2645,9 +2720,9 @@ def finance_workshop_reports(
             factories=[],
             report=result,
             report_departments=workshop_report_departments(),
-            report_employee_options=workshop_report_employee_options(department_key),
-            report_column_labels=WORKSHOP_REPORT_COLUMN_LABELS,
-            report_default_columns=WORKSHOP_REPORT_DEFAULT_COLUMNS,
+            report_employee_options=employee_options,
+            report_column_labels=workshop_report_column_labels(department_key),
+            report_default_columns=workshop_report_default_columns(department_key),
             department_key=department_key,
             employee_name=employee_name,
             reported_from=reported_from,
@@ -2685,6 +2760,8 @@ async def finance_workshop_reports_export(request: Request):
         reported_from = today
         reported_to = today
     employee_name = str(form.get("employee_name") or "").strip()
+    if employee_name not in workshop_report_employee_options(department_key):
+        employee_name = ""
     matched = await run_in_threadpool(
         repo.workshop_records,
         "",
@@ -2701,8 +2778,9 @@ async def finance_workshop_reports_export(request: Request):
         rows = [row for row in rows if str(row.get("operator_name") or "") == employee_name]
     if not rows:
         return Response("\u8bf7\u5148\u67e5\u8be2\u5230\u9700\u8981\u5bfc\u51fa\u7684\u8f66\u95f4\u8bb0\u5f55", status_code=400)
-    columns = selected_workshop_report_columns(form)
-    headers, data, include_image = workshop_report_export_payload(rows, columns)
+    column_labels = workshop_report_column_labels(department_key)
+    columns = selected_workshop_report_columns(form, department_key)
+    headers, data, include_image = workshop_report_export_payload(rows, columns, column_labels)
     department_name = workshop_report_department_name(department_key)
     employee_label = employee_name or "\\u5168\\u90e8\\u5458\\u5de5"
     filename_base = f"{department_name}{employee_label}"
