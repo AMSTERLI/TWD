@@ -248,18 +248,6 @@ class Database:
                 "INSERT OR IGNORE INTO outsource_processes (process_name) VALUES ('印刷/UV')"
             )
             conn.execute(
-                """
-                DELETE FROM outsource_factories
-                WHERE process_name = '印刷/UV' AND factory_name = '小卫'
-                  AND EXISTS (
-                      SELECT 1
-                      FROM outsource_factories AS existing
-                      WHERE existing.process_name = '印刷/UV'
-                        AND existing.factory_name = '小魏'
-                  )
-                """
-            )
-            conn.execute(
                 """UPDATE outsource_factories
                    SET factory_name = '小魏'
                    WHERE process_name = '印刷/UV' AND factory_name = '小卫'"""
