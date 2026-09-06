@@ -238,24 +238,6 @@ class Database:
                 """
             )
             conn.execute(
-                """
-                DELETE FROM outsource_factories
-                WHERE factory_name = '小微'
-                  AND EXISTS (
-                      SELECT 1
-                      FROM outsource_factories AS existing
-                      WHERE existing.process_name = outsource_factories.process_name
-                        AND existing.factory_name = '小魏'
-                  )
-                """
-            )
-            conn.execute(
-                "UPDATE outsource_factories SET factory_name = '小魏' WHERE factory_name = '小微'"
-            )
-            conn.execute(
-                "UPDATE outsource_records SET factory_name = '小魏' WHERE factory_name = '小微'"
-            )
-            conn.execute(
                 "UPDATE outsource_records SET process_name = '印刷/UV' WHERE process_name IN ('印刷', 'UV')"
             )
             conn.execute(
@@ -264,6 +246,28 @@ class Database:
             conn.execute("DELETE FROM outsource_processes WHERE process_name IN ('印刷', 'UV')")
             conn.execute(
                 "INSERT OR IGNORE INTO outsource_processes (process_name) VALUES ('印刷/UV')"
+            )
+            conn.execute(
+                """
+                DELETE FROM outsource_factories
+                WHERE process_name = '印刷/UV' AND factory_name = '小卫'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM outsource_factories AS existing
+                      WHERE existing.process_name = '印刷/UV'
+                        AND existing.factory_name = '小魏'
+                  )
+                """
+            )
+            conn.execute(
+                """UPDATE outsource_factories
+                   SET factory_name = '小魏'
+                   WHERE process_name = '印刷/UV' AND factory_name = '小卫'"""
+            )
+            conn.execute(
+                """UPDATE outsource_records
+                   SET factory_name = '小魏'
+                   WHERE process_name = '印刷/UV' AND factory_name = '小卫'"""
             )
             conn.execute(
                 """
