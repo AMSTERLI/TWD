@@ -238,6 +238,24 @@ class Database:
                 """
             )
             conn.execute(
+                """
+                DELETE FROM outsource_factories
+                WHERE factory_name = '小微'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM outsource_factories AS existing
+                      WHERE existing.process_name = outsource_factories.process_name
+                        AND existing.factory_name = '小魏'
+                  )
+                """
+            )
+            conn.execute(
+                "UPDATE outsource_factories SET factory_name = '小魏' WHERE factory_name = '小微'"
+            )
+            conn.execute(
+                "UPDATE outsource_records SET factory_name = '小魏' WHERE factory_name = '小微'"
+            )
+            conn.execute(
                 "UPDATE outsource_records SET process_name = '印刷/UV' WHERE process_name IN ('印刷', 'UV')"
             )
             conn.execute(
