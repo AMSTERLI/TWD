@@ -184,6 +184,9 @@ with TestClient(app) as client:
     process_names = {item["process_name"] for item in repo.processes()}
     assert {PUNCH, COLORING, "印刷/UV", LEATHER}.issubset(process_names)
     assert "UV" not in process_names and "印刷" not in process_names
+    factory_pairs = {(item["process_name"], item["factory_name"]) for item in repo.factories()}
+    assert ("压铸", "吕鹏飞") in factory_pairs
+    assert ("印刷/UV", "韩振伟") in factory_pairs
 
     leather_id = repo.create_outsource_batch(
         {"process_name": LEATHER, "factory_name": LAO_LEI, "outsource_date": "2026-07-15", "paid_status": 0},
