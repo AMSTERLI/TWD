@@ -14,8 +14,8 @@ from order_system.database import Database
 from .security import hash_password, verify_password
 
 
-REQUIRED_WEB_PROCESSES = ["\u51b2\u538b", "\u4e0a\u8272", "\u6bdb\u8fb9", "\u5305\u88c5", "\u5370\u5237/UV", "\u8f66\u7ec7\u5e26", "\u956d\u96d5", "\u6811\u8102", "\u4f4e\u6e29\u950c\u5408\u91d1", "\u76ae\u9769", "\u78e8\u77f3"]
-REQUIRED_WEB_FACTORIES = [("\u6bdb\u8fb9", "\u6797\u4e16\u57f9"), ("\u956d\u96d5", "\u5f20\u5c55\u5c71"), ("\u76ae\u9769", "\u8001\u96f7")]
+REQUIRED_WEB_PROCESSES = ["\u538b\u94f8", "\u51b2\u538b", "\u4e0a\u8272", "\u6bdb\u8fb9", "\u5305\u88c5", "\u5370\u5237/UV", "\u8f66\u7ec7\u5e26", "\u956d\u96d5", "\u6811\u8102", "\u4f4e\u6e29\u950c\u5408\u91d1", "\u76ae\u9769", "\u78e8\u77f3"]
+REQUIRED_WEB_FACTORIES = [("\u538b\u94f8", "\u957f\u8425"), ("\u6bdb\u8fb9", "\u6797\u4e16\u57f9"), ("\u956d\u96d5", "\u5f20\u5c55\u5c71"), ("\u76ae\u9769", "\u8001\u96f7")]
 PLATING_SECONDARY_PROCESSES = {"打铜底", "清洗", "退镀", "封油", "＋雾漆", "＋喷漆", "＋雾金", "＋雾黑", "其他"}
 PLATING_REMARKS = {"多款", "异形", "配件", "返工", "补数"}
 
@@ -272,6 +272,22 @@ class Repository:
                 "UPDATE web_users SET display_name = username "
                 "WHERE display_name IS NULL OR TRIM(display_name) = ''"
             )
+            conn.execute(
+                "UPDATE outsource_records SET process_name = '压铸' WHERE process_name IN ('压铸亚胚', '压铸压胚')"
+            )
+            conn.execute(
+                "UPDATE outsource_factories SET process_name = '压铸' WHERE process_name IN ('压铸亚胚', '压铸压胚')"
+            )
+            conn.execute(
+                """
+                DELETE FROM outsource_factories
+                 WHERE id NOT IN (
+                    SELECT MIN(id) FROM outsource_factories
+                     GROUP BY process_name, factory_name
+                 )
+                """
+            )
+            conn.execute("DELETE FROM outsource_processes WHERE process_name IN ('压铸亚胚', '压铸压胚')")
             conn.execute(
                 """UPDATE order_edit_requests
                    SET requester_name = (
@@ -2710,6 +2726,11 @@ class Repository:
                     mold_fee = float(row.get("mold_fee") or 0)
                     if mold_fee < 0:
                         raise ValueError(f"\u8ba2\u5355 {order_no} \u7684\u6a21\u5177\u8d39\u4e0d\u80fd\u4e3a\u8d1f\u6570")
+                    amount = quantity * unit_price + mold_fee
+                elif process_name == "压铸":
+                    mold_fee = float(row.get("mold_fee") or 0)
+                    if mold_fee < 0:
+                        raise ValueError(f"订单 {order_no} 的开水口不能为负数")
                     amount = quantity * unit_price + mold_fee
                 else:
                     amount = quantity * unit_price

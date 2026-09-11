@@ -1073,6 +1073,11 @@ def outsource_edit_payload(form: Any) -> dict[str, Any]:
         if mold_fee < 0:
             raise ValueError("\u6a21\u5177\u8d39\u4e0d\u80fd\u4e3a\u8d1f\u6570")
         amount = quantity * unit_price + mold_fee
+    elif process_name == "压铸":
+        mold_fee = as_float(form.get("mold_fee"))
+        if mold_fee < 0:
+            raise ValueError("开水口不能为负数")
+        amount = quantity * unit_price + mold_fee
     else:
         amount = quantity * unit_price
 
@@ -3105,7 +3110,7 @@ async def finance_payables_export(request: Request):
         "加工厂付款",
         ["订单号", "产品", "工艺", "加工厂", "产品数量", "备品数量", "合计数量", "加工单价",
          "加工费", "长mm", "宽mm", "厚mm", "密度", "重量", "材料单价", "颜色数量",
-         "版费", "模具费", "金额", "外发日期", "付款状态", "备注"],
+         "版费", "模具费/开水口", "金额", "外发日期", "付款状态", "备注"],
         data,
         "payables",
     )

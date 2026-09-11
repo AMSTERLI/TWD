@@ -78,6 +78,7 @@ with TestClient(app) as client:
     assert "data-order-lookup-url" in page.text and "data-outsource-orders-json" not in page.text
     assert 'name="width_mm" step="any"' in page.text
     assert "模具费" in page.text
+    assert "开水口" in page.text
     static_js = Path("order_system/web/static/app.js").read_text(encoding="utf-8")
     assert "input.disabled = !active" in static_js
     lookup = client.get(f"/outsource/order-lookup?order_no={first_no}")
@@ -95,7 +96,7 @@ with TestClient(app) as client:
             "csrf": token(page.text), "process_name": DIE_CAST, "factory_name": "batch-factory",
             "outsource_date": "2026-07-15", "order_no": [first_no, second_no],
             "product_quantity": ["80", "90"], "spare_quantity": ["5", "6"],
-            "unit_price": ["0.3", "0.4"], "processing_fee": ["2", "3"],
+            "unit_price": ["0.3", "0.4"], "processing_fee": ["2", "3"], "mold_fee": ["4", "5"],
             "flag_type": ["", "replenishment"], "remark": ["first", "second"],
             "manual_amount": ["", ""],
         },
@@ -109,18 +110,19 @@ with TestClient(app) as client:
     assert "batch-factory" in receipt_page.text and DIE_CAST in receipt_page.text
     assert first_no in receipt_page.text and second_no in receipt_page.text
     assert "本次合计" in receipt_page.text and "本月合计" in receipt_page.text
-    assert "63.90" in receipt_page.text and "{{" not in receipt_page.text
+    assert "72.90" in receipt_page.text and "{{" not in receipt_page.text
     assert "85个" in receipt_page.text and "96个" in receipt_page.text
     assert "item-subline" in receipt_page.text
     receipt_ids = [int(item) for item in response.headers["location"].split("ids=", 1)[1].split(",")]
     receipt_data = repo.outsource_receipt(receipt_ids)
     assert receipt_data is not None
-    assert abs(receipt_data["current_total"] - 63.9) < 1e-9
-    assert abs(receipt_data["month_total"] - 63.9) < 1e-9
+    assert abs(receipt_data["current_total"] - 72.9) < 1e-9
+    assert abs(receipt_data["month_total"] - 72.9) < 1e-9
     records = repo.outsource_records()["rows"]
     assert len(records) == 2
     assert {row["order_no"] for row in records} == {first_no, second_no}
     assert {row["factory_name"] for row in records} == {"batch-factory"}
+    assert {row["mold_fee"] for row in records} == {4, 5}
     assert all(row["received_status"] == 0 for row in records)
     receive = client.post(
         "/outsource/receive",
@@ -181,12 +183,28 @@ with TestClient(app) as client:
     assert legacy_receive.status_code == 303
     assert repo.get_outsource_record(legacy_outsource_id)["received_status"] == 1
 
+    with repo.connect(write=True) as conn:
+        conn.execute("INSERT OR IGNORE INTO outsource_processes (process_name) VALUES (?)", ("压铸亚胚",))
+        conn.execute(
+            "INSERT INTO outsource_factories (process_name, factory_name) VALUES (?, ?)",
+            ("压铸亚胚", "legacy-diecast-factory"),
+        )
+    repo.initialize()
     process_names = {item["process_name"] for item in repo.processes()}
     assert {PUNCH, COLORING, "印刷/UV", LEATHER}.issubset(process_names)
-    assert "UV" not in process_names and "印刷" not in process_names
+    assert "UV" not in process_names and "印刷" not in process_names and "压铸亚胚" not in process_names
     factory_pairs = {(item["process_name"], item["factory_name"]) for item in repo.factories()}
     assert ("压铸", "吕鹏飞") in factory_pairs
+    assert ("压铸", "长营") in factory_pairs
+    assert ("压铸", "legacy-diecast-factory") in factory_pairs
     assert ("印刷/UV", "韩振伟") in factory_pairs
+
+    diecast_id = repo.create_outsource_batch(
+        {"process_name": DIE_CAST, "factory_name": "长营", "outsource_date": "2026-07-15", "paid_status": 0},
+        [{"order_no": first_no, "product_quantity": 10, "spare_quantity": 2, "unit_price": 1.5, "mold_fee": 6}],
+    )[0]
+    diecast = repo.legacy.get_outsource_record(diecast_id)
+    assert diecast["mold_fee"] == 6 and diecast["amount"] == 24
 
     leather_id = repo.create_outsource_batch(
         {"process_name": LEATHER, "factory_name": LAO_LEI, "outsource_date": "2026-07-15", "paid_status": 0},

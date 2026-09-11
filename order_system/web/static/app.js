@@ -1171,7 +1171,7 @@ if (outsourceBatch) {
   const duplicateScanTimers = new WeakMap();
   let resubmittingAfterLookup = false;
 
-  const numberValue = (row, name) => Number(row.querySelector(`[name="${name}"]`)?.value || 0);
+  const numberValue = (row, name) => Number((row.querySelector(`[name="${name}"]:not(:disabled)`) || row.querySelector(`[name="${name}"]`))?.value || 0);
   const cleanNumber = (value, digits = 6) => Number(value.toFixed(digits)).toString();
 
   function recalculateRow(row) {
@@ -1202,6 +1202,8 @@ if (outsourceBatch) {
     } else if (process === "印刷/UV") {
       amount += numberValue(row, "plate_fee");
     } else if (process === "低温锌合金") {
+      amount += numberValue(row, "mold_fee");
+    } else if (process === "压铸") {
       amount += numberValue(row, "mold_fee");
     }
     if (!amountInput || amountInput.dataset.manualLocked === "1") return;
@@ -1257,6 +1259,8 @@ if (outsourceBatch) {
       processHelp.textContent = "总金额 =（产品数量 + 备品数量）× 单价 + 版费。";
     } else if (process === "低温锌合金") {
       processHelp.textContent = "总金额 =（产品数量 + 备品数量）× 单价 + 模具费。";
+    } else if (process === "压铸") {
+      processHelp.textContent = "总金额 =（产品数量 + 备品数量）× 加工单价 + 开水口。";
     } else if (process) {
       processHelp.textContent = "金额 =（产品数量+备品数量）×加工单价。";
     } else {

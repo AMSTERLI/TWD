@@ -144,6 +144,7 @@ DEFAULT_OUTSOURCE_PROCESSES = [
 
 DEFAULT_OUTSOURCE_FACTORIES = [
     ("\u538b\u94f8", "\u5415\u9e4f\u98de"),
+    ("\u538b\u94f8", "\u957f\u8425"),
     ("\u4e0a\u8272", "\u97e9\u632f\u4f1f"),
     ("\u4e0a\u8272", "\u9ec4\u5c0f\u4e91"),
     ("\u710a\u9488", "\u79e6\u6c38\u548c"),
@@ -232,6 +233,30 @@ class Database:
             )
             self._seed_outsource_processes(conn)
             self._seed_outsource_factories(conn)
+            conn.execute(
+                "UPDATE outsource_records SET process_name = '压铸' WHERE process_name IN ('压铸亚胚', '压铸压胚')"
+            )
+            conn.execute(
+                "UPDATE outsource_factories SET process_name = '压铸' WHERE process_name IN ('压铸亚胚', '压铸压胚')"
+            )
+            conn.execute(
+                """
+                DELETE FROM outsource_factories
+                 WHERE id NOT IN (
+                    SELECT MIN(id) FROM outsource_factories
+                     GROUP BY process_name, factory_name
+                 )
+                """
+            )
+            conn.execute("DELETE FROM outsource_processes WHERE process_name IN ('压铸亚胚', '压铸压胚')")
+            conn.execute("INSERT OR IGNORE INTO outsource_processes (process_name) VALUES ('压铸')")
+            conn.execute(
+                """INSERT INTO outsource_factories (process_name, factory_name)
+                   SELECT '压铸', '长营'
+                   WHERE NOT EXISTS (
+                       SELECT 1 FROM outsource_factories WHERE process_name = '压铸' AND factory_name = '长营'
+                   )"""
+            )
             conn.execute(
                 """
                 UPDATE outsource_factories
