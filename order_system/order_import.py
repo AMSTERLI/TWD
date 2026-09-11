@@ -28,7 +28,7 @@ MAX_VISUAL_IMAGES = 8
 VISUAL_MIN_PIXELS = 4_194_304
 VISUAL_MAX_PIXELS = 8_388_608
 DOC_CONVERSION_TIMEOUT_SECONDS = 60
-SUPPORTED_DOCUMENT_SUFFIXES = {".doc", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf"}
+SUPPORTED_DOCUMENT_SUFFIXES = {".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf"}
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 VISUAL_DOCUMENT_SUFFIXES = {".docx", ".xlsx", ".xlsm", ".xls", ".pdf"}
 
@@ -49,9 +49,7 @@ def extract_document_text(file_path: str | Path) -> str:
     suffix = path.suffix.lower()
     try:
         if suffix == ".doc":
-            with tempfile.TemporaryDirectory(prefix="twd-doc-import-") as temp_dir:
-                converted_path = _convert_with_libreoffice(path, "docx", Path(temp_dir))
-                text = _extract_docx(converted_path)
+            raise OrderImportError("暂不支持旧版 .doc 客单，请另存为 .docx、Excel、PDF 或图片后上传。")
         elif suffix == ".docx":
             text = _extract_docx(path)
         elif suffix in {".xlsx", ".xlsm"}:
@@ -66,7 +64,7 @@ def extract_document_text(file_path: str | Path) -> str:
             text = _extract_pdf(path)
         else:
             raise OrderImportError(
-                "暂不支持此格式。请选择 .doc、.docx、.xlsx、.xlsm、.xls、.csv、.tsv、.html、.htm、.pdf、.png、.jpg、.jpeg 或 .webp 文件。"
+                "暂不支持此格式。请选择 .docx、.xlsx、.xlsm、.xls、.csv、.tsv、.html、.htm、.pdf、.png、.jpg、.jpeg 或 .webp 文件。"
             )
     except OrderImportError:
         raise
@@ -727,9 +725,10 @@ def analyze_order_document(
             image_paths = _expanded_visual_images([path], Path(temp_dir))
             user_content: str | list[dict[str, Any]] = _visual_user_content(image_paths, supplemental_prompt)
     elif suffix == ".doc":
-        user_content = _legacy_doc_user_content(path, supplemental_prompt)
-    elif suffix in VISUAL_DOCUMENT_SUFFIXES:
-        user_content = _layout_document_user_content(path, supplemental_prompt)
+        raise OrderImportError("暂不支持旧版 .doc 客单，请另存为 .docx、Excel、PDF 或图片后上传。")
+    elif suffix in SUPPORTED_DOCUMENT_SUFFIXES:
+        document_text = extract_document_text(path)
+        user_content = _document_user_content(document_text, supplemental_prompt)
     else:
         document_text = extract_document_text(path)
         user_content = _document_user_content(document_text, supplemental_prompt)

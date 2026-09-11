@@ -21,10 +21,9 @@ if (importBox) {
   const presetPrompts = [...(promptSelect?.options || [])].map(option => option.value).filter(Boolean);
   const presetPromptSet = new Set(presetPrompts);
   const allowedOrderImportSuffixes = new Set([
-    ".doc", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf", ".png", ".jpg", ".jpeg", ".webp"
+    ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".html", ".htm", ".pdf", ".png", ".jpg", ".jpeg", ".webp"
   ]);
   const suffixByClipboardType = {
-    "application/msword": "doc",
     "application/vnd.ms-excel": "xls",
     "application/vnd.ms-excel.sheet.macroenabled.12": "xlsm",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
