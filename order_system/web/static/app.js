@@ -1151,6 +1151,7 @@ if (orderNumberInput && orderDateInput && orderPrefixInput) {
   });
   if (manualOrderNumberInput?.checked && refreshOrderNumberButton) refreshOrderNumberButton.disabled = true;
   refreshOrderNumberButton?.addEventListener("click", () => refreshOrderNumber({force: true}));
+  if (!orderNumberInput.value.trim() && orderPrefixInput.value) scheduleAutoOrderNumber();
 }
 
 const outsourceBatch = document.querySelector("[data-outsource-batch]");
@@ -2150,7 +2151,7 @@ if (contextRows.length) {
   const menu = document.createElement("div");
   menu.className = "admin-context-menu";
   menu.hidden = true;
-  menu.innerHTML = '<button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-workshop-edit>\u4fee\u6539\u8ba1\u4ef6</button><button type="button" data-context-workshop-quantity>申请改数量/金额</button><button type="button" data-context-replenish>申请补数</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-request-delete>申请删除</button><button type="button" class="danger-button" data-context-delete>删除</button>';
+  menu.innerHTML = '<button type="button" data-context-copy>开新单</button><button type="button" data-context-edit>修改</button><button type="button" data-context-request>申请修改</button><button type="button" data-context-workshop-edit>\u4fee\u6539\u8ba1\u4ef6</button><button type="button" data-context-workshop-quantity>申请改数量/金额</button><button type="button" data-context-replenish>申请补数</button><button type="button" data-context-ship>出货</button><button type="button" class="danger-button" data-context-request-delete>申请删除</button><button type="button" class="danger-button" data-context-delete>删除</button>';
   document.body.appendChild(menu);
   let activeRow = null;
 
@@ -2161,6 +2162,7 @@ if (contextRows.length) {
 
   function refreshContextButtons() {
     menu.querySelector("[data-context-edit]").hidden = !activeRow?.dataset.editUrl;
+    menu.querySelector("[data-context-copy]").hidden = !activeRow?.dataset.copyUrl;
     menu.querySelector("[data-context-request]").hidden = !activeRow?.dataset.requestEditUrl;
     menu.querySelector("[data-context-workshop-edit]").hidden = !activeRow?.dataset.workshopEditUrl;
     menu.querySelector("[data-context-workshop-quantity]").hidden = !activeRow?.dataset.workshopQuantityUrl;
@@ -2187,6 +2189,9 @@ if (contextRows.length) {
 
   menu.querySelector("[data-context-edit]").addEventListener("click", () => {
     if (activeRow?.dataset.editUrl) window.location.href = activeRow.dataset.editUrl;
+  });
+  menu.querySelector("[data-context-copy]").addEventListener("click", () => {
+    if (activeRow?.dataset.copyUrl) window.location.href = activeRow.dataset.copyUrl;
   });
   menu.querySelector("[data-context-request]").addEventListener("click", () => {
     if (!activeRow?.dataset.requestEditUrl) return;

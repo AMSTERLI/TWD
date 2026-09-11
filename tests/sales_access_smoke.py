@@ -110,6 +110,9 @@ with TestClient(app) as client:
     assert "单价" in orders.text and "金额" in orders.text and "2.5000" in orders.text and "&#165; 3.50" in orders.text
     assert f'data-order-image-preview="/api/orders/{own_id}/preview-image"' in orders.text
     assert "order-image-hover" in APP_JS
+    assert f'data-copy-url="/orders/{own_id}/copy"' in orders.text and "data-context-copy" in APP_JS
+    assert client.get(f"/orders/{own_id}/copy").status_code == 200
+    assert client.get(f"/orders/{other_id}/copy").status_code == 403
     assert client.get(f"/api/orders/{own_id}/preview-image").status_code == 200
     assert client.get(f"/api/orders/{other_id}/preview-image").status_code == 404
     assert 'data-select-all' in orders.text and f'name="order_ids" value="{own_id}"' in orders.text

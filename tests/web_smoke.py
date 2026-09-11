@@ -30,6 +30,7 @@ def csrf(html: str) -> str:
 
 
 PNG_BYTES = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=")
+APP_JS = (Path(__file__).resolve().parents[1] / "order_system" / "web" / "static" / "app.js").read_text(encoding="utf-8")
 
 
 with TestClient(app) as client:
@@ -180,6 +181,39 @@ with TestClient(app) as client:
     component_pdf = client.get("/orders/1/pdf")
     assert component_pdf.status_code == 200
     assert len(PdfReader(BytesIO(component_pdf.content)).pages) >= 2
+    orders_page = client.get("/orders")
+    assert 'data-copy-url="/orders/1/copy"' in orders_page.text and "data-context-copy" in APP_JS
+    copy_page = client.get("/orders/1/copy")
+    assert copy_page.status_code == 200
+    assert "基于原订单 TWD1-260715001 开立新订单" in copy_page.text
+    assert 'action="/orders/new"' in copy_page.text
+    assert 'name="copy_source_order_id" value="1"' in copy_page.text
+    assert 'name="order_no" value=""' in copy_page.text
+    copy_next = client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=1").json()["order_no"]
+    copied = client.post(
+        "/orders/new",
+        data={
+            "csrf": csrf(copy_page.text), "copy_source_order_id": "1",
+            "order_type": "新订单", "salesman": "admin-copy",
+            "product_name": "复制新单", "order_date": "2026-07-15", "delivery_date": "2026-07-25",
+            "quantity": "120", "spare_quantity": "3", "quantity_unit": "个",
+            "unit_price": "2.5", "extra_fee": "1", "order_prefix_no": "1", "order_no": copy_next,
+            "existing_images": image_names,
+            "component_existing_image": [component_parts[0]["image"]],
+            "component_text": ["copied component"],
+        },
+        follow_redirects=False,
+    )
+    assert copied.status_code == 303, copied.text
+    copied_id = int(copied.headers["location"].split("/")[2].split("?")[0])
+    copied_order = repo.get_order(copied_id)
+    copied_images = loads_json(copied_order["image_paths_json"])
+    copied_components = loads_json(copied_order["component_parts_json"])
+    assert copied_order["order_no"] == copy_next and copied_order["product_name"] == "复制新单"
+    assert copied_images and copied_images[0] != image_names[0]
+    assert copied_components and copied_components[0]["image"] != component_parts[0]["image"]
+    assert (IMAGES_DIR / copied_images[0]).is_file()
+    assert (IMAGES_DIR / copied_components[0]["image"]).is_file()
     duplicate_page = client.get("/orders/new")
     duplicate = client.post(
         "/orders/new",

@@ -808,6 +808,51 @@ def merge_edit_images(form: Any, existing: dict[str, Any], uploaded_images: list
     return merged, removed
 
 
+def copy_image_file(image_name: Any) -> str:
+    source_name = safe_image_name(image_name)
+    if not source_name:
+        return ""
+    source = IMAGES_DIR / source_name
+    if not source.is_file():
+        return ""
+    target = IMAGES_DIR / f"{uuid4().hex}{source.suffix.lower()}"
+    shutil.copy2(source, target)
+    create_image_thumbnail(target, THUMBNAILS_DIR)
+    return target.name
+
+
+def copy_order_existing_images(
+    form: Any,
+    source_order: dict[str, Any],
+    uploaded_images: list[str],
+    component_parts_json: str,
+) -> tuple[list[str], str]:
+    source_images = [name for name in loads_json(source_order.get("image_paths_json") or "[]") if safe_image_name(name)]
+    allowed_images = set(source_images)
+    copied_images: list[str] = []
+    for raw in form.getlist("existing_images"):
+        name = safe_image_name(raw)
+        if name in allowed_images:
+            copied = copy_image_file(name)
+            if copied:
+                copied_images.append(copied)
+
+    source_component_images = {
+        str(item.get("image") or "")
+        for item in loads_json(source_order.get("component_parts_json") or "[]")
+        if isinstance(item, dict) and safe_image_name(item.get("image"))
+    }
+    component_parts = loads_json(component_parts_json or "[]")
+    for part in component_parts:
+        if not isinstance(part, dict):
+            continue
+        image_name = safe_image_name(part.get("image"))
+        if image_name in source_component_images:
+            part["image"] = copy_image_file(image_name)
+
+    return copied_images + uploaded_images, dumps_json(component_parts)
+
+
 
 async def parse_component_parts(form: Any, *, save_uploaded_images: bool = True) -> list[dict[str, str]]:
     texts = [str(item or "").strip() for item in form.getlist("component_text")]
@@ -1602,6 +1647,25 @@ def new_order(request: Request):
     )
 
 
+@app.get("/orders/{order_id}/copy", response_class=HTMLResponse)
+def copy_order_page(request: Request, order_id: int):
+    user, denied = require_page(request, {"sales"})
+    if denied:
+        return denied
+    record = _editable_order(order_id)
+    if not record:
+        return Response(status_code=404)
+    if sales_order_forbidden(user, record):
+        return templates.TemplateResponse(
+            request, "error.html", page_context(request, status=403, message="forbidden"), status_code=403
+        )
+    return templates.TemplateResponse(
+        request,
+        "order_edit.html",
+        page_context(request, order=record, catalogs=import_catalogs(), error="", edit_request=None, copy_mode=True),
+    )
+
+
 @app.get("/api/next-order-no")
 def next_order_no(request: Request, order_date: str = "", order_prefix_no: int = 1, force: int = 0):
     user, denied = require_page(request, {"sales"})
@@ -1664,15 +1728,37 @@ async def create_order(request: Request):
         return templates.TemplateResponse(
             request, "error.html", page_context(request, status=400, message="页面已过期，请重新提交"), status_code=400
         )
+    copy_source_order: dict[str, Any] | None = None
     try:
+        copy_source_order_id = as_int(form.get("copy_source_order_id"))
+        if copy_source_order_id:
+            copy_source_order = repo.get_order(copy_source_order_id)
+            if not copy_source_order:
+                raise ValueError("原订单不存在，无法开新单")
+            if sales_order_forbidden(user, copy_source_order):
+                raise ValueError("没有权限基于该订单开新单")
         payload = await order_payload(form)
         if user["role"] != "admin":
             payload["salesman"] = user_display_name(user)
         payload["_reservation_user_id"] = int(user.get("id") or 0)
         if not payload["product_name"] or payload["quantity"] <= 0 or payload["spare_quantity"] < 0 or not str(form.get("spare_quantity") or "").strip():
             raise ValueError("产品名称、有效数量和备品数量为必填项")
+        if copy_source_order:
+            uploaded_images = loads_json(payload.get("image_paths_json") or "[]")
+            image_paths, component_parts_json = copy_order_existing_images(
+                form,
+                copy_source_order,
+                uploaded_images,
+                str(payload.get("component_parts_json") or "[]"),
+            )
+            if len(image_paths) > 6:
+                raise ValueError("产品图片最多 6 张")
+            payload["image_paths_json"] = dumps_json(image_paths)
+            payload["component_parts_json"] = component_parts_json
         order_id, order_no = await run_in_threadpool(repo.create_order, payload)
         await run_in_threadpool(repo.audit, user, "order.create", order_no, client_ip(request))
+        if copy_source_order:
+            await run_in_threadpool(repo.audit, user, "order.copy", f"{copy_source_order['id']}:{order_id}", client_ip(request))
         stored_customer_file = await run_in_threadpool(
             finalize_customer_order_file,
             str(form.get("customer_file_token") or ""),
@@ -1682,6 +1768,21 @@ async def create_order(request: Request):
         if stored_customer_file:
             await run_in_threadpool(repo.audit, user, "order.customer_file.store", stored_customer_file, client_ip(request))
     except ValueError as exc:
+        if copy_source_order:
+            record = _editable_order(int(copy_source_order["id"]))
+            return templates.TemplateResponse(
+                request,
+                "order_edit.html",
+                page_context(
+                    request,
+                    order=record,
+                    catalogs=import_catalogs(),
+                    error=str(exc),
+                    edit_request=None,
+                    copy_mode=True,
+                ),
+                status_code=422,
+            )
         return templates.TemplateResponse(
             request, "order_form.html",
             page_context(
