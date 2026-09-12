@@ -5,8 +5,10 @@ import importlib
 from io import BytesIO
 import os
 import re
+import struct
 import tempfile
 import sys
+import zlib
 from pathlib import Path
 
 
@@ -20,7 +22,7 @@ from pypdf import PdfReader  # noqa: E402
 from order_system.database import loads_json  # noqa: E402
 from order_system.web.app import app, repo  # noqa: E402
 from order_system.web.image_thumbnails import backfill_order_thumbnails, cached_thumbnail_path  # noqa: E402
-from order_system.web.settings import CUSTOMER_ORDER_PENDING_DIR, CUSTOMER_ORDERS_DIR, IMAGES_DIR, THUMBNAILS_DIR  # noqa: E402
+from order_system.web.settings import CUSTOMER_ORDER_PENDING_DIR, CUSTOMER_ORDERS_DIR, IMAGES_DIR, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS, THUMBNAILS_DIR  # noqa: E402
 
 
 def csrf(html: str) -> str:
@@ -31,6 +33,14 @@ def csrf(html: str) -> str:
 
 PNG_BYTES = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=")
 APP_JS = (Path(__file__).resolve().parents[1] / "order_system" / "web" / "static" / "app.js").read_text(encoding="utf-8")
+
+
+def png_header(width: int, height: int) -> bytes:
+    def chunk(name: bytes, data: bytes) -> bytes:
+        return len(data).to_bytes(4, "big") + name + data + zlib.crc32(name + data).to_bytes(4, "big")
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IEND", b"")
 
 
 with TestClient(app) as client:
@@ -138,6 +148,30 @@ with TestClient(app) as client:
     assert client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=13").status_code == 400
     reserved = client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=1")
     assert reserved.status_code == 200 and reserved.json()["order_no"] == "TWD1-260715001"
+    oversized = client.post(
+        "/orders/new",
+        data={
+            "csrf": csrf(form_page.text), "order_type": "新订单", "salesman": "测试",
+            "product_name": "\u5927\u56fe\u6d4b\u8bd5", "order_date": "2026-07-15", "delivery_date": "2026-07-20",
+            "quantity": "1", "spare_quantity": "0", "quantity_unit": "个", "order_prefix_no": "1",
+            "order_no": "TWD1-260715001",
+        },
+        files=[("product_images", ("oversized.png", b"0" * (MAX_IMAGE_BYTES + 1), "image/png"))],
+    )
+    assert oversized.status_code == 422
+    assert "\u5355\u5f20\u56fe\u7247\u4e0d\u80fd\u8d85\u8fc7" in oversized.text
+    too_many_pixels = client.post(
+        "/orders/new",
+        data={
+            "csrf": csrf(form_page.text), "order_type": "新订单", "salesman": "测试",
+            "product_name": "\u8d85\u50cf\u7d20\u6d4b\u8bd5", "order_date": "2026-07-15", "delivery_date": "2026-07-20",
+            "quantity": "1", "spare_quantity": "0", "quantity_unit": "个", "order_prefix_no": "1",
+            "order_no": "TWD1-260715001",
+        },
+        files=[("product_images", ("huge-pixels.png", png_header(MAX_IMAGE_PIXELS + 1, 1), "image/png"))],
+    )
+    assert too_many_pixels.status_code == 422
+    assert "\u5355\u5f20\u56fe\u7247\u50cf\u7d20\u4e0d\u80fd\u8d85\u8fc7" in too_many_pixels.text
     response = client.post(
         "/orders/new",
         data={

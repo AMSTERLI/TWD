@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import warnings
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -21,6 +22,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.datastructures import UploadFile
+from PIL import Image, UnidentifiedImageError
 
 from order_system.database import dumps_json, loads_json
 from order_system.excel_export import export_rows_to_excel
@@ -32,7 +34,8 @@ from .pdf import merge_order_pdfs, render_order_pdf
 from .repository import ORDER_COLUMNS, Repository, normalize_scanned_order_no, price_tier_label, price_tiers_from_json
 from .security import csrf_token, valid_csrf
 from .settings import (
-    CUSTOMER_ORDER_PENDING_DIR, CUSTOMER_ORDERS_DIR, DB_PATH, IMAGES_DIR, MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES, SESSION_HTTPS_ONLY,
+    CUSTOMER_ORDER_PENDING_DIR, CUSTOMER_ORDERS_DIR, DB_PATH, IMAGES_DIR, MAX_IMAGE_BYTES, MAX_IMAGE_MB, MAX_IMAGE_PIXELS,
+    MAX_UPLOAD_BYTES, SESSION_HTTPS_ONLY,
     STATIC_DIR, TEMPLATES_DIR, TMP_DIR, ensure_directories, session_secret,
     THUMBNAILS_DIR,
 )
@@ -41,6 +44,7 @@ from .settings import (
 repo = Repository(DB_PATH)
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 BEIJING_TZ = ZoneInfo("Asia/Shanghai")
+Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 
 
 def beijing_time(value: Any) -> str:
@@ -727,6 +731,24 @@ def excel_response_with_filename(
         headers={"Content-Disposition": f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(filename)}"},
     )
 
+
+def png_header_dimensions(path: Path) -> tuple[int, int] | None:
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(33)
+    except OSError:
+        return None
+    if len(header) < 33 or header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
+        return None
+    return int.from_bytes(header[16:20], "big"), int.from_bytes(header[20:24], "big")
+
+
+def ensure_image_pixel_limit(width: int, height: int, target: Path) -> None:
+    if width <= 0 or height <= 0 or width * height > MAX_IMAGE_PIXELS:
+        target.unlink(missing_ok=True)
+        raise ValueError(f"\u5355\u5f20\u56fe\u7247\u50cf\u7d20\u4e0d\u80fd\u8d85\u8fc7 {MAX_IMAGE_PIXELS:,}")
+
+
 async def save_image_upload(upload: UploadFile, *, preview: bool = False) -> str:
     if not upload.filename:
         return ""
@@ -742,8 +764,23 @@ async def save_image_upload(upload: UploadFile, *, preview: bool = False) -> str
             if size > MAX_IMAGE_BYTES:
                 output.close()
                 target.unlink(missing_ok=True)
-                raise ValueError("\u5355\u5f20\u56fe\u7247\u4e0d\u80fd\u8d85\u8fc7 5 MB")
+                raise ValueError(f"\u5355\u5f20\u56fe\u7247\u4e0d\u80fd\u8d85\u8fc7 {MAX_IMAGE_MB} MB")
             output.write(chunk)
+    header_dimensions = png_header_dimensions(target)
+    if header_dimensions:
+        ensure_image_pixel_limit(*header_dimensions, target)
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(target) as image:
+                width, height = image.size
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        target.unlink(missing_ok=True)
+        raise ValueError(f"\u4ea7\u54c1\u56fe\u7247\u50cf\u7d20\u4e0d\u80fd\u8d85\u8fc7 {MAX_IMAGE_PIXELS:,}") from exc
+    except (OSError, UnidentifiedImageError) as exc:
+        target.unlink(missing_ok=True)
+        raise ValueError("\u4ea7\u54c1\u56fe\u7247\u6587\u4ef6\u65e0\u6cd5\u8bc6\u522b\uff0c\u8bf7\u91cd\u65b0\u4e0a\u4f20") from exc
+    ensure_image_pixel_limit(width, height, target)
     if not preview:
         await run_in_threadpool(create_image_thumbnail, target, THUMBNAILS_DIR)
     return target.name

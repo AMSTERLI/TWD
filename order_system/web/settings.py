@@ -20,8 +20,11 @@ TEMPLATE_PATH = APP_ROOT / "order_temp.pdf"
 WEB_ROOT = Path(__file__).resolve().parent
 TEMPLATES_DIR = WEB_ROOT / "templates"
 STATIC_DIR = WEB_ROOT / "static"
-MAX_UPLOAD_BYTES = int(os.environ.get("TWD_MAX_UPLOAD_MB", "10")) * 1024 * 1024
-MAX_IMAGE_BYTES = 5 * 1024 * 1024
+MAX_UPLOAD_MB = int(os.environ.get("TWD_MAX_UPLOAD_MB", "10"))
+MAX_IMAGE_MB = int(os.environ.get("TWD_MAX_IMAGE_MB", "5"))
+MAX_IMAGE_PIXELS = int(os.environ.get("TWD_MAX_IMAGE_PIXELS", "25000000"))
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+MAX_IMAGE_BYTES = MAX_IMAGE_MB * 1024 * 1024
 SESSION_HTTPS_ONLY = os.environ.get("TWD_COOKIE_HTTPS_ONLY", "0") == "1"
 
 
