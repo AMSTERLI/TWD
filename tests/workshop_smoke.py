@@ -93,6 +93,15 @@ with TestClient(app) as client:
     mold_payload["width_mm"] = "20"
     mold_payload["thickness_mm"] = "5"
     order_id, order_no = repo.create_order(mold_payload)
+    zinc_auto_payload = payload("TWD1-260721130")
+    zinc_auto_payload["materials_json"] = dumps_json(["\u950c\u5408\u91d1"])
+    _, zinc_auto_order_no = repo.create_order(zinc_auto_payload)
+    iron_auto_payload = payload("TWD1-260721131")
+    iron_auto_payload["product_name"] = "\u94c1\u724c"
+    _, iron_auto_order_no = repo.create_order(iron_auto_payload)
+    copper_auto_payload = payload("TWD1-260721132")
+    copper_auto_payload["material_note"] = "\u94dc\u51b2\u538b"
+    _, copper_auto_order_no = repo.create_order(copper_auto_payload)
     cutter_order_id, cutter_order_no = repo.create_order(payload("TWD1-260721102"))
     spaced_cutter_order_id, spaced_cutter_order_no = repo.create_order(payload("TWD1-260721110"))
     press_payload = payload("TWD1-260721103")
@@ -157,6 +166,15 @@ with TestClient(app) as client:
     mold = client.get("/workshop/mold")
     assert mold.status_code == 200 and "data-workshop-scan" in mold.text
     assert "2D+\u80cc\u5b57" in mold.text and "3D+\u80cc\u5b57" in mold.text and ">\u80cc\u5b57<" in mold.text
+    for lookup_order_no, expected_material in (
+        (zinc_auto_order_no, "\u950c"),
+        (iron_auto_order_no, "\u94c1"),
+        (copper_auto_order_no, "\u94dc"),
+    ):
+        auto_material = client.get(f"/workshop/mold/history?order_no={lookup_order_no}")
+        assert auto_material.status_code == 200
+        assert auto_material.json()["record"]["material"] == expected_material
+        assert auto_material.json()["record"]["existing_workshop_record"] is False
     report = client.post(
         "/workshop/mold",
         data={"csrf": csrf(mold.text), "order_no": [order_no], "material": ["锌"], "size_text": ["50MM"], "spec": ["2D+\u80cc\u5b57"], "quantity": ["2"], "unit_price": ["10.5"], "record_type": ["normal"]},

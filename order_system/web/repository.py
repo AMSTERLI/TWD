@@ -68,6 +68,23 @@ def normalize_scanned_order_no(value: Any) -> str:
     return re.sub(r"\s+", "", str(value or "")).strip()
 
 
+def infer_mold_material_from_order(order: sqlite3.Row) -> str:
+    text = " ".join(
+        str(order[key] or "")
+        for key in ("materials_json", "material_note", "product_name")
+        if key in order.keys()
+    )
+    for keyword, material in (
+        ("\u950c\u5408\u91d1", "\u950c"),
+        ("\u950c", "\u950c"),
+        ("\u94c1", "\u94c1"),
+        ("\u94dc", "\u94dc"),
+    ):
+        if keyword in text:
+            return material
+    return ""
+
+
 def scanned_order_no_base_candidate(value: Any) -> str:
     clean = normalize_scanned_order_no(value)
     match = re.fullmatch(r"(TWD\d+-\d{9})-\d+", clean)
@@ -1589,6 +1606,8 @@ class Repository:
             result["quantity"] = 1
         else:
             result["quantity"] = order_quantity
+        if department_key == "mold" and not str(result.get("material") or "").strip():
+            result["material"] = infer_mold_material_from_order(order)
         result["existing_workshop_record"] = bool(row)
         return result
 
