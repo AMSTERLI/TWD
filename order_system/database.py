@@ -147,6 +147,7 @@ DEFAULT_OUTSOURCE_FACTORIES = [
     ("\u538b\u94f8", "\u957f\u8425"),
     ("\u4e0a\u8272", "\u97e9\u632f\u4f1f"),
     ("\u4e0a\u8272", "\u9ec4\u5c0f\u4e91"),
+    ("\u4e0a\u8272", "\u7530\u592a\u6b66"),
     ("\u710a\u9488", "\u79e6\u6c38\u548c"),
     ("\u6bdb\u8fb9", "\u6797\u4e16\u57f9"),
     ("\u956d\u96d5", "\u5f20\u5c55\u5c71"),
@@ -273,6 +274,25 @@ class Database:
                 """UPDATE outsource_records
                    SET factory_name = '田太武'
                    WHERE process_name = '包装' AND factory_name = '谭仁珍'"""
+            )
+            conn.execute(
+                """UPDATE outsource_factories
+                   SET factory_name = '田太武'
+                   WHERE process_name = '上色' AND factory_name = '谭仁珍'"""
+            )
+            conn.execute(
+                """UPDATE outsource_records
+                   SET factory_name = '田太武'
+                   WHERE process_name = '上色' AND factory_name = '谭仁珍'"""
+            )
+            conn.execute(
+                """
+                DELETE FROM outsource_factories
+                 WHERE id NOT IN (
+                    SELECT MIN(id) FROM outsource_factories
+                     GROUP BY process_name, factory_name
+                 )
+                """
             )
             conn.execute(
                 "UPDATE outsource_records SET process_name = '印刷/UV' WHERE process_name IN ('印刷', 'UV')"

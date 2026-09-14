@@ -15,7 +15,7 @@ from .security import hash_password, verify_password
 
 
 REQUIRED_WEB_PROCESSES = ["\u538b\u94f8", "\u51b2\u538b", "\u4e0a\u8272", "\u6bdb\u8fb9", "\u5305\u88c5", "\u5370\u5237/UV", "\u8f66\u7ec7\u5e26", "\u956d\u96d5", "\u6811\u8102", "\u4f4e\u6e29\u950c\u5408\u91d1", "\u76ae\u9769", "\u78e8\u77f3"]
-REQUIRED_WEB_FACTORIES = [("\u538b\u94f8", "\u957f\u8425"), ("\u6bdb\u8fb9", "\u6797\u4e16\u57f9"), ("\u956d\u96d5", "\u5f20\u5c55\u5c71"), ("\u76ae\u9769", "\u8001\u96f7")]
+REQUIRED_WEB_FACTORIES = [("\u538b\u94f8", "\u957f\u8425"), ("\u4e0a\u8272", "\u7530\u592a\u6b66"), ("\u6bdb\u8fb9", "\u6797\u4e16\u57f9"), ("\u956d\u96d5", "\u5f20\u5c55\u5c71"), ("\u76ae\u9769", "\u8001\u96f7")]
 PLATING_SECONDARY_PROCESSES = {"打铜底", "清洗", "退镀", "封油", "＋雾漆", "＋喷漆", "＋雾金", "＋雾黑", "其他"}
 PLATING_REMARKS = {"多款", "异形", "配件", "返工", "补数"}
 
@@ -277,6 +277,16 @@ class Repository:
             )
             conn.execute(
                 "UPDATE outsource_factories SET process_name = '压铸' WHERE process_name IN ('压铸亚胚', '压铸压胚')"
+            )
+            conn.execute(
+                """UPDATE outsource_factories
+                   SET factory_name = '田太武'
+                   WHERE process_name = '上色' AND factory_name = '谭仁珍'"""
+            )
+            conn.execute(
+                """UPDATE outsource_records
+                   SET factory_name = '田太武'
+                   WHERE process_name = '上色' AND factory_name = '谭仁珍'"""
             )
             conn.execute(
                 """
