@@ -42,7 +42,7 @@
       {% for row in receipt.rows %}
       <article class="item">
         <span class="order-no">{{ row.order_no }}</span>
-        <div class="item-subline"><span class="quantity">{{ '%g'|format(row.quantity or 0) }}个</span><span class="amount">{{ '%.2f'|format(row.amount or 0) }}</span></div>
+        <div class="item-subline"><span class="quantity">{{ '%g'|format(row.quantity or 0) }}&#20010;{{ '%g'|format(row.unit_price or 0) }}&#20803;</span><span class="amount">{{ '%.2f'|format(row.amount or 0) }}</span></div>
       </article>
       {% endfor %}
     </section>

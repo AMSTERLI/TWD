@@ -114,7 +114,7 @@ with TestClient(app) as client:
     assert first_no in receipt_page.text and second_no in receipt_page.text
     assert "本次合计" in receipt_page.text and "本月合计" in receipt_page.text
     assert "72.90" in receipt_page.text and "{{" not in receipt_page.text
-    assert "85个" in receipt_page.text and "96个" in receipt_page.text
+    assert "85&#20010;0.3&#20803;" in receipt_page.text and "96&#20010;0.4&#20803;" in receipt_page.text
     assert "item-subline" in receipt_page.text
     receipt_ids = [int(item) for item in response.headers["location"].split("ids=", 1)[1].split(",")]
     receipt_data = repo.outsource_receipt(receipt_ids)
