@@ -29,6 +29,7 @@ LAO_LEI = "\u8001\u96f7"
 PACKAGING = "\u5305\u88c5"
 ZENG_LIAN_WU = "\u66fe\u8fde\u543e"
 TIAN_TAI_WU = "\u7530\u592a\u6b66"
+LUO_HAI_YAN = "\u7f57\u6d77\u71d5"
 
 
 def token(html: str) -> str:
@@ -74,6 +75,7 @@ with TestClient(app) as client:
     assert ZENG_LIAN_WU in packaging_factories and "\u66fe\u51e4\u5a25" not in packaging_factories
     coloring_factories = {item["factory_name"] for item in repo.factories(COLORING)}
     assert TIAN_TAI_WU in coloring_factories
+    assert LUO_HAI_YAN in coloring_factories
     page = client.get("/outsource")
     assert page.status_code == 200
     assert "data-outsource-batch" in page.text
@@ -205,6 +207,7 @@ with TestClient(app) as client:
     assert ("压铸", "长营") in factory_pairs
     assert ("压铸", "legacy-diecast-factory") in factory_pairs
     assert (COLORING, TIAN_TAI_WU) in factory_pairs
+    assert (COLORING, LUO_HAI_YAN) in factory_pairs
     assert (COLORING, "谭仁珍") not in factory_pairs
     assert ("印刷/UV", "韩振伟") in factory_pairs
 
