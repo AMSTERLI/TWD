@@ -547,7 +547,7 @@ def workshop_report_column_labels(department_key: str = "") -> dict[str, str]:
     }
     if department.get("employees") or department.get("fixed_operator"):
         allowed.add("employee")
-    if department_key in {"mold", "cutter", "press", "polishing", "painting", "diecast"}:
+    if department_key in {"mold", "cutter", "press", "polishing", "painting", "diecast", "uv"}:
         allowed.add("size")
     if department.get("mold"):
         allowed.update({"material", "spec"})

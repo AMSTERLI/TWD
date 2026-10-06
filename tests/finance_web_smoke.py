@@ -102,6 +102,7 @@ with TestClient(app) as client:
     new_order = create_order(client, "2026-07-15", "新订单", 2)
     with repo.connect(write=True) as conn:
         conn.execute("UPDATE orders SET shipped_status = 1, shipped_at = ? WHERE order_no = ?", ("2026-07-18 08:00:00", new_order))
+        conn.execute("UPDATE orders SET width_mm = ?, height_mm = ?, thickness_mm = ? WHERE order_no = ?", ("25", "18", "2", new_order))
     first_record = repo.create_outsource_batch(
         {"process_name": "plating", "factory_name": "factory-a", "outsource_date": "2026-07-10", "paid_status": 0},
         [{"order_no": old_order, "product_quantity": 10, "spare_quantity": 1, "unit_price": 0.5}],
@@ -138,6 +139,12 @@ with TestClient(app) as client:
         "painting",
         "上色",
         [{"order_no": new_order, "employee_name": "刘进", "quantity": 10, "unit_price": 0.15, "mold_fee": 3}],
+        repo.get_user(1),
+    )[0]
+    uv_record = repo.create_workshop_records(
+        "uv",
+        "UV（吴双娥）",
+        [{"order_no": new_order, "quantity": 10, "unit_price": 0.2, "mold_fee": 5, "note_text": "测试版", "record_type": "normal"}],
         repo.get_user(1),
     )[0]
 
@@ -186,8 +193,13 @@ with TestClient(app) as client:
     assert workshop_report_column_labels("diecast")["mold_fee"] == "装模费"
     assert workshop_report_column_labels("polishing")["mold_fee"] == "打样费"
     assert workshop_report_column_labels("uv")["mold_fee"] == "版费"
+    assert workshop_report_column_labels("uv")["size"] == "尺寸"
     assert {"material", "spec", "order_type"} <= set(workshop_report_column_labels("mold"))
     assert {"note", "order_type"} <= set(workshop_report_column_labels("cutter"))
+    uv_report_page = client.get("/finance/workshop-reports?department_key=uv&reported_from=1900-01-01&reported_to=2999-12-31")
+    assert uv_report_page.status_code == 200
+    assert '<option value="uv" selected>UV（吴双娥）</option>' in uv_report_page.text
+    assert 'value="size" checked> 尺寸' in uv_report_page.text
     mold_report_page = client.get("/finance/workshop-reports?department_key=mold&reported_from=1900-01-01&reported_to=2999-12-31")
     assert mold_report_page.status_code == 200
     assert '<option value="mold" selected>\u523b\u6a21</option>' in mold_report_page.text
@@ -226,6 +238,22 @@ with TestClient(app) as client:
     assert painting_values[:2] == [0.15, 3]
     assert abs(painting_values[2] - 0.45) < 1e-9 and abs(painting_values[3] - 4.5) < 1e-9
     assert painting_record > 0
+    uv_export = client.post(
+        "/finance/workshop-reports/export",
+        data={
+            "csrf": csrf(uv_report_page.text),
+            "department_key": "uv",
+            "reported_from": "1900-01-01",
+            "reported_to": "2999-12-31",
+            "export_columns": ["order_no", "size", "mold_fee", "note", "order_type"],
+        },
+    )
+    assert uv_export.status_code == 200
+    uv_sheet = load_workbook(BytesIO(uv_export.content), data_only=True).active
+    assert [cell.value for cell in uv_sheet[1]] == ["订单号", "尺寸", "版费", "备注", "订单类别"]
+    uv_values = [cell.value for cell in uv_sheet[2]]
+    assert uv_values == [new_order, "高18宽25厚2", 5, "测试版", "正常"]
+    assert uv_record > 0
 
     filtered_customer = client.get(f"/finance/receivables?receivable_q=TWD2&receivable_q2=260715")
     receivable_html = filtered_customer.text
