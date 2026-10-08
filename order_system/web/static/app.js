@@ -2361,3 +2361,12 @@ if (contextRows.length) {
   window.addEventListener("blur", closeContextMenu);
   window.addEventListener("scroll", closeContextMenu, true);
 }
+
+document.querySelectorAll("[data-receivable-excel-input]").forEach(input => {
+  const display = input.closest("label")?.querySelector("[data-receivable-excel-name]");
+  if (!display) return;
+  const emptyText = display.textContent;
+  input.addEventListener("change", () => {
+    display.textContent = input.files?.[0]?.name || emptyText;
+  });
+});

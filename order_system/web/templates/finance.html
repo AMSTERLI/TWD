@@ -10,13 +10,14 @@
 
 {% if active_finance_page == 'receivables' %}
 <section class="finance-section" id="receivables">
-  <div class="section-title finance-title"><div><h2>&#23458;&#25143;&#25910;&#27454;</h2><p>&#20849; {{ receivables.total }} &#26465;&#65292;&#21487;&#25353;&#20986;&#36135;&#26085;&#26399;&#12289;&#20986;&#36135;&#29366;&#24577;&#21644;&#25910;&#27454;&#29366;&#24577;&#26816;&#32034;</p></div></div>
   {% if import_error %}<div class="alert error">{{ import_error }}</div>{% endif %}
-  {% if imported_count %}<div class="alert success">已从 Excel 第一列读取 {{ imported_count }} 个订单号，匹配到 {{ receivables.total }} 条订单。</div>{% endif %}
+  {% if imported_count %}<div class="alert success">已从 Excel 第一列读取 {{ imported_count }} 个订单号，匹配到 {{ receivables.total }} 条订单。{% if receivables.unmatched_order_numbers %}<br>未匹配到：{{ receivables.unmatched_order_numbers|join('、') }}{% endif %}</div>{% endif %}
   <form class="receivable-excel-import" method="post" action="/finance/receivables/import" enctype="multipart/form-data">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <div><strong>Excel 批量检索</strong><span>系统读取第一个工作表的第一列订单号，支持 XLSX、XLSM，最多 500 个。</span></div>
-    <label class="receivable-excel-file">选择 Excel 文件<input type="file" name="file" accept=".xlsx,.xlsm" required></label>
+    <label class="receivable-excel-file">
+      <input type="file" name="file" accept=".xlsx,.xlsm" aria-label="上传 Excel 文件" data-receivable-excel-input required>
+      <span data-receivable-excel-name>系统读取第一个工作表的第一列订单号，支持 XLSX、XLSM，最多 500 个。</span>
+    </label>
     <button class="primary" type="submit">上传并检索</button>
   </form>
   <form class="filterbar" method="get" action="/finance/receivables">
@@ -72,7 +73,6 @@
 
 {% if active_finance_page == 'workshop_reports' %}
 <section class="finance-section" id="workshop-reports">
-  <div class="section-title"><div><h2>&#36710;&#38388;&#25253;&#34920;</h2><p>&#25353;&#37096;&#38376;&#12289;&#21592;&#24037;&#21644;&#24405;&#20837;&#26085;&#26399;&#26597;&#35810;&#35745;&#20214;&#35760;&#24405;</p></div></div>
   <form class="filterbar" method="get" action="/finance/workshop-reports" data-workshop-report-filter>
     <label>&#37096;&#38376;<select name="department_key" data-report-department><option value="">&#20840;&#37096;&#37096;&#38376;</option>{% for item in report_departments %}<option value="{{ item.key }}"{% if department_key == item.key %} selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
     <label>&#21592;&#24037;<select name="employee_name" data-report-employee><option value="">&#20840;&#37096;&#21592;&#24037;</option>{% for employee in report_employee_options %}<option value="{{ employee }}"{% if employee_name == employee %} selected{% endif %}>{{ employee }}</option>{% endfor %}</select></label>
@@ -111,7 +111,6 @@
 {% endif %}
 {% if active_finance_page == 'payables' %}
 <section class="finance-section" id="payables">
-  <div class="section-title"><div><h2>加工厂付款</h2><p>共 {{ payables.total }} 条，财务可查看全部外发及电镀记录</p></div></div>
   <form class="filterbar" method="get" action="/finance/payables">
     <label>外发关键词<input name="payable_q" value="{{ payable_q }}" placeholder="订单号、工艺或加工厂"></label>
     <label>加工厂<select name="payable_factory"><option value="">全部加工厂</option>{% for name in factories %}<option value="{{ name }}" {% if payable_factory == name %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>

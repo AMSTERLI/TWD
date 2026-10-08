@@ -163,10 +163,13 @@ with TestClient(app) as client:
     assert "receivable_q2" in finance_page.text and "receivable_shipped_status" in finance_page.text
     assert "&#20986;&#36135;&#29366;&#24577;" in finance_page.text and "&#25910;&#27454;&#29366;&#24577;" in finance_page.text
     assert "&#24050;&#20986;&#36135;" in finance_page.text and "&#24453;&#20986;&#36135;" in finance_page.text
+    assert "&#21487;&#25353;&#20986;&#36135;&#26085;&#26399;" not in finance_page.text
+    assert "选择 Excel 文件" not in finance_page.text
     assert "data-finance-stash" not in finance_page.text and "data-stash-no" not in finance_page.text
     assert f'data-request-edit-url="/orders/1/edit"' in finance_page.text
     assert "/finance/receivables/pdf" in finance_page.text
     assert "/finance/receivables/import" in finance_page.text and 'accept=".xlsx,.xlsm"' in finance_page.text
+    assert "data-receivable-excel-input" in finance_page.text and "Excel 批量检索" not in finance_page.text
     import_workbook = Workbook()
     import_sheet = import_workbook.active
     import_sheet.append(["订单号"])
@@ -186,6 +189,7 @@ with TestClient(app) as client:
     assert imported_page.status_code == 200
     assert old_order in imported_page.text and new_order not in imported_page.text
     assert "已从 Excel 第一列读取 2 个订单号，匹配到 1 条订单" in imported_page.text
+    assert "未匹配到：TWD-NOT-FOUND" in imported_page.text
     invalid_import = client.post(
         "/finance/receivables/import",
         data={"csrf": csrf(imported_page.text)},
@@ -195,10 +199,12 @@ with TestClient(app) as client:
     assert invalid_import.status_code == 200 and "仅支持 XLSX 或 XLSM 格式的 Excel 文件" in invalid_import.text
     payables_page = client.get("/finance/payables")
     assert payables_page.status_code == 200
+    assert "财务可查看全部外发及电镀记录" not in payables_page.text
     assert old_order in payables_page.text and new_order in payables_page.text
     assert "电镀" in payables_page.text and "qixin" in payables_page.text
     workshop_report_page = client.get("/finance/workshop-reports?department_key=press&employee_name=%E5%BE%90%E5%B1%B1%E7%AB%8B&reported_from=1900-01-01&reported_to=2999-12-31")
     assert workshop_report_page.status_code == 200
+    assert "&#25353;&#37096;&#38376;&#12289;&#21592;&#24037;&#21644;&#24405;&#20837;&#26085;&#26399;" not in workshop_report_page.text
     assert '<option value="mold">\u523b\u6a21</option>' in workshop_report_page.text
     assert '<option value="cutter">\u5207\u5200</option>' in workshop_report_page.text
     assert "/finance/workshop-reports/export" in workshop_report_page.text

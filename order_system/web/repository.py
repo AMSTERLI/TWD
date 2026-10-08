@@ -1289,6 +1289,16 @@ class Repository:
             where += f" AND REPLACE(order_no, ' ', '') IN ({placeholders})"
             args.extend(normalized_order_numbers)
         with self.connect() as conn:
+            existing_order_numbers: set[str] = set()
+            if normalized_order_numbers:
+                placeholders = ", ".join("?" for _ in normalized_order_numbers)
+                existing_order_numbers = {
+                    normalize_scanned_order_no(row["order_no"])
+                    for row in conn.execute(
+                        f"SELECT order_no FROM orders WHERE REPLACE(order_no, ' ', '') IN ({placeholders})",
+                        normalized_order_numbers,
+                    ).fetchall()
+                }
             total = int(conn.execute(f"SELECT COUNT(*) FROM orders {where}", args).fetchone()[0])
             all_amount_rows = conn.execute(
                 f"""SELECT quantity, unit_price, price_tiers_json, extra_fee, paid_status
@@ -1314,7 +1324,11 @@ class Repository:
             result_rows.append(item)
         return {"rows": result_rows, "total": total, "page": page,
                 "pages": max(1, (total + page_size - 1) // page_size),
-                "unpaid_total": unpaid_total}
+                "unpaid_total": unpaid_total,
+                "unmatched_order_numbers": [
+                    order_no for order_no in normalized_order_numbers
+                    if order_no not in existing_order_numbers
+                ]}
 
     @staticmethod
     def _normalized_ids(values: list[int]) -> list[int]:
