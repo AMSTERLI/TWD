@@ -11,7 +11,16 @@
 {% if active_finance_page == 'receivables' %}
 <section class="finance-section" id="receivables">
   <div class="section-title finance-title"><div><h2>&#23458;&#25143;&#25910;&#27454;</h2><p>&#20849; {{ receivables.total }} &#26465;&#65292;&#21487;&#25353;&#20986;&#36135;&#26085;&#26399;&#12289;&#20986;&#36135;&#29366;&#24577;&#21644;&#25910;&#27454;&#29366;&#24577;&#26816;&#32034;</p></div></div>
+  {% if import_error %}<div class="alert error">{{ import_error }}</div>{% endif %}
+  {% if imported_count %}<div class="alert success">已从 Excel 第一列读取 {{ imported_count }} 个订单号，匹配到 {{ receivables.total }} 条订单。</div>{% endif %}
+  <form class="receivable-excel-import" method="post" action="/finance/receivables/import" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div><strong>Excel 批量检索</strong><span>系统读取第一个工作表的第一列订单号，支持 XLSX、XLSM，最多 500 个。</span></div>
+    <label class="receivable-excel-file">选择 Excel 文件<input type="file" name="file" accept=".xlsx,.xlsm" required></label>
+    <button class="primary" type="submit">上传并检索</button>
+  </form>
   <form class="filterbar" method="get" action="/finance/receivables">
+    {% if receivable_order_nos %}<input type="hidden" name="receivable_order_nos" value="{{ receivable_order_nos }}">{% endif %}
     <label>&#26816;&#32034;1<input name="receivable_q" value="{{ receivable_q }}" placeholder="&#23458;&#25143;&#21517;&#12289;&#35746;&#21333;&#21495;&#12289;PO&#21495;&#25110;&#29983;&#20135;&#21046;&#21495;"></label>
     <label>&#26816;&#32034;2<input name="receivable_q2" value="{{ receivable_q2 }}" placeholder="&#21487;&#20877;&#22635;&#19968;&#20010;&#26465;&#20214;"></label>
     <label>&#20986;&#36135;&#26085;&#26399;&#20174;<input type="date" name="receivable_date_from" value="{{ receivable_date_from }}"></label>
@@ -29,6 +38,7 @@
     <input type="hidden" name="receivable_date_to" value="{{ receivable_date_to }}">
     <input type="hidden" name="receivable_paid_status" value="{{ receivable_paid_status }}">
     <input type="hidden" name="receivable_shipped_status" value="{{ receivable_shipped_status }}">
+    <input type="hidden" name="receivable_order_nos" value="{{ receivable_order_nos }}">
     <div class="selection-toolbar">
       <span>已选择 <strong data-selected-count>0</strong> 条；已选未收款合计 ¥ <strong data-selected-unpaid-total>0.00</strong></span>
       <button formaction="/finance/receivables/status" name="paid" value="1" data-requires-selection disabled>批量确认收款</button>
@@ -53,9 +63,9 @@
     </table></div>
   </form>
   {% if receivables.pages > 1 %}<nav class="pager">
-    {% if receivables.page > 1 %}<a href="?receivable_q={{ receivable_q|urlencode }}&receivable_q2={{ receivable_q2|urlencode }}&receivable_date_from={{ receivable_date_from }}&receivable_date_to={{ receivable_date_to }}&receivable_paid_status={{ receivable_paid_status|urlencode }}&receivable_shipped_status={{ receivable_shipped_status|urlencode }}&receivable_page={{ receivables.page - 1 }}">上一页</a>{% endif %}
+    {% if receivables.page > 1 %}<a href="?receivable_q={{ receivable_q|urlencode }}&receivable_q2={{ receivable_q2|urlencode }}&receivable_date_from={{ receivable_date_from }}&receivable_date_to={{ receivable_date_to }}&receivable_paid_status={{ receivable_paid_status|urlencode }}&receivable_shipped_status={{ receivable_shipped_status|urlencode }}&receivable_order_nos={{ receivable_order_nos|urlencode }}&imported_count={{ imported_count }}&receivable_page={{ receivables.page - 1 }}">上一页</a>{% endif %}
     <span>第 {{ receivables.page }} / {{ receivables.pages }} 页，共 {{ receivables.total }} 条</span>
-    {% if receivables.page < receivables.pages %}<a href="?receivable_q={{ receivable_q|urlencode }}&receivable_q2={{ receivable_q2|urlencode }}&receivable_date_from={{ receivable_date_from }}&receivable_date_to={{ receivable_date_to }}&receivable_paid_status={{ receivable_paid_status|urlencode }}&receivable_shipped_status={{ receivable_shipped_status|urlencode }}&receivable_page={{ receivables.page + 1 }}">下一页</a>{% endif %}
+    {% if receivables.page < receivables.pages %}<a href="?receivable_q={{ receivable_q|urlencode }}&receivable_q2={{ receivable_q2|urlencode }}&receivable_date_from={{ receivable_date_from }}&receivable_date_to={{ receivable_date_to }}&receivable_paid_status={{ receivable_paid_status|urlencode }}&receivable_shipped_status={{ receivable_shipped_status|urlencode }}&receivable_order_nos={{ receivable_order_nos|urlencode }}&imported_count={{ imported_count }}&receivable_page={{ receivables.page + 1 }}">下一页</a>{% endif %}
   </nav>{% endif %}
 </section>
 {% endif %}

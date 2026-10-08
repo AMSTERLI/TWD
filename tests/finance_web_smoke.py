@@ -9,7 +9,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 from pypdf import PdfReader
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -166,6 +166,33 @@ with TestClient(app) as client:
     assert "data-finance-stash" not in finance_page.text and "data-stash-no" not in finance_page.text
     assert f'data-request-edit-url="/orders/1/edit"' in finance_page.text
     assert "/finance/receivables/pdf" in finance_page.text
+    assert "/finance/receivables/import" in finance_page.text and 'accept=".xlsx,.xlsm"' in finance_page.text
+    import_workbook = Workbook()
+    import_sheet = import_workbook.active
+    import_sheet.append(["订单号"])
+    import_sheet.append([old_order])
+    import_sheet.append([old_order])
+    import_sheet.append(["TWD-NOT-FOUND"])
+    import_buffer = BytesIO()
+    import_workbook.save(import_buffer)
+    imported = client.post(
+        "/finance/receivables/import",
+        data={"csrf": csrf(finance_page.text)},
+        files={"file": ("receivables.xlsx", import_buffer.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        follow_redirects=False,
+    )
+    assert imported.status_code == 303
+    imported_page = client.get(imported.headers["location"])
+    assert imported_page.status_code == 200
+    assert old_order in imported_page.text and new_order not in imported_page.text
+    assert "已从 Excel 第一列读取 2 个订单号，匹配到 1 条订单" in imported_page.text
+    invalid_import = client.post(
+        "/finance/receivables/import",
+        data={"csrf": csrf(imported_page.text)},
+        files={"file": ("receivables.xls", b"not-an-excel-file", "application/vnd.ms-excel")},
+        follow_redirects=True,
+    )
+    assert invalid_import.status_code == 200 and "仅支持 XLSX 或 XLSM 格式的 Excel 文件" in invalid_import.text
     payables_page = client.get("/finance/payables")
     assert payables_page.status_code == 200
     assert old_order in payables_page.text and new_order in payables_page.text

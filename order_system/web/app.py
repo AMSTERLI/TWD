@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+from io import BytesIO
 import json
 import os
 import re
@@ -12,7 +14,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from typing import Any
 from uuid import uuid4
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
+from zipfile import BadZipFile, ZipFile
+import zlib
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -311,6 +315,79 @@ def selected_ids(form: Any, field: str) -> list[int]:
 
 
 BULK_MATCHING_LIMIT = 100000
+RECEIVABLE_IMPORT_LIMIT = 500
+RECEIVABLE_IMPORT_MAX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
+
+
+def receivable_order_numbers(value: Any) -> list[str]:
+    raw_value = str(value or "")
+    if raw_value.startswith("z:"):
+        try:
+            encoded = raw_value[2:]
+            compressed = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+            decompressor = zlib.decompressobj()
+            unpacked = decompressor.decompress(compressed, 50_001)
+            if len(unpacked) > 50_000 or decompressor.unconsumed_tail:
+                return []
+            raw_value = unpacked.decode("utf-8")
+        except (ValueError, UnicodeDecodeError, zlib.error):
+            return []
+    numbers: list[str] = []
+    for raw in re.split(r"[\r\n,;]+", raw_value):
+        order_no = normalize_scanned_order_no(raw)
+        if order_no and order_no not in numbers:
+            numbers.append(order_no)
+    return numbers[:RECEIVABLE_IMPORT_LIMIT]
+
+
+def packed_receivable_order_numbers(order_numbers: list[str]) -> str:
+    raw = "\n".join(order_numbers).encode("utf-8")
+    encoded = base64.urlsafe_b64encode(zlib.compress(raw, level=9)).decode("ascii").rstrip("=")
+    return f"z:{encoded}" if encoded else ""
+
+
+def receivable_order_numbers_from_excel(content: bytes, filename: str) -> list[str]:
+    suffix = Path(filename or "").suffix.lower()
+    if suffix not in {".xlsx", ".xlsm"}:
+        raise ValueError("仅支持 XLSX 或 XLSM 格式的 Excel 文件")
+    if not content:
+        raise ValueError("上传的 Excel 文件为空")
+    try:
+        with ZipFile(BytesIO(content)) as archive:
+            if len(archive.infolist()) > 2000 or sum(item.file_size for item in archive.infolist()) > RECEIVABLE_IMPORT_MAX_UNCOMPRESSED_BYTES:
+                raise ValueError("Excel 文件内容过大")
+    except BadZipFile as exc:
+        raise ValueError("Excel 文件无法读取，请确认文件没有损坏") from exc
+
+    try:
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
+    except Exception as exc:
+        raise ValueError("Excel 文件无法读取，请确认文件格式正确") from exc
+
+    numbers: list[str] = []
+    header_names = {"订单号", "订单编号", "order no", "order number", "orderno"}
+    try:
+        sheet = workbook.active
+        for row_index, row in enumerate(sheet.iter_rows(min_col=1, max_col=1, values_only=True), start=1):
+            raw = row[0]
+            if raw is None:
+                continue
+            if isinstance(raw, float) and raw.is_integer():
+                raw = int(raw)
+            order_no = normalize_scanned_order_no(raw)
+            if not order_no or (row_index == 1 and order_no.lower() in header_names):
+                continue
+            if order_no not in numbers:
+                numbers.append(order_no)
+            if len(numbers) > RECEIVABLE_IMPORT_LIMIT:
+                raise ValueError(f"一次最多导入 {RECEIVABLE_IMPORT_LIMIT} 个订单号")
+    finally:
+        workbook.close()
+    if not numbers:
+        raise ValueError("Excel 第一列没有可用的订单号")
+    return numbers
 
 
 def all_matching_selected(form: Any) -> bool:
@@ -330,6 +407,7 @@ async def selected_receivable_ids(form: Any) -> list[int]:
         str(form.get("receivable_shipped_status") or ""),
         1,
         BULK_MATCHING_LIMIT,
+        receivable_order_numbers(form.get("receivable_order_nos")),
     )
     return [int(row["id"]) for row in result["rows"]]
 
@@ -2823,14 +2901,19 @@ def finance_receivables(
     receivable_date_to: str = "",
     receivable_paid_status: str = "",
     receivable_shipped_status: str = "",
+    receivable_order_nos: str = "",
+    imported_count: int = 0,
+    import_error: str = "",
     receivable_page: int = 1,
 ):
     _, denied = require_page(request, {"finance"})
     if denied:
         return denied
+    imported_order_nos = receivable_order_numbers(receivable_order_nos)
     receivables = repo.finance_orders(
         receivable_q, receivable_q2, receivable_date_from, receivable_date_to,
-        receivable_paid_status, receivable_shipped_status, receivable_page
+        receivable_paid_status, receivable_shipped_status, receivable_page, 40,
+        imported_order_nos,
     )
     return templates.TemplateResponse(
         request,
@@ -2847,12 +2930,59 @@ def finance_receivables(
             receivable_date_to=receivable_date_to,
             receivable_paid_status=receivable_paid_status,
             receivable_shipped_status=receivable_shipped_status,
+            receivable_order_nos=packed_receivable_order_numbers(imported_order_nos),
+            imported_count=max(imported_count, len(imported_order_nos)),
+            import_error=import_error,
             payable_q="",
             payable_factory="",
             payable_date_from="",
             payable_date_to="",
         ),
     )
+
+
+@app.post("/finance/receivables/import")
+async def finance_receivables_import(request: Request):
+    user, denied = require_page(request, {"finance"})
+    if denied:
+        return denied
+    form = await request.form()
+    if not valid_form_csrf(request, str(form.get("csrf") or "")):
+        return Response(status_code=400)
+    upload = form.get("file")
+    if not isinstance(upload, UploadFile) or not upload.filename:
+        params = urlencode({"import_error": "请选择 Excel 文件"})
+        return RedirectResponse(f"/finance/receivables?{params}", status_code=303)
+
+    content = bytearray()
+    try:
+        while chunk := await upload.read(1024 * 1024):
+            content.extend(chunk)
+            if len(content) > MAX_UPLOAD_BYTES:
+                raise ValueError("Excel 文件过大")
+        order_nos = await run_in_threadpool(
+            receivable_order_numbers_from_excel,
+            bytes(content),
+            upload.filename,
+        )
+    except ValueError as exc:
+        params = urlencode({"import_error": str(exc)})
+        return RedirectResponse(f"/finance/receivables?{params}", status_code=303)
+    finally:
+        await upload.close()
+
+    await run_in_threadpool(
+        repo.audit,
+        user,
+        "finance.receivables.import",
+        f"{upload.filename}:{len(order_nos)}",
+        client_ip(request),
+    )
+    params = urlencode({
+        "receivable_order_nos": packed_receivable_order_numbers(order_nos),
+        "imported_count": len(order_nos),
+    })
+    return RedirectResponse(f"/finance/receivables?{params}", status_code=303)
 
 
 @app.get("/finance/payables", response_class=HTMLResponse)

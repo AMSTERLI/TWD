@@ -1257,6 +1257,7 @@ class Repository:
         shipped_status: str = "",
         page: int = 1,
         page_size: int = 40,
+        order_numbers: list[str] | None = None,
     ) -> dict[str, Any]:
         keyword = keyword.strip()
         keyword2 = keyword2.strip()
@@ -1279,6 +1280,14 @@ class Repository:
         if shipped_status in {"shipped", "unshipped"}:
             where += " AND shipped_status = ?"
             args.append(1 if shipped_status == "shipped" else 0)
+        normalized_order_numbers = list(dict.fromkeys(
+            normalize_scanned_order_no(value) for value in (order_numbers or [])
+            if normalize_scanned_order_no(value)
+        ))
+        if normalized_order_numbers:
+            placeholders = ", ".join("?" for _ in normalized_order_numbers)
+            where += f" AND REPLACE(order_no, ' ', '') IN ({placeholders})"
+            args.extend(normalized_order_numbers)
         with self.connect() as conn:
             total = int(conn.execute(f"SELECT COUNT(*) FROM orders {where}", args).fetchone()[0])
             all_amount_rows = conn.execute(
