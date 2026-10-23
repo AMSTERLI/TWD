@@ -1148,6 +1148,8 @@ def outsource_edit_payload(form: Any) -> dict[str, Any]:
     factory_name = str(form.get("factory_name") or "").strip()
     product_quantity = as_float(form.get("product_quantity"))
     spare_quantity = as_float(form.get("spare_quantity"))
+    if process_name == "开水口":
+        spare_quantity = 0.0
     unit_price = as_float(form.get("unit_price"))
     quantity = product_quantity + spare_quantity
     if not process_name or not factory_name:

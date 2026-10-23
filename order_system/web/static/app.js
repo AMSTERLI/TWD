@@ -1155,6 +1155,19 @@ if (orderNumberInput && orderDateInput && orderPrefixInput) {
 }
 
 const outsourceBatch = document.querySelector("[data-outsource-batch]");
+const outsourceEdit = document.querySelector("[data-outsource-edit]");
+if (outsourceEdit) {
+  const process = outsourceEdit.querySelector('[name="process_name"]');
+  const updateQuantity = () => {
+    const manual = process.value === "开水口";
+    outsourceEdit.querySelector("[data-quantity-label]").textContent = manual ? "数量" : "产品数量";
+    const spare = outsourceEdit.querySelector('[name="spare_quantity"]');
+    spare.closest("label").hidden = manual;
+    if (manual) spare.value = "0";
+  };
+  process.addEventListener("change", updateQuantity);
+  updateQuantity();
+}
 if (outsourceBatch) {
   const rows = outsourceBatch.querySelector("[data-outsource-rows]");
   const template = outsourceBatch.querySelector("[data-outsource-row-template]");
@@ -1170,6 +1183,7 @@ if (outsourceBatch) {
   const orderLookupTimers = new WeakMap();
   const duplicateScanTimers = new WeakMap();
   let resubmittingAfterLookup = false;
+  let previousQuantityProcess = processSelect.value;
 
   const numberValue = (row, name) => Number((row.querySelector(`[name="${name}"]:not(:disabled)`) || row.querySelector(`[name="${name}"]`))?.value || 0);
   const cleanNumber = (value, digits = 6) => Number(value.toFixed(digits)).toString();
@@ -1243,6 +1257,22 @@ if (outsourceBatch) {
 
   function updateProcessUI() {
     const process = processSelect.value;
+    const manualQuantity = process === "开水口";
+    const quantityHeader = outsourceBatch.querySelector("thead th:nth-child(2)");
+    quantityHeader.textContent = manualQuantity ? "数量" : "产品数量";
+    outsourceBatch.querySelector("thead th:nth-child(3)").hidden = manualQuantity;
+    rows.querySelectorAll("tr").forEach(row => {
+      const product = row.querySelector('[name="product_quantity"]');
+      const spare = row.querySelector('[name="spare_quantity"]');
+      spare.closest("td").hidden = manualQuantity;
+      if (manualQuantity) spare.value = "0";
+      if (process !== previousQuantityProcess && (manualQuantity || previousQuantityProcess === "开水口")) {
+        product.value = "";
+        delete row.dataset.lastOrderLookup;
+        if (!manualQuantity) fillOrderRow(row);
+      }
+    });
+    previousQuantityProcess = process;
     updateFactoryOptions();
     outsourceBatch.querySelectorAll("[data-process-only]").forEach(element => {
       const active = element.dataset.processOnly === process;
@@ -1261,6 +1291,8 @@ if (outsourceBatch) {
       processHelp.textContent = "总金额 =（产品数量 + 备品数量）× 单价 + 模具费。";
     } else if (process === "压铸") {
       processHelp.textContent = "总金额 =（产品数量 + 备品数量）× 加工单价 + 开水口。";
+    } else if (manualQuantity) {
+      processHelp.textContent = "金额 = 数量 × 加工单价。";
     } else if (process) {
       processHelp.textContent = "金额 =（产品数量+备品数量）×加工单价。";
     } else {
@@ -1314,7 +1346,7 @@ if (outsourceBatch) {
       const businessSpare = Number(order.spare_quantity || 0);
       const productQuantity = row.querySelector("[name=product_quantity]");
       const outsourceSpare = row.querySelector("[name=spare_quantity]");
-      if (productQuantity) productQuantity.value = cleanNumber(businessQuantity + businessSpare);
+      if (productQuantity && processSelect.value !== "开水口") productQuantity.value = cleanNumber(businessQuantity + businessSpare);
       if (outsourceSpare && !outsourceSpare.value) outsourceSpare.value = "0";
       const lengthInput = row.querySelector("[name=length_mm]");
       const widthInput = row.querySelector("[name=width_mm]");

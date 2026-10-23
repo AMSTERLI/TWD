@@ -2725,11 +2725,13 @@ class Repository:
 
                 product_quantity = float(row.get("product_quantity") or 0)
                 spare_quantity = float(row.get("spare_quantity") or 0)
+                if process_name == "开水口":
+                    spare_quantity = 0.0
                 unit_price = float(row.get("unit_price") or 0)
                 if min(product_quantity, spare_quantity, unit_price) < 0:
                     raise ValueError(f"订单 {order_no} 的数量和加工单价必须为非负数，合计数量须大于 0")
                 quantity = product_quantity + spare_quantity
-                if quantity <= 0:
+                if quantity <= 0 and process_name != "开水口":
                     product_quantity = float(order["quantity"] or 0) + float(order["spare_quantity"] or 0)
                     spare_quantity = 0.0
                     quantity = product_quantity

@@ -343,4 +343,30 @@ with TestClient(app) as client:
         follow_redirects=False,
     )
     assert deleted.status_code == 303 and repo.get_outsource_record(coloring_id) is None
+    sprue = "\u5f00\u6c34\u53e3"
+    repo.legacy.add_outsource_factory(sprue, "sprue-factory")
+    sprue_data = {
+        "csrf": token(client.get("/outsource").text), "process_name": sprue,
+        "factory_name": "sprue-factory", "outsource_date": "2026-07-17",
+        "order_no": first_no, "product_quantity": "", "spare_quantity": "9",
+        "unit_price": "0.5",
+    }
+    missing_quantity = client.post("/outsource", data=sprue_data, follow_redirects=False)
+    assert missing_quantity.status_code == 422, missing_quantity.status_code
+    sprue_data["product_quantity"] = "12"
+    saved = client.post("/outsource", data=sprue_data, follow_redirects=False)
+    assert saved.status_code == 303, saved.text
+    with repo.connect() as conn:
+        sprue_record = conn.execute(
+            "SELECT * FROM outsource_records WHERE process_name = ?", (sprue,)
+        ).fetchone()
+    assert sprue_record["quantity"] == 12 and sprue_record["spare_quantity"] == 0
+    assert sprue_record["amount"] == 6
+    edit_page = client.get(f"/outsource/{sprue_record['id']}/edit")
+    edited = client.post(f"/outsource/{sprue_record['id']}/edit", data={
+        **sprue_data, "csrf": token(edit_page.text), "product_quantity": "20",
+    }, follow_redirects=False)
+    assert edited.status_code == 303, edited.status_code
+    updated = repo.get_outsource_record(sprue_record["id"])
+    assert updated["quantity"] == 20 and updated["amount"] == 10
 print("outsource batch smoke ok")
