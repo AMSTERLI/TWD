@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import importlib
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from io import BytesIO
 import os
 import re
@@ -223,13 +225,22 @@ with TestClient(app) as client:
     assert 'action="/orders/new"' in copy_page.text
     assert 'name="copy_source_order_id" value="1"' in copy_page.text
     assert 'name="order_no" value=""' in copy_page.text
-    copy_next = client.get("/api/next-order-no?order_date=2026-07-15&order_prefix_no=1").json()["order_no"]
+    copy_date = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    assert f'name="order_date" value="{copy_date}"' in copy_page.text
+    copy_next = client.get(f"/api/next-order-no?order_date={copy_date}&order_prefix_no=1").json()["order_no"]
+    assert copy_next.startswith("TWD1-" + copy_date[2:].replace("-", ""))
+    failed_copy = client.post("/orders/new", data={
+        "csrf": csrf(copy_page.text), "copy_source_order_id": "1",
+        "order_date": copy_date, "quantity": "0", "spare_quantity": "0",
+    })
+    assert failed_copy.status_code == 422
+    assert f'name="order_date" value="{copy_date}"' in failed_copy.text
     copied = client.post(
         "/orders/new",
         data={
             "csrf": csrf(copy_page.text), "copy_source_order_id": "1",
             "order_type": "新订单", "salesman": "admin-copy",
-            "product_name": "复制新单", "order_date": "2026-07-15", "delivery_date": "2026-07-25",
+            "product_name": "复制新单", "order_date": copy_date, "delivery_date": "2026-07-25",
             "quantity": "120", "spare_quantity": "3", "quantity_unit": "个",
             "unit_price": "2.5", "extra_fee": "1", "order_prefix_no": "1", "order_no": copy_next,
             "existing_images": image_names,
@@ -244,6 +255,8 @@ with TestClient(app) as client:
     copied_images = loads_json(copied_order["image_paths_json"])
     copied_components = loads_json(copied_order["component_parts_json"])
     assert copied_order["order_no"] == copy_next and copied_order["product_name"] == "复制新单"
+    assert copied_order["order_date"] == copy_date
+    assert repo.get_order(1)["order_date"] == "2026-07-15"
     assert copied_images and copied_images[0] != image_names[0]
     assert copied_components and copied_components[0]["image"] != component_parts[0]["image"]
     assert (IMAGES_DIR / copied_images[0]).is_file()

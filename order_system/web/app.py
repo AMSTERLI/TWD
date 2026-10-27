@@ -1796,6 +1796,7 @@ def copy_order_page(request: Request, order_id: int):
         return templates.TemplateResponse(
             request, "error.html", page_context(request, status=403, message="forbidden"), status_code=403
         )
+    record["order_date"] = datetime.now(BEIJING_TZ).date().isoformat()
     return templates.TemplateResponse(
         request,
         "order_edit.html",
@@ -1907,6 +1908,7 @@ async def create_order(request: Request):
     except ValueError as exc:
         if copy_source_order:
             record = _editable_order(int(copy_source_order["id"]))
+            record["order_date"] = str(form.get("order_date") or "").strip() or datetime.now(BEIJING_TZ).date().isoformat()
             return templates.TemplateResponse(
                 request,
                 "order_edit.html",
