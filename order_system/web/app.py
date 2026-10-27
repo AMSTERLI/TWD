@@ -348,29 +348,41 @@ def packed_receivable_order_numbers(order_numbers: list[str]) -> str:
 
 def receivable_order_numbers_from_excel(content: bytes, filename: str) -> list[str]:
     suffix = Path(filename or "").suffix.lower()
-    if suffix not in {".xlsx", ".xlsm"}:
-        raise ValueError("仅支持 XLSX 或 XLSM 格式的 Excel 文件")
+    if suffix not in {".xlsx", ".xlsm", ".xls", ".xsl"}:
+        raise ValueError("仅支持 XLSX、XLSM 或 XLS 格式的 Excel 文件（兼容 XSL 后缀）")
     if not content:
         raise ValueError("上传的 Excel 文件为空")
-    try:
-        with ZipFile(BytesIO(content)) as archive:
-            if len(archive.infolist()) > 2000 or sum(item.file_size for item in archive.infolist()) > RECEIVABLE_IMPORT_MAX_UNCOMPRESSED_BYTES:
-                raise ValueError("Excel 文件内容过大")
-    except BadZipFile as exc:
-        raise ValueError("Excel 文件无法读取，请确认文件没有损坏") from exc
+    legacy = suffix in {".xls", ".xsl"} and not content.startswith(b"PK")
+    if not legacy:
+        try:
+            with ZipFile(BytesIO(content)) as archive:
+                if len(archive.infolist()) > 2000 or sum(item.file_size for item in archive.infolist()) > RECEIVABLE_IMPORT_MAX_UNCOMPRESSED_BYTES:
+                    raise ValueError("Excel 文件内容过大")
+        except BadZipFile as exc:
+            raise ValueError("Excel 文件无法读取，请确认文件没有损坏") from exc
 
     try:
-        from openpyxl import load_workbook
+        if legacy:
+            import xlrd
 
-        workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
+            workbook = xlrd.open_workbook(file_contents=content, on_demand=True)
+        else:
+            from openpyxl import load_workbook
+
+            workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
     except Exception as exc:
         raise ValueError("Excel 文件无法读取，请确认文件格式正确") from exc
 
     numbers: list[str] = []
     header_names = {"订单号", "订单编号", "order no", "order number", "orderno"}
     try:
-        sheet = workbook.active
-        for row_index, row in enumerate(sheet.iter_rows(min_col=1, max_col=1, values_only=True), start=1):
+        if legacy:
+            sheet = workbook.sheet_by_index(0)
+            rows = ((sheet.cell_value(index, 0),) for index in range(sheet.nrows)) if sheet.ncols else ()
+        else:
+            sheet = workbook.worksheets[0]
+            rows = sheet.iter_rows(min_col=1, max_col=1, values_only=True)
+        for row_index, row in enumerate(rows, start=1):
             raw = row[0]
             if raw is None:
                 continue
@@ -384,7 +396,10 @@ def receivable_order_numbers_from_excel(content: bytes, filename: str) -> list[s
             if len(numbers) > RECEIVABLE_IMPORT_LIMIT:
                 raise ValueError(f"一次最多导入 {RECEIVABLE_IMPORT_LIMIT} 个订单号")
     finally:
-        workbook.close()
+        if legacy:
+            workbook.release_resources()
+        else:
+            workbook.close()
     if not numbers:
         raise ValueError("Excel 第一列没有可用的订单号")
     return numbers

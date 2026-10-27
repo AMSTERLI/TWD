@@ -15,8 +15,8 @@
   <form class="receivable-excel-import" method="post" action="/finance/receivables/import" enctype="multipart/form-data">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <label class="receivable-excel-file">
-      <input type="file" name="file" accept=".xlsx,.xlsm" aria-label="上传 Excel 文件" data-receivable-excel-input required>
-      <span data-receivable-excel-name>系统读取第一个工作表的第一列订单号，支持 XLSX、XLSM，最多 500 个。</span>
+      <input type="file" name="file" accept=".xlsx,.xlsm,.xls,.xsl" aria-label="上传 Excel 文件" data-receivable-excel-input required>
+      <span data-receivable-excel-name>系统读取第一个工作表的第一列订单号，支持 XLSX、XLSM、XLS（兼容 XSL 后缀），最多 500 个。</span>
     </label>
     <button class="primary" type="submit">上传并检索</button>
   </form>

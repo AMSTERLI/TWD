@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import base64
+import zlib
 import re
 import sys
 import tempfile
@@ -168,7 +170,7 @@ with TestClient(app) as client:
     assert "data-finance-stash" not in finance_page.text and "data-stash-no" not in finance_page.text
     assert f'data-request-edit-url="/orders/1/edit"' in finance_page.text
     assert "/finance/receivables/pdf" in finance_page.text
-    assert "/finance/receivables/import" in finance_page.text and 'accept=".xlsx,.xlsm"' in finance_page.text
+    assert "/finance/receivables/import" in finance_page.text and 'accept=".xlsx,.xlsm,.xls,.xsl"' in finance_page.text
     assert "data-receivable-excel-input" in finance_page.text and "Excel 批量检索" not in finance_page.text
     import_workbook = Workbook()
     import_sheet = import_workbook.active
@@ -190,13 +192,32 @@ with TestClient(app) as client:
     assert old_order in imported_page.text and new_order not in imported_page.text
     assert "已从 Excel 第一列读取 2 个订单号，匹配到 1 条订单" in imported_page.text
     assert "未匹配到：TWD-NOT-FOUND" in imported_page.text
+    # A real BIFF8 workbook generated with xlwt; no writer dependency is needed at runtime.
+    legacy_content = zlib.decompress(base64.b64decode(
+        "eJztWE1oU0EQ/vYlaZOQpElNhVYooWDV2hzUi5f2qfTnokm1kRYRNDU5SEsiTy96sVpzFARPipdCL16qXvxBD3rzIFT0UBCERI+eBAUPbZ4zkzxNNEJzSFXY77Gz82a+2d2ws5vd93olUlx80FPCLxiGC2Xbh7Yam6Lic17CIL9ts+rUXiq2xn8Fn5cmss2Dp8FX7TyHPN8lGLjvfkES+EDlJM4hkc9lY5uIQzKGtOIxDJFUuEOWELplVJ0iz4jcIvKeMJ+JPCCW6yKHiFtUJ7BiJgb2V7N42ugTXwjc7iOJeSeWPejCS87iyzdUhevBQetseu7fdPS6A1gCzdt4Npe10nNFRGkCl/DVjgFfnJX6PKbtm2tXIPu3ent7A/tNww3Mwz4tCV6ghFx1sacNSSuTtc6vYS+IATbS5irGWCIfAFJTI/Hpw5Px1OhkKlh5TSRT8bHk8cSIn9iVZR2uW9ZBSfcAyQw6RI9I0oep7bW7n98cmZkwT4llXrbyyoa/nccIG1c4goJD4nH/8A9IxG6RV6XVbaL3iIxSqlLdP9FVVcYWhHNNvP3Uzz7BW3NHjb6T9MKno497Cx/NXaQvj5cuRZdXzUX00R9QhuL5WcCgGlS3bzGemE6tqpvDe5Hdv20UXiNcHbtdmQbVgXX4RY2IZIZqwFDCUFWG0YBh1DFcDRguYTBv2OjEQ1Zou/oJPzQ0NDQ0NDQ0NDRaCD6s8imUD6Z8qPegclngWwN/11mnUv7bHyk0WoZjyNNzgS6mo8hRbeFiU/mzFR7ltKU2GON8L2RMUe8WZjEj45htqm8GXfZU7e/ZcGC46a7+hKb7Lzczzhb3/x2S8sj/"
+    ))
+    for filename, content in (
+        ("receivables.xls", legacy_content),
+        ("receivables.xsl", legacy_content),
+        ("receivables.xsl", import_buffer.getvalue()),
+    ):
+        legacy_import = client.post(
+            "/finance/receivables/import",
+            data={"csrf": csrf(finance_page.text)},
+            files={"file": (filename, content, "application/vnd.ms-excel")},
+            follow_redirects=False,
+        )
+        assert legacy_import.status_code == 303
+        legacy_page = client.get(legacy_import.headers["location"])
+        assert "已从 Excel 第一列读取 2 个订单号" in legacy_page.text
+        assert "TWD-NOT-FOUND" in legacy_page.text
     invalid_import = client.post(
         "/finance/receivables/import",
         data={"csrf": csrf(imported_page.text)},
         files={"file": ("receivables.xls", b"not-an-excel-file", "application/vnd.ms-excel")},
         follow_redirects=True,
     )
-    assert invalid_import.status_code == 200 and "仅支持 XLSX 或 XLSM 格式的 Excel 文件" in invalid_import.text
+    assert invalid_import.status_code == 200 and "Excel 文件无法读取" in invalid_import.text
     payables_page = client.get("/finance/payables")
     assert payables_page.status_code == 200
     assert "财务可查看全部外发及电镀记录" not in payables_page.text
