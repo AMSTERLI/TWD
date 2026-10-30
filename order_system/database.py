@@ -143,7 +143,7 @@ DEFAULT_OUTSOURCE_PROCESSES = [
 ]
 
 DEFAULT_OUTSOURCE_FACTORIES = [
-    ("\u538b\u94f8", "\u5907\u7528"),
+    ("\u538b\u94f8", "\u5353\u8fc8"),
     ("\u538b\u94f8", "\u5415\u9e4f\u98de"),
     ("\u538b\u94f8", "\u957f\u8425"),
     ("\u4e0a\u8272", "\u97e9\u632f\u4f1f"),
@@ -387,6 +387,11 @@ class Database:
         )
 
     def _seed_outsource_factories(self, conn: sqlite3.Connection) -> None:
+        for table in ("outsource_factories", "outsource_records"):
+            conn.execute(
+                f"UPDATE {table} SET factory_name = ? WHERE process_name = ? AND factory_name = ?",
+                ("\u5353\u8fc8", "\u538b\u94f8", "\u5907\u7528"),
+            )
         conn.executemany(
             """
             INSERT INTO outsource_factories (process_name, factory_name)
