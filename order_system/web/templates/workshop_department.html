@@ -83,7 +83,7 @@
           <td><button type="button" class="small danger-button" data-remove-workshop-row>&#21024;&#38500;</button></td>
         </tr>
       </template>
-      {% if department.touch_keypad %}<div class="touch-keypad" data-touch-keypad hidden><div class="touch-keypad-display" data-touch-keypad-display>0</div><div class="touch-keypad-grid">{% for key in ["7","8","9","4","5","6","1","2","3","0","."] %}<button type="button" data-keypad-key="{{ key }}">{{ key }}</button>{% endfor %}<button type="button" data-keypad-backspace>&#36864;&#26684;</button><button type="button" data-keypad-clear>&#28165;&#31354;</button><button type="button" class="primary" data-keypad-done>&#30830;&#23450;</button></div></div>{% endif %}
+{% if department.touch_keypad %}{% include "_touch_keypad.html" %}{% endif %}
       <div class="batch-actions"><button type="button" class="button" data-add-workshop-row>+ &#26032;&#22686;&#19968;&#34892;</button>{% if department.key in ['press', 'polishing', 'painting', 'diecast', 'uv'] %}<button type="button" class="button" data-batch-workshop-price>&#25209;&#37327;&#25913;&#21333;&#20215;</button>{% endif %}<button class="button primary">{% if department.piecework %}&#20445;&#23384;&#35745;&#20214;{% else %}&#20445;&#23384;&#25253;&#21040;{% endif %}</button></div>
     </form>
   </div>
