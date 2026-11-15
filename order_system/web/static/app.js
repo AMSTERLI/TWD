@@ -1006,6 +1006,13 @@ document.querySelectorAll("[data-plating-edit]").forEach(form => {
   const display = form.querySelector("[data-touch-keypad-display]");
   let activeInput = null;
 
+  function updateAmount() {
+    const quantity = Number(form.querySelector('[name="quantity"]')?.value || 0);
+    const unitPrice = Number(form.querySelector('[name="unit_price"]')?.value || 0);
+    const amount = form.querySelector('[name="amount"]');
+    if (amount) amount.value = Number(Number(quantity * unitPrice).toFixed(4)).toString();
+  }
+
   function normalize(input, rawValue) {
     const isInteger = input?.dataset.touchInteger === "1";
     const scale = Number(input?.dataset.touchScale || 0);
@@ -1042,6 +1049,7 @@ document.querySelectorAll("[data-plating-edit]").forEach(form => {
     if (!event.target.matches("[data-touch-number]")) return;
     const value = normalize(event.target, event.target.value);
     if (event.target.value !== value) event.target.value = value;
+    if (event.target.matches('[name="quantity"], [name="unit_price"]')) updateAmount();
     if (event.target === activeInput) refreshDisplay();
   });
   form.addEventListener("click", event => {
