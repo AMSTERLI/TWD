@@ -1,10 +1,10 @@
 <div class="touch-keypad" data-touch-keypad hidden>
   <div class="touch-keypad-display" data-touch-keypad-display>0</div>
   <div class="touch-keypad-grid">
-    {% for key in ["1", "2", "3", "4", "5", "."] %}<button type="button" data-keypad-key="{{ key }}">{{ key }}</button>{% endfor %}
+    {% for key in ["1", "2", "3", "4", "5"] %}<button type="button" data-keypad-key="{{ key }}">{{ key }}</button>{% endfor %}
     <button type="button" data-keypad-backspace>&#36864;&#26684;</button>
-    {% for key in ["6", "7", "8", "9", "0"] %}<button type="button" data-keypad-key="{{ key }}">{{ key }}</button>{% endfor %}
     <button type="button" data-keypad-clear>&#28165;&#31354;</button>
+    {% for key in ["6", "7", "8", "9", "0", "."] %}<button type="button" data-keypad-key="{{ key }}">{{ key }}</button>{% endfor %}
     <button type="button" class="primary" data-keypad-done>&#30830;&#23450;</button>
   </div>
 </div>
