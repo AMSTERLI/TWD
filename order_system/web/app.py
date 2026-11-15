@@ -147,7 +147,7 @@ WORKSHOP_DEPARTMENTS = {
         "piecework": True,
         "touch_keypad": False,
         "approval_requests": True,
-        "fixed_operator": "UV",
+        "employees": ["\u5370\u5237", "\u6253\u5370"],
         "mold_fee": True,
         "mold_fee_label": "\u7248\u8d39",
         "mold_fee_input": True,
@@ -2738,6 +2738,9 @@ async def workshop_department_export(request: Request, department_key: str):
                 beijing_time(row.get("reported_at") or ""),
             ] for row in rows]
             headers = ["\u8ba2\u5355\u53f7", "\u4ea7\u54c1", "\u90e8\u95e8", "\u5907\u6ce8", "\u6570\u91cf", "\u53c2\u8003\u6570\u91cf", "\u5355\u4ef7", "\u7248\u8d39", "\u91d1\u989d", "\u8ba2\u5355\u7c7b\u522b", "\u62a5\u5230\u65f6\u95f4"]
+            headers.append("\u5458\u5de5")
+            for values, row in zip(data, rows):
+                values.append(row.get("operator_name") or "")
         elif department.get("mold_fee"):
             data = [[
                 row.get("order_no") or "",

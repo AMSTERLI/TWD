@@ -491,7 +491,9 @@ with TestClient(app) as client:
     assert uv.status_code == 200 and "touch-piecework-panel" in uv.text
     assert "UV\uff08\u5434\u53cc\u5a25\uff09" in uv.text
     assert 'data-employee-value="UV"' not in uv.text and "\u7248\u8d39" in uv.text and 'data-batch-workshop-price' in uv.text
-    assert "data-workshop-employees" not in uv.text and "<th>\u5de5\u827a</th>" not in uv.text
+    assert "data-workshop-employees" in uv.text
+    assert 'data-employee-value="\u5370\u5237"' in uv.text
+    assert 'data-employee-value="\u6253\u5370"' in uv.text
     assert "&#22791;&#27880;" in uv.text and "\u8fd4\u5de5" in uv.text
     assert "data-touch-keypad" not in uv.text and "data-touch-number" not in uv.text
     uv_report = client.post(
