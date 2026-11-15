@@ -18,7 +18,7 @@ REQUIRED_WEB_PROCESSES = ["\u538b\u94f8", "\u51b2\u538b", "\u4e0a\u8272", "\u6bd
 REQUIRED_WEB_FACTORIES = [("\u538b\u94f8", "\u957f\u8425"), ("\u4e0a\u8272", "\u7530\u592a\u6b66"), ("\u4e0a\u8272", "\u7f57\u6d77\u71d5"), ("\u4e0a\u8272", "\u9646\u6d77\u519b"), ("\u6bdb\u8fb9", "\u6797\u4e16\u57f9"), ("\u956d\u96d5", "\u5f20\u5c55\u5c71"), ("\u76ae\u9769", "\u8001\u96f7")]
 REQUIRED_WEB_FACTORIES.append(("\u538b\u94f8", "\u5353\u8fc8"))
 PLATING_SECONDARY_PROCESSES = {"打铜底", "清洗", "退镀", "封油", "＋雾漆", "＋喷漆", "＋雾金", "＋雾黑", "其他"}
-PLATING_REMARKS = {"多款", "异形", "配件", "返工", "补数"}
+PLATING_REMARKS = {"多款", "异形", "配件", "返工", "补数", "称重"}
 
 FINANCE_PAYABLES_CTE = """
 WITH finance_payables AS (

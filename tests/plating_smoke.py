@@ -85,7 +85,7 @@ with TestClient(app) as client:
     assert '<colgroup>' in page.text and 'class="plating-col-action"' in page.text
     assert "data-touch-keypad" in page.text and "data-touch-number" in page.text
     assert 'name="process_name_2"' in page.text and "打铜底" in page.text and "＋雾黑" in page.text
-    assert 'name="remark"' in page.text and "多款" in page.text and "补数" in page.text
+    assert 'name="remark"' in page.text and "多款" in page.text and "补数" in page.text and "称重" in page.text
     assert 'pattern="[1-9][0-9]*"' in page.text
     assert "plating-record-list" in page.text
     assert "订单列表" not in page.text

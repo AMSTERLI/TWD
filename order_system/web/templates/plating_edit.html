@@ -3,7 +3,7 @@
 {% block body_class %}plating-page{% endblock %}
 {% block content %}
 {% set process_two_options = ["打铜底", "清洗", "退镀", "封油", "＋雾漆", "＋喷漆", "＋雾金", "＋雾黑", "其他"] %}
-{% set remark_options = ["多款", "异形", "配件", "返工", "补数"] %}
+{% set remark_options = ["多款", "异形", "配件", "返工", "补数", "称重"] %}
 <div class="page-head"><div><h1>修改电镀记录</h1><p>{{ record.order_no }} · {{ record.product_name or '未填写产品名称' }}</p></div><a class="button" href="/plating">返回电镀</a></div>
 {% if error %}<div class="alert error">保存失败：{{ error }}</div>{% endif %}
 <form method="post" class="form-section plating-edit-form" data-plating-edit>
