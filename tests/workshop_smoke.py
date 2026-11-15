@@ -498,14 +498,14 @@ with TestClient(app) as client:
     assert "data-touch-keypad" not in uv.text and "data-touch-number" not in uv.text
     uv_report = client.post(
         "/workshop/uv",
-        data={"csrf": csrf(uv.text), "order_no": [uv_order_no], "quantity": ["20"], "unit_price": ["0.5"], "mold_fee": ["8"], "note_text": ["uv-note"], "record_type": ["rework"]},
+        data={"csrf": csrf(uv.text), "employee_name": ["\u5370\u5237"], "order_no": [uv_order_no], "quantity": ["20"], "unit_price": ["0.5"], "mold_fee": ["8"], "note_text": ["uv-note"], "record_type": ["rework"]},
         follow_redirects=False,
     )
     assert uv_report.status_code == 303
     uv_records = repo.order_workshop_records(uv_order_id)
     assert len(uv_records) == 1
     assert uv_records[0]["department_name"] == "UV\uff08\u5434\u53cc\u5a25\uff09"
-    assert uv_records[0]["operator_name"] == "UV"
+    assert uv_records[0]["operator_name"] == "\u5370\u5237"
     assert uv_records[0]["note_text"] == "uv-note"
     assert uv_records[0]["record_type"] == "rework"
     assert uv_records[0]["quantity"] == 20
@@ -514,7 +514,7 @@ with TestClient(app) as client:
     assert abs(uv_records[0]["amount"] - 18) < 1e-9
     uv_list = client.get("/workshop/uv")
     assert uv_list.status_code == 200 and 'data-selection-amount-total-all="18.00"' in uv_list.text
-    assert "uv-note" in uv_list.text and "\u8fd4\u5de5" in uv_list.text and "\u5de5\u827a" not in uv_list.text
+    assert "uv-note" in uv_list.text and "\u8fd4\u5de5" in uv_list.text
     assert f'data-request-edit-url="/workshop/uv/records/{uv_records[0]["id"]}/edit-request"' in uv_list.text
     assert f'data-request-delete-url="/workshop/uv/records/{uv_records[0]["id"]}/delete-request"' in uv_list.text
     assert f'data-delete-url="/workshop/uv/records/{uv_records[0]["id"]}/delete"' not in uv_list.text

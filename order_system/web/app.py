@@ -148,6 +148,7 @@ WORKSHOP_DEPARTMENTS = {
         "touch_keypad": False,
         "approval_requests": True,
         "employees": ["\u5370\u5237", "\u6253\u5370"],
+        "process_options": ["\u5370\u5237", "\u6253\u5370"],
         "mold_fee": True,
         "mold_fee_label": "\u7248\u8d39",
         "mold_fee_input": True,

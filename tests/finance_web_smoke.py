@@ -146,7 +146,7 @@ with TestClient(app) as client:
     uv_record = repo.create_workshop_records(
         "uv",
         "UV（吴双娥）",
-        [{"order_no": new_order, "quantity": 10, "unit_price": 0.2, "mold_fee": 5, "note_text": "测试版", "record_type": "normal"}],
+        [{"order_no": new_order, "employee_name": "\u5370\u5237", "quantity": 10, "unit_price": 0.2, "mold_fee": 5, "note_text": "测试版", "record_type": "normal"}],
         repo.get_user(1),
     )[0]
 

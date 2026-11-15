@@ -31,6 +31,13 @@ with TestClient(app) as client:
         order_id, order_no = repo.create_order(payload)
         page = client.get("/workshop/uv")
         assert f'data-employee-value="{option}"' in page.text
+        assert 'data-single-option="1"' in page.text
+        invalid = client.post("/workshop/uv", data={
+            "csrf": csrf(page.text), "employee_name": "\u5370\u5237,\u6253\u5370",
+            "order_no": order_no, "quantity": "20", "unit_price": "0.5",
+        }, follow_redirects=False)
+        assert invalid.status_code == 422
+        assert not repo.order_workshop_records(order_id)
         result = client.post("/workshop/uv", data={
             "csrf": csrf(page.text), "employee_name": option, "order_no": order_no,
             "quantity": "20", "unit_price": "0.5", "mold_fee": "8",

@@ -2096,8 +2096,9 @@ class Repository:
                 allowed_options = process_options[department_key]
                 if len(employee_names) != 1 or employee_names[0] not in allowed_options:
                     raise ValueError(f"\u8ba2\u5355 {order_no} \u8bf7\u9009\u62e9{department_name}\u5de5\u827a")
-            if department_key == "uv" and not employee_names:
-                employee_names = ["UV"]
+            if department_key == "uv":
+                if len(employee_names) != 1 or employee_names[0] not in {"\u5370\u5237", "\u6253\u5370"}:
+                    raise ValueError("\u8bf7\u9009\u62e9\u4e00\u9879\u5de5\u827a\uff1a\u5370\u5237\u6216\u6253\u5370")
             if department_key in piecework_employees:
                 employee_names = list(dict.fromkeys(employee_names))
                 allowed_employees = piecework_employees[department_key]
